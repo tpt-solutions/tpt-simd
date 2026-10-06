@@ -231,10 +231,10 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 ## Phase 4 — Arithmetic variants (Weeks 9–10)
 
 ### tpt-simd-mul
-- [ ] `mul_hi_i16`, `mul_lo_i32`, `mul_hi_i32`
-- [ ] `mul_add_sub_f32` (`fmaddsub`)
-- [ ] `complex_mul_f32` (home for complex multiply; complex crate uses it)
-- [ ] Widening multiplies (i16→i32, i32→i64) (decide scope)
+- [x] `mul_hi_i16`, `mul_lo_i32`, `mul_hi_i32`
+- [x] `mul_add_sub_f32` (`fmaddsub`)
+- [x] `complex_mul_f32` (home for complex multiply; complex crate uses it)
+- [x] Widening multiplies (i16→i32, i32→i64) (decide scope)
 - [ ] Crate-done checklist
 
 ### tpt-simd-rounding
@@ -447,7 +447,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] `tpt-simd-dot`: `[[bench]] name = "dot"` declared but `benches/dot.rs` missing
 - [x] `tpt-simd-core` docs link `docs/adr/0001-backend-strategy.md`; real file is `0001-backend-and-dispatch.md`
 - [x] `tpt-simd` umbrella crate is still a 2-line stub with no re-exports
-- [ ] `tpt-simd-mul` is missing `mul_hi_i16`, `mul_lo_i32`, `mul_hi_i32`, `mul_add_sub_f32`
+- [x] `tpt-simd-mul` is missing `mul_hi_i16`, `mul_lo_i32`, `mul_hi_i32`, `mul_add_sub_f32`
 - [x] Tick Phase 0 / 1 / 2 checkboxes that are already done in code; commit the uncommitted butterfly/complex/fixed/horizontal/saturate/dot work
 
 ---

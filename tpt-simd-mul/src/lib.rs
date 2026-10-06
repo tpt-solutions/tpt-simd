@@ -1,8 +1,13 @@
 //! SIMD multiply variants (high/low/widening/complex).
 //!
-//! Currently implemented: [`complex_mul_f32`] (plus its portable reference
-//! [`complex_mul_f32_portable`]). The integer multiply variants are a later
-//! phase.
+//! Implemented:
+//! * [`complex_mul_f32`] (plus its portable reference
+//!   [`complex_mul_f32_portable`]) — fused complex multiply of 8 `f32` lanes.
+//! * [`mul_hi_i16`] — high 16 bits of the 32-bit `i16` product.
+//! * [`mul_lo_i32`] — low 32 bits of the 64-bit `i32` product.
+//! * [`mul_hi_i32`] — high 32 bits of the 64-bit `i32` product.
+//! * [`mul_add_sub_f32`] — `a*b + c` on even lanes, `a*b - c` on odd lanes.
+//! * [`mul_widen_i16`], [`mul_widen_i32`] — full-width widening multiplies.
 //!
 //! ## Rounding rule for complex multiply
 //!
@@ -26,6 +31,115 @@
 extern crate std;
 
 pub use tpt_simd_core::ComplexSimd;
+
+use tpt_simd_core::Simd;
+
+/// High 16 bits of the signed 32-bit product of each `i16` lane pair
+/// (`(a * b) >> 16`, like `pmulhw`).
+///
+/// Performance: lowers to `vpmulhw` on AVX2 / `sqdmulh`-style sequences on
+/// NEON via auto-vectorisation of the lane loop.
+///
+/// # Panics
+/// Never.
+///
+/// ```
+/// use tpt_simd_core::I16x16;
+/// use tpt_simd_mul::mul_hi_i16;
+/// let r = mul_hi_i16(I16x16::splat(i16::MIN), I16x16::splat(i16::MIN));
+/// assert_eq!(r, I16x16::splat(0x4000));
+/// ```
+#[inline]
+pub fn mul_hi_i16(a: Simd<i16, 16>, b: Simd<i16, 16>) -> Simd<i16, 16> {
+    a.zip_with(b, |x, y| ((i32::from(x) * i32::from(y)) >> 16) as i16)
+}
+
+/// Low 32 bits of the 64-bit product of each `i32` lane pair (wrapping
+/// multiply, like `pmulld`).
+///
+/// Performance: one `vpmulld` on AVX2 (10-cycle latency on Intel cores).
+///
+/// # Panics
+/// Never.
+///
+/// ```
+/// use tpt_simd_core::I32x8;
+/// use tpt_simd_mul::mul_lo_i32;
+/// assert_eq!(mul_lo_i32(I32x8::splat(65536), I32x8::splat(65536)), I32x8::splat(0));
+/// ```
+#[inline]
+pub fn mul_lo_i32(a: Simd<i32, 8>, b: Simd<i32, 8>) -> Simd<i32, 8> {
+    a.zip_with(b, i32::wrapping_mul)
+}
+
+/// High 32 bits of the signed 64-bit product of each `i32` lane pair
+/// (`(a * b) >> 32`). AVX2 has no direct instruction (`_mm256_mulhi_epi32`
+/// does not exist); LLVM synthesises it from `vpmuldq` and shuffles.
+///
+/// # Panics
+/// Never.
+///
+/// ```
+/// use tpt_simd_core::I32x8;
+/// use tpt_simd_mul::mul_hi_i32;
+/// assert_eq!(mul_hi_i32(I32x8::splat(i32::MIN), I32x8::splat(i32::MIN)), I32x8::splat(1 << 30));
+/// ```
+#[inline]
+pub fn mul_hi_i32(a: Simd<i32, 8>, b: Simd<i32, 8>) -> Simd<i32, 8> {
+    a.zip_with(b, |x, y| ((i64::from(x) * i64::from(y)) >> 32) as i32)
+}
+
+/// Widening multiply: full 32-bit product of each `i16` lane pair.
+///
+/// # Panics
+/// Never.
+///
+/// ```
+/// use tpt_simd_core::{I16x8, I32x8};
+/// use tpt_simd_mul::mul_widen_i16;
+/// assert_eq!(mul_widen_i16(I16x8::splat(i16::MIN), I16x8::splat(i16::MIN)), I32x8::splat(1 << 30));
+/// ```
+#[inline]
+pub fn mul_widen_i16(a: Simd<i16, 8>, b: Simd<i16, 8>) -> Simd<i32, 8> {
+    a.zip_with(b, |x, y| i32::from(x) * i32::from(y))
+}
+
+/// Widening multiply: full 64-bit product of each `i32` lane pair.
+///
+/// # Panics
+/// Never.
+///
+/// ```
+/// use tpt_simd_core::{I32x4, I64x4};
+/// use tpt_simd_mul::mul_widen_i32;
+/// assert_eq!(mul_widen_i32(I32x4::splat(i32::MIN), I32x4::splat(i32::MIN)), I64x4::splat(1 << 62));
+/// ```
+#[inline]
+pub fn mul_widen_i32(a: Simd<i32, 4>, b: Simd<i32, 4>) -> Simd<i64, 4> {
+    a.zip_with(b, |x, y| i64::from(x) * i64::from(y))
+}
+
+/// `a*b + c` on even lanes and `a*b - c` on odd lanes, each fused (single
+/// rounding, bit-identical on every target).
+///
+/// Note this is the *opposite* lane convention to Intel's
+/// `_mm256_fmaddsub_ps` (which subtracts on even lanes); it matches the
+/// function name ("add" first, then "sub").
+///
+/// # Panics
+/// Never.
+///
+/// ```
+/// use tpt_simd_core::F32x8;
+/// use tpt_simd_mul::mul_add_sub_f32;
+/// let r = mul_add_sub_f32(F32x8::splat(2.0), F32x8::splat(3.0), F32x8::splat(1.0));
+/// assert_eq!(r.to_array(), [7.0, 5.0, 7.0, 5.0, 7.0, 5.0, 7.0, 5.0]);
+/// ```
+#[inline]
+pub fn mul_add_sub_f32(a: Simd<f32, 8>, b: Simd<f32, 8>, c: Simd<f32, 8>) -> Simd<f32, 8> {
+    let sign = Simd::from_fn(|i| if i % 2 == 0 { 1.0 } else { -1.0 });
+    a.mul_add(b, c * sign)
+}
 
 /// True when the intrinsic fast path is compiled in.
 pub const COMPLEX_MUL_F32_USES_INTRINSICS: bool = cfg!(all(
@@ -198,6 +312,39 @@ mod tests {
                 let e = scalar([ar[l], ai[l]], [br[l], bi[l]]);
                 prop_assert!(same(r.real[l], e[0]) && same(r.imag[l], e[1]));
                 prop_assert!(same(p.real[l], e[0]) && same(p.imag[l], e[1]));
+            }
+        }
+    }
+
+    #[test]
+    fn int_variants_match_scalar() {
+        let xs = [i32::MIN, -1, 0, 1, 12345, i32::MAX, -65536, 65536];
+        let a = Simd::<i32, 8>::from_array(xs);
+        let b = Simd::<i32, 8>::from_array([7, i32::MIN, i32::MAX, -3, 99999, i32::MAX, 65536, 65536]);
+        let (lo, hi) = (mul_lo_i32(a, b), mul_hi_i32(a, b));
+        for l in 0..8 {
+            let p = i64::from(a[l]) * i64::from(b[l]);
+            assert_eq!(lo[l], p as i32);
+            assert_eq!(hi[l], (p >> 32) as i32);
+        }
+        let x = Simd::<i16, 16>::from_fn(|i| [i16::MIN, i16::MAX, -1, 3][i % 4]);
+        let y = Simd::<i16, 16>::from_fn(|i| [i16::MIN, i16::MIN, 5, -7][(i / 2) % 4]);
+        let h = mul_hi_i16(x, y);
+        for l in 0..16 {
+            assert_eq!(h[l], ((i32::from(x[l]) * i32::from(y[l])) >> 16) as i16);
+        }
+        let w = mul_widen_i16(Simd::from_slice(&x.to_array()[..8]), Simd::from_slice(&y.to_array()[..8]));
+        assert_eq!(w[0], i32::from(i16::MIN) * i32::from(i16::MIN));
+    }
+
+    proptest! {
+        #[test]
+        fn mul_add_sub_matches_scalar(v in prop::collection::vec(f32_with_specials(), 24)) {
+            let g = |k: usize| -> [f32; 8] { v[k * 8..k * 8 + 8].try_into().unwrap() };
+            let r = mul_add_sub_f32(Simd::from_array(g(0)), Simd::from_array(g(1)), Simd::from_array(g(2)));
+            for l in 0..8 {
+                let c = if l % 2 == 0 { g(2)[l] } else { -g(2)[l] };
+                prop_assert!(same(r[l], g(0)[l].mul_add(g(1)[l], c)));
             }
         }
     }
