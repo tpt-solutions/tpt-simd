@@ -291,7 +291,9 @@ impl<T: SimdFloat, const N: usize> Simd<T, N> {
     /// Fused multiply-add `self * a + b` (single rounding per lane).
     #[inline(always)]
     pub fn mul_add(self, a: Self, b: Self) -> Self {
-        Self(core::array::from_fn(|i| self.0[i].lane_mul_add(a.0[i], b.0[i])))
+        Self(core::array::from_fn(|i| {
+            self.0[i].lane_mul_add(a.0[i], b.0[i])
+        }))
     }
 
     /// Per-lane `atan2(self, x)`.

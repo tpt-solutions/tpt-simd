@@ -1,0 +1,17 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --features std
+      - run: cargo package --workspace --exclude tpt-simd-testutil --allow-dirty --no-verify
+  # Publishing is intentionally manual (`cargo publish` in dependency order)
+  # until the crate set is stable.

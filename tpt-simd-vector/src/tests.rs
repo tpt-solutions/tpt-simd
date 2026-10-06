@@ -51,7 +51,10 @@ fn float_ops_and_nan_policy() {
     assert_eq!(r.round().to_array(), [1.0, 2.0, 3.0, -1.0]);
     assert_eq!(r.round_ties_even().to_array(), [0.0, 2.0, 2.0, -0.0]);
     assert_eq!(r.trunc().to_array(), [0.0, 1.0, 2.0, -0.0]);
-    assert_eq!(Simd::<f32, 2>::from_array([4.0, 9.0]).sqrt().to_array(), [2.0, 3.0]);
+    assert_eq!(
+        Simd::<f32, 2>::from_array([4.0, 9.0]).sqrt().to_array(),
+        [2.0, 3.0]
+    );
 }
 
 #[test]
@@ -78,7 +81,10 @@ fn mask_ops() {
 #[test]
 fn slices() {
     let data = [1i16, 2, 3];
-    assert_eq!(Simd::<i16, 4>::from_slice_or(&data, -1).to_array(), [1, 2, 3, -1]);
+    assert_eq!(
+        Simd::<i16, 4>::from_slice_or(&data, -1).to_array(),
+        [1, 2, 3, -1]
+    );
     let mut out = [0i16; 2];
     Simd::<i16, 4>::from_array([9, 8, 7, 6]).store_partial(&mut out);
     assert_eq!(out, [9, 8]);

@@ -172,31 +172,86 @@ macro_rules! impl_float {
             const BITS: u32 = $bits;
             const IS_FLOAT: bool = true;
             const IS_SIGNED: bool = true;
-            #[inline(always)] fn lane_add(self, r: Self) -> Self { self + r }
-            #[inline(always)] fn lane_sub(self, r: Self) -> Self { self - r }
-            #[inline(always)] fn lane_mul(self, r: Self) -> Self { self * r }
-            #[inline(always)] fn lane_div(self, r: Self) -> Self { self / r }
-            #[inline(always)] fn lane_neg(self) -> Self { -self }
-            #[inline(always)] fn lane_min(self, r: Self) -> Self { libm::$fmin(self, r) }
-            #[inline(always)] fn lane_max(self, r: Self) -> Self { libm::$fmax(self, r) }
-            #[inline(always)] fn lane_abs(self) -> Self { libm::$fabs(self) }
+            #[inline(always)]
+            fn lane_add(self, r: Self) -> Self {
+                self + r
+            }
+            #[inline(always)]
+            fn lane_sub(self, r: Self) -> Self {
+                self - r
+            }
+            #[inline(always)]
+            fn lane_mul(self, r: Self) -> Self {
+                self * r
+            }
+            #[inline(always)]
+            fn lane_div(self, r: Self) -> Self {
+                self / r
+            }
+            #[inline(always)]
+            fn lane_neg(self) -> Self {
+                -self
+            }
+            #[inline(always)]
+            fn lane_min(self, r: Self) -> Self {
+                libm::$fmin(self, r)
+            }
+            #[inline(always)]
+            fn lane_max(self, r: Self) -> Self {
+                libm::$fmax(self, r)
+            }
+            #[inline(always)]
+            fn lane_abs(self) -> Self {
+                libm::$fabs(self)
+            }
         }
         impl SimdFloat for $t {
-            #[inline(always)] fn lane_sqrt(self) -> Self { libm::$sqrt(self) }
-            #[inline(always)] fn lane_floor(self) -> Self { libm::$floor(self) }
-            #[inline(always)] fn lane_ceil(self) -> Self { libm::$ceil(self) }
-            #[inline(always)] fn lane_round(self) -> Self { libm::$round(self) }
-            #[inline(always)] fn lane_round_ties_even(self) -> Self { libm::$rint(self) }
-            #[inline(always)] fn lane_trunc(self) -> Self { libm::$trunc(self) }
-            #[inline(always)] fn lane_mul_add(self, a: Self, b: Self) -> Self { libm::$fma(self, a, b) }
-            #[inline(always)] fn lane_is_nan(self) -> bool { self != self }
-            #[inline(always)] fn lane_atan2(self, x: Self) -> Self { libm::$atan2(self, x) }
+            #[inline(always)]
+            fn lane_sqrt(self) -> Self {
+                libm::$sqrt(self)
+            }
+            #[inline(always)]
+            fn lane_floor(self) -> Self {
+                libm::$floor(self)
+            }
+            #[inline(always)]
+            fn lane_ceil(self) -> Self {
+                libm::$ceil(self)
+            }
+            #[inline(always)]
+            fn lane_round(self) -> Self {
+                libm::$round(self)
+            }
+            #[inline(always)]
+            fn lane_round_ties_even(self) -> Self {
+                libm::$rint(self)
+            }
+            #[inline(always)]
+            fn lane_trunc(self) -> Self {
+                libm::$trunc(self)
+            }
+            #[inline(always)]
+            fn lane_mul_add(self, a: Self, b: Self) -> Self {
+                libm::$fma(self, a, b)
+            }
+            #[inline(always)]
+            fn lane_is_nan(self) -> bool {
+                self != self
+            }
+            #[inline(always)]
+            fn lane_atan2(self, x: Self) -> Self {
+                libm::$atan2(self, x)
+            }
         }
     };
 }
 
-impl_float!(f32, sqrtf, floorf, ceilf, roundf, rintf, truncf, fmaf, fabsf, fminf, fmaxf, atan2f, 32);
-impl_float!(f64, sqrt, floor, ceil, round, rint, trunc, fma, fabs, fmin, fmax, atan2, 64);
+impl_float!(
+    f32, sqrtf, floorf, ceilf, roundf, rintf, truncf, fmaf, fabsf, fminf, fmaxf, atan2f, 32
+);
+impl_float!(
+    f64, sqrt, floor, ceil, round, rint, trunc, fma, fabs, fmin, fmax, atan2, 64
+);
 
 macro_rules! cast_from {
     ($t:ty; $($u:ty),*) => {$(

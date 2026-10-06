@@ -101,6 +101,9 @@ pub fn approx_eq_f32(a: f32, b: f32, rel: f32, abs: f32) -> bool {
 pub fn assert_slice_close(actual: &[f32], expected: &[f32], rel: f32, abs: f32) {
     assert_eq!(actual.len(), expected.len(), "length mismatch");
     for (i, (&a, &e)) in actual.iter().zip(expected).enumerate() {
-        assert!(approx_eq_f32(a, e, rel, abs), "index {i}: got {a}, expected {e}");
+        assert!(
+            approx_eq_f32(a, e, rel, abs),
+            "index {i}: got {a}, expected {e}"
+        );
     }
 }

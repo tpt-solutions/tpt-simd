@@ -19,8 +19,10 @@ pub const NATIVE_VECTOR_BYTES: usize = NATIVE_VECTOR_BITS / 8;
 
 /// Lanes of `T` that fill one native vector register.
 pub const fn native_lanes<T>() -> usize {
-    let size = core::mem::size_of::<T>();
-    if size == 0 { 1 } else { NATIVE_VECTOR_BYTES / size }
+    match NATIVE_VECTOR_BYTES.checked_div(core::mem::size_of::<T>()) {
+        Some(n) => n,
+        None => 1,
+    }
 }
 
 /// Native lane count for `f32`.

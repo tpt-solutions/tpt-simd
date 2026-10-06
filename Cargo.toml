@@ -28,6 +28,9 @@ missing_docs = "warn"
 
 [workspace.lints.clippy]
 undocumented_unsafe_blocks = "warn"
+should_implement_trait = "allow"
+needless_range_loop = "allow"
+many_single_char_names = "allow"
 
 [profile.bench]
 opt-level = 3

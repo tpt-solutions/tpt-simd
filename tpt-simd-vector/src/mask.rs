@@ -19,7 +19,10 @@ impl<T: SimdElement, const N: usize> SimdMask<T, N> {
     /// Build from per-lane booleans.
     #[inline(always)]
     pub const fn from_array(lanes: [bool; N]) -> Self {
-        Self { lanes, _marker: PhantomData }
+        Self {
+            lanes,
+            _marker: PhantomData,
+        }
     }
 
     /// Per-lane booleans.
@@ -99,7 +102,9 @@ impl<T: SimdElement, const N: usize> SimdMask<T, N> {
     /// Per lane: `if self { a } else { b }`.
     #[inline(always)]
     pub fn select(self, a: Simd<T, N>, b: Simd<T, N>) -> Simd<T, N> {
-        Simd::from_array(core::array::from_fn(|i| if self.lanes[i] { a[i] } else { b[i] }))
+        Simd::from_array(core::array::from_fn(|i| {
+            if self.lanes[i] { a[i] } else { b[i] }
+        }))
     }
 }
 
