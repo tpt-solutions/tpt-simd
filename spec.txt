@@ -1,0 +1,695 @@
+tpt-simd: Design Specification
+A unified SIMD abstraction layer for Rust DSP and codec development
+Version: 0.1.0-draft
+Date: October 6, 2026
+Status: Design Phase
+1. Executive Summary
+tpt-simd is a proposed Rust workspace providing high-level, portable SIMD abstractions that wrap low-level architecture intrinsics (core::arch) for DSP and codec development. It bridges the gap between raw intrinsics and domain-specific needs, offering reusable building blocks that are currently missing from the Rust ecosystem.
+Core Problem: Every Rust codec developer reinvents the same 20 SIMD patterns (complex multiply, fixed-point arithmetic, butterflies, transpose, dot products, etc.) because no unified abstraction layer exists.
+Solution: Extract these patterns into a coherent set of 20 focused crates, each wrapping 2-5 intrinsics to solve a specific, common problem.
+Key Value Propositions:
+20 focused crates covering the complete SIMD abstraction surface for DSP
+Zero-cost abstractions that compile to optimal SIMD instructions
+Portable across x86_64 (SSE/AVX/AVX2/AVX-512), ARM64 (NEON/SVE), and RISC-V (Vector)
+Type-safe wrappers that eliminate common SIMD bugs (alignment, overflow, rounding)
+Direct integration path into tpt-kinetix and tpt-cadence
+2. Problem Statement
+2.1 The Reinvention Tax
+Every Rust codec developer currently writes their own versions of:
+Complex number SIMD operations (for FFT/MDCT)
+Fixed-point arithmetic (for video motion compensation)
+Butterfly operations (for FFT/DCT)
+Horizontal reductions (sum, max, min)
+Data transposition and interleaving
+Saturating arithmetic for pixel/audio samples
+This results in:
+Duplicated effort: The same 20 patterns written 100 times across the ecosystem
+Subtle bugs: Incorrect rounding, alignment issues, saturation errors
+Portability nightmares: Separate x86 and ARM implementations per project
+Maintenance burden: Every project maintains its own SIMD code
+2.2 Why These Abstractions Don't Exist
+Timing: Rust's portable SIMD (core::simd) only recently stabilized
+Fragmentation: Existing crates (wide, simba, rustfft) solve parts of the problem but aren't unified
+Expertise barrier: Requires SIMD hardware knowledge + codec expertise + Rust type system mastery
+Tiny market: Only ~100 Rust developers work on codecs
+Maintenance fear: SIMD libraries are hard to maintain across architectures
+Boring infrastructure: No glory in dot product libraries
+2.3 The Gap in the Ecosystem
+Current Rust SIMD landscape:
+core::arch: Raw intrinsics — powerful but verbose, unsafe, architecture-specific
+core::simd: Portable SIMD — stable but low-level, no domain abstractions
+wide: SIMD wrappers — general-purpose, no complex/fixed-point support
+rustfft: FFT implementation — great but not reusable for other DSP
+num-complex: Complex numbers — scalar only, not SIMD-optimized
+What's missing: The layer between core::simd and domain-specific applications.
+3. Architecture Overview
+3.1 Workspace Structure
+
+tpt-simd/
+├── tpt-simd-core/          # Core traits and portable primitives
+├── tpt-simd-complex/       # Complex number SIMD operations
+├── tpt-simd-fixed/         # Fixed-point arithmetic
+├── tpt-simd-saturate/      # Saturating arithmetic
+├── tpt-simd-horizontal/    # Horizontal reductions
+├── tpt-simd-permute/       # Data permutation and shuffling
+├── tpt-simd-gather/        # Non-contiguous loads
+├── tpt-simd-scatter/       # Non-contiguous stores
+├── tpt-simd-aligned/       # Aligned memory helpers
+├── tpt-simd-mul/           # Multiply variants
+├── tpt-simd-dot/           # Dot product variants
+├── tpt-simd-rounding/      # Rounding operations
+├── tpt-simd-shift/         # Shift variants
+├── tpt-simd-compare/       # Comparison with masks
+├── tpt-simd-blend/         # Conditional selection
+├── tpt-simd-select/        # Element selection
+├── tpt-simd-butterfly/     # FFT/DCT butterfly
+├── tpt-simd-convolve/      # Convolution primitives
+├── tpt-simd-interpolate/   # Interpolation kernels
+├── tpt-simd-matrix/        # Small matrix operations
+└── tpt-simd-window/        # Window functions
+
+3.2 Design Principles
+Zero-Cost Abstractions: All operations compile to optimal SIMD instructions with no runtime overhead
+Type Safety: Prevent common bugs at compile time (mixing fixed-point formats, misaligned loads)
+Portability First: Same code compiles to AVX2 on x86, NEON on ARM, etc.
+Explicit Unsafe Boundaries: Only use unsafe where absolutely necessary
+Composable: Crates build on each other; tpt-simd-complex uses tpt-simd-mul
+Testable: Every operation has a scalar reference implementation for verification
+4. Crate Specifications
+4.1 Core Infrastructure
+tpt-simd-core
+Purpose: Core traits and portable primitives shared by all other crates.
+Key Types:
+
+pub trait SimdElement: Copy + Default {}
+pub trait SimdOps<T: SimdElement, const N: usize> {
+    type Vector: SimdVector<T, N>;
+}
+
+Key Functions:
+Runtime feature detection helpers
+Vector width constants
+Common type aliases (F32x8, I32x8, I16x16)
+tpt-simd-complex
+Purpose: SIMD complex number operations for FFT/MDCT.
+Core Type:
+
+pub struct ComplexSimd<T, const N: usize>
+where
+    T: SimdElement,
+{
+    pub real: Simd<T, N>,
+    pub imag: Simd<T, N>,
+}
+
+Operations:
+
+impl<T, const N: usize> ComplexSimd<T, N> {
+    pub fn new(real: Simd<T, N>, imag: Simd<T, N>) -> Self;
+    pub fn add(self, other: Self) -> Self;
+    pub fn sub(self, other: Self) -> Self;
+    pub fn mul(self, other: Self) -> Self;           // (a+bi)(c+di) = (ac-bd) + (ad+bc)i
+    pub fn div(self, other: Self) -> Self;
+    pub fn conj(self) -> Self;                       // Complex conjugate
+    pub fn mag_sq(self) -> Simd<T, N>;               // |z|^2 = real^2 + imag^2
+    pub fn mag(self) -> Simd<T, N>;                  // |z| = sqrt(mag_sq)
+    pub fn phase(self) -> Simd<T, N>;                // atan2(imag, real)
+    pub fn twiddle_mul(self, twiddle: Self) -> Self; // Optimized for FFT
+    pub fn butterfly(&mut self, other: &mut Self);   // In-place butterfly
+}
+
+Intrinsics Used:
+_mm256_fmadd_ps, _mm256_fmsub_ps (FMA for complex multiply)
+_mm256_addsub_ps (complex add/subtract)
+Shuffle operations for real/imaginary interleaving
+Performance Target: 3x speedup over scalar complex multiplication.
+tpt-simd-fixed
+Purpose: Type-safe fixed-point arithmetic for video codecs.
+Core Type:
+
+pub struct Fixed<T, const INT_BITS: u32, const FRAC_BITS: u32, const N: usize>
+where
+    T: SimdElement,
+{
+    value: Simd<T, N>,
+}
+
+Operations:
+
+impl<T, const INT_BITS: u32, const FRAC_BITS: u32, const N: usize> Fixed<T, INT_BITS, FRAC_BITS, N> {
+    pub fn add(self, other: Self) -> Self;
+    pub fn sub(self, other: Self) -> Self;
+    pub fn mul(self, other: Self) -> Self;           // (a * b) >> FRAC_BITS with rounding
+    pub fn div(self, other: Self) -> Self;
+    pub fn from_f32(v: Simd<f32, N>) -> Self;
+    pub fn to_f32(self) -> Simd<f32, N>;
+    pub fn saturate(self) -> Self;                   // Clamp to representable range
+}
+
+Intrinsics Used:
+_mm256_mullo_epi32 (multiply low)
+_mm256_mulhi_epi32 (multiply high for 64-bit results)
+Shift and rounding operations
+Performance Target: 2x speedup over manual fixed-point with correct rounding.
+tpt-simd-saturate
+Purpose: Saturating arithmetic for pixel and audio sample processing.
+Operations:
+
+pub fn saturating_add_i16(a: Simd<i16, 16>, b: Simd<i16, 16>) -> Simd<i16, 16>;
+pub fn saturating_sub_i16(a: Simd<i16, 16>, b: Simd<i16, 16>) -> Simd<i16, 16>;
+pub fn saturating_add_i8(a: Simd<i8, 32>, b: Simd<i8, 32>) -> Simd<i8, 32>;
+pub fn saturating_mul_i16(a: Simd<i16, 16>, b: Simd<i16, 16>) -> Simd<i16, 16>;
+pub fn pack_i16_to_i8(data: Simd<i16, 16>) -> Simd<i8, 16>;  // Saturating pack
+
+Intrinsics Used:
+_mm256_adds_epi16, _mm256_subs_epi16 (saturating add/sub)
+_mm256_packs_epi16 (saturating pack)
+Performance Target: 4x speedup over scalar saturating arithmetic.
+tpt-simd-horizontal
+Purpose: Horizontal reductions across vector elements.
+Operations:
+
+pub fn horizontal_sum_i32(v: Simd<i32, 8>) -> i32;
+pub fn horizontal_sum_f32(v: Simd<f32, 8>) -> f32;
+pub fn horizontal_sum_i16(v: Simd<i16, 16>) -> i32;  // Accumulates to i32
+pub fn horizontal_max_i16(v: Simd<i16, 16>) -> i16;
+pub fn horizontal_min_f32(v: Simd<f32, 8>) -> f32;
+pub fn horizontal_product_f32(v: Simd<f32, 8>) -> f32;
+
+Intrinsics Used:
+_mm256_hadd_ps, _mm256_hadd_epi32 (horizontal add)
+Shuffle-and-add patterns for max/min
+Performance Target: 8x speedup over scalar horizontal operations.
+tpt-simd-permute
+Purpose: High-level data permutation and shuffling.
+Operations:
+
+pub fn transpose_8x8_i16(data: &mut [[i16; 8]; 8]);
+pub fn transpose_4x4_f32(data: &mut [[f32; 4]; 4]);
+pub fn interleave_stereo_i16(left: &[i16], right: &[i16], output: &mut [i16]);
+pub fn deinterleave_stereo_i16(input: &[i16], left: &mut [i16], right: &mut [i16]);
+pub fn interleave_yuv420(y: &[u8], u: &[u8], v: &[u8], output: &mut [u8]);
+pub fn pack_i16_to_i8(data: &[i16], output: &mut [i8]);
+pub fn unpack_i8_to_i16(data: &[i8], output: &mut [i16]);
+
+Intrinsics Used:
+_mm256_unpacklo_epi16, _mm256_unpackhi_epi16 (for transpose)
+_mm256_permutevar8x32_ps (general permutation)
+_mm256_blendv_epi8 (conditional selection)
+Performance Target: 5x speedup over scalar transpose operations.
+4.2 Memory Access
+tpt-simd-gather
+Purpose: SIMD non-contiguous loads with bounds checking.
+Operations:
+
+pub unsafe fn gather_i32(base: *const i32, indices: Simd<i32, 8>) -> Simd<i32, 8>;
+pub unsafe fn gather_f32(base: *const f32, indices: Simd<i32, 8>) -> Simd<f32, 8>;
+pub fn gather_checked_i32(data: &[i32], indices: Simd<i32, 8>) -> Simd<i32, 8>;
+
+Intrinsics Used:
+_mm256_i32gather_epi32 (AVX2 gather)
+Fallback shuffle patterns for older CPUs
+Safety: Bounds-checked variants panic on out-of-bounds access.
+tpt-simd-scatter
+Purpose: SIMD non-contiguous stores with bounds checking.
+Operations:
+
+pub unsafe fn scatter_i32(base: *mut i32, indices: Simd<i32, 8>, values: Simd<i32, 8>);
+pub unsafe fn scatter_f32(base: *mut f32, indices: Simd<i32, 8>, values: Simd<f32, 8>);
+pub fn scatter_checked_i32(data: &mut [i32], indices: Simd<i32, 8>, values: Simd<i32, 8>);
+
+Intrinsics Used:
+AVX-512 scatter intrinsics
+Fallback patterns for AVX2
+tpt-simd-aligned
+Purpose: SIMD-aligned memory helpers.
+Types:
+
+#[repr(align(32))]
+pub struct Aligned32<T>(pub T);
+
+#[repr(align(64))]
+pub struct Aligned64<T>(pub T);
+
+pub fn aligned_vec_f32(len: usize) -> Vec<Aligned32<f32>>;
+pub fn is_aligned<T>(ptr: *const T, alignment: usize) -> bool;
+
+Functions:
+Aligned allocation helpers
+Alignment checking utilities
+Safe wrappers for aligned loads/stores
+4.3 Arithmetic Variants
+tpt-simd-mul
+Purpose: Multiply specializations.
+Operations:
+
+pub fn mul_hi_i16(a: Simd<i16, 16>, b: Simd<i16, 16>) -> Simd<i16, 16>;  // High 16 bits
+pub fn mul_lo_i32(a: Simd<i32, 8>, b: Simd<i32, 8>) -> Simd<i32, 8>;     // Low 32 bits
+pub fn mul_hi_i32(a: Simd<i32, 8>, b: Simd<i32, 8>) -> Simd<i32, 8>;     // High 32 bits
+pub fn mul_add_sub_f32(a: Simd<f32, 8>, b: Simd<f32, 8>, c: Simd<f32, 8>) -> Simd<f32, 8>;
+pub fn complex_mul_f32(a: ComplexSimd<f32, 8>, b: ComplexSimd<f32, 8>) -> ComplexSimd<f32, 8>;
+
+Intrinsics Used:
+_mm256_mulhi_epi16, _mm256_mullo_epi32
+_mm256_fmaddsub_ps (fused multiply-add-subtract)
+tpt-simd-dot
+Purpose: Dot product variants.
+Operations:
+
+pub fn dot_product_i16(a: &[i16], b: &[i16]) -> i32;
+pub fn dot_product_f32(a: &[f32], b: &[f32]) -> f32;
+pub fn dot_product_complex_f32(a: &[ComplexSimd<f32, 8>], b: &[ComplexSimd<f32, 8>]) -> ComplexSimd<f32, 8>;
+pub fn dot_product_saturating_i16(a: &[i16], b: &[i16]) -> i32;
+
+Intrinsics Used:
+_mm256_madd_epi16 (integer dot product)
+_mm256_dp_ps (float dot product)
+_mm256_fmadd_ps (fused multiply-add)
+Performance Target: 8x speedup over scalar dot products.
+tpt-simd-rounding
+Purpose: Rounding operations.
+Operations:
+
+pub fn round_f32(v: Simd<f32, 8>) -> Simd<f32, 8>;
+pub fn floor_f32(v: Simd<f32, 8>) -> Simd<f32, 8>;
+pub fn ceil_f32(v: Simd<f32, 8>) -> Simd<f32, 8>;
+pub fn trunc_f32(v: Simd<f32, 8>) -> Simd<f32, 8>;
+pub fn round_to_nearest_even_i32(v: Simd<f32, 8>) -> Simd<i32, 8>;
+pub fn round_with_bias_i32(v: Simd<i32, 8>, bias: i32) -> Simd<i32, 8>;
+
+Intrinsics Used:
+_mm256_round_ps (float rounding)
+Manual rounding patterns for integers
+tpt-simd-shift
+Purpose: Shift variants.
+Operations:
+
+pub fn shift_left_i32(v: Simd<i32, 8>, amount: u32) -> Simd<i32, 8>;
+pub fn shift_right_logical_i32(v: Simd<i32, 8>, amount: u32) -> Simd<i32, 8>;
+pub fn shift_right_arithmetic_i32(v: Simd<i32, 8>, amount: u32) -> Simd<i32, 8>;
+pub fn rotate_left_i32(v: Simd<i32, 8>, amount: u32) -> Simd<i32, 8>;
+pub fn shift_with_rounding_i32(v: Simd<i32, 8>, amount: u32) -> Simd<i32, 8>;
+
+Intrinsics Used:
+_mm256_slli_epi32, _mm256_srli_epi32, _mm256_srai_epi32
+Rotate patterns using shift and OR
+4.4 Comparison & Control Flow
+tpt-simd-compare
+Purpose: Comparison with SIMD masks.
+Operations:
+
+pub fn cmp_gt_i32(a: Simd<i32, 8>, b: Simd<i32, 8>) -> SimdMask<i32, 8>;
+pub fn cmp_lt_i32(a: Simd<i32, 8>, b: Simd<i32, 8>) -> SimdMask<i32, 8>;
+pub fn cmp_eq_i32(a: Simd<i32, 8>, b: Simd<i32, 8>) -> SimdMask<i32, 8>;
+pub fn cmp_ne_i32(a: Simd<i32, 8>, b: Simd<i32, 8>) -> SimdMask<i32, 8>;
+pub fn cmp_gt_f32(a: Simd<f32, 8>, b: Simd<f32, 8>) -> SimdMask<f32, 8>;
+
+Intrinsics Used:
+_mm256_cmpgt_epi32, _mm256_cmpeq_epi32
+_mm256_cmp_ps (float comparison)
+tpt-simd-blend
+Purpose: Conditional selection without branches.
+Operations:
+
+pub fn blend_i32(mask: SimdMask<i32, 8>, a: Simd<i32, 8>, b: Simd<i32, 8>) -> Simd<i32, 8>;
+pub fn blend_f32(mask: SimdMask<f32, 8>, a: Simd<f32, 8>, b: Simd<f32, 8>) -> Simd<f32, 8>;
+pub fn blend_i8(mask: SimdMask<i8, 32>, a: Simd<i8, 32>, b: Simd<i8, 32>) -> Simd<i8, 32>;
+pub fn select_f32(condition: Simd<f32, 8>, a: Simd<f32, 8>, b: Simd<f32, 8>) -> Simd<f32, 8>;
+
+Intrinsics Used:
+_mm256_blendv_epi8, _mm256_blendv_ps
+_mm256_blend_epi32 (immediate blend)
+Performance Impact: Eliminates branch mispredictions (10-20 cycle penalty).
+tpt-simd-select
+Purpose: Element selection based on indices.
+Operations:
+
+pub fn select_i32(v: Simd<i32, 8>, indices: Simd<i32, 8>) -> Simd<i32, 8>;
+pub fn select_f32(v: Simd<f32, 8>, indices: Simd<i32, 8>) -> Simd<f32, 8>;
+pub fn select_from_slice_i32(data: &[i32], indices: Simd<i32, 8>) -> Simd<i32, 8>;
+
+Intrinsics Used:
+Permute and blend combinations
+Gather operations for slice selection
+4.5 DSP-Specific Primitives
+tpt-simd-butterfly
+Purpose: FFT/DCT butterfly operations.
+Operations:
+
+pub fn butterfly_f32(a: &mut Simd<f32, 8>, b: &mut Simd<f32, 8>);
+pub fn butterfly_i16(a: &mut Simd<i16, 16>, b: &mut Simd<i16, 16>);
+pub fn butterfly_complex_f32(a: &mut ComplexSimd<f32, 8>, b: &mut ComplexSimd<f32, 8>);
+pub fn butterfly_with_twiddle_f32(
+    a: &mut Simd<f32, 8>,
+    b: &mut Simd<f32, 8>,
+    twiddle: ComplexSimd<f32, 8>,
+);
+
+Implementation:
+
+pub fn butterfly_f32(a: &mut Simd<f32, 8>, b: &mut Simd<f32, 8>) {
+    let sum = *a + *b;
+    let diff = *a - *b;
+    *a = sum;
+    *b = diff;
+}
+
+Intrinsics Used:
+_mm256_add_ps, _mm256_sub_ps
+FMA for twiddle multiplication
+tpt-simd-convolve
+Purpose: Convolution primitives.
+Operations:
+
+pub fn convolve_1d_f32(input: &[f32], kernel: &[f32], output: &mut [f32]);
+pub fn convolve_2d_separable_f32(
+    input: &[[f32]],
+    kernel_h: &[f32],
+    kernel_v: &[f32],
+    output: &mut [[f32]],
+);
+pub fn fir_filter_i16(input: &[i16], coefficients: &[i16], output: &mut [i16]);
+
+Intrinsics Used:
+Multiply-accumulate patterns
+Shuffle operations for windowing
+tpt-simd-interpolate
+Purpose: Interpolation kernels.
+Operations:
+
+pub fn interpolate_linear_f32(a: f32, b: f32, t: f32) -> f32;
+pub fn interpolate_linear_simd_f32(a: Simd<f32, 8>, b: Simd<f32, 8>, t: Simd<f32, 8>) -> Simd<f32, 8>;
+pub fn interpolate_cubic_f32(a: Simd<f32, 8>, b: Simd<f32, 8>, c: Simd<f32, 8>, d: Simd<f32, 8>, t: Simd<f32, 8>) -> Simd<f32, 8>;
+pub fn interpolate_lanczos_f32(samples: &[Simd<f32, 8>], t: Simd<f32, 8>) -> Simd<f32, 8>;
+
+Intrinsics Used:
+FMA for weighted sums
+Multiply operations for polynomial evaluation
+tpt-simd-matrix
+Purpose: Small matrix operations.
+Operations:
+
+pub fn mat4x4_mul_f32(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4];
+pub fn mat8x8_mul_i16(a: [[i16; 8]; 8], b: [[i16; 8]; 8]) -> [[i16; 8]; 8];
+pub fn mat4x4_transpose_f32(m: &mut [[f32; 4]; 4]);
+pub fn mat8x8_transpose_i16(m: &mut [[i16; 8]; 8]);
+pub fn mat3x3_inverse_f32(m: [[f32; 3]; 3]) -> Option<[[f32; 3]; 3]>;
+
+Intrinsics Used:
+Shuffle operations for transpose
+FMA for matrix multiplication
+tpt-simd-window
+Purpose: Window function generation.
+Operations:
+
+pub fn hamming_window_f32(size: usize) -> Vec<f32>;
+pub fn hanning_window_f32(size: usize) -> Vec<f32>;
+pub fn blackman_window_f32(size: usize) -> Vec<f32>;
+pub fn kaiser_window_f32(size: usize, beta: f32) -> Vec<f32>;
+pub fn apply_window_f32(data: &mut [f32], window: &[f32]);
+pub fn apply_window_simd_f32(data: &mut [Simd<f32, 8>], window: &[Simd<f32, 8>]);
+
+Intrinsics Used:
+Cosine approximation (polynomial or LUT)
+Multiply operations for window application
+5. Implementation Strategy
+5.1 Phase 1: Core Infrastructure (Weeks 1-3)
+Set up workspace with feature flags for each architecture
+Implement tpt-simd-core with traits and type aliases
+Implement tpt-simd-complex for f32
+Implement tpt-simd-fixed for i32
+Add comprehensive tests with scalar reference implementations
+Deliverables:
+Working crate structure
+Core traits defined
+Complex and fixed-point operations tested
+5.2 Phase 2: Common Patterns (Weeks 4-6)
+Implement tpt-simd-horizontal (sum, max, min)
+Implement tpt-simd-dot (integer and float dot products)
+Implement tpt-simd-butterfly (FFT/DCT core)
+Implement tpt-simd-saturate (saturating arithmetic)
+Benchmark against scalar implementations
+Deliverables:
+All common patterns implemented
+Performance benchmarks showing 3-8x speedups
+Documentation with examples
+5.3 Phase 3: Data Shuffling (Weeks 7-8)
+Implement tpt-simd-permute (transpose, interleave, pack/unpack)
+Implement tpt-simd-gather and tpt-simd-scatter
+Implement tpt-simd-aligned (aligned memory helpers)
+Test with real codec data patterns
+Deliverables:
+Data shuffling operations complete
+Integration tests with real codec data
+5.4 Phase 4: Arithmetic Variants (Weeks 9-10)
+Implement tpt-simd-mul (multiply variants)
+Implement tpt-simd-rounding (rounding operations)
+Implement tpt-simd-shift (shift variants)
+Profile with cargo-show-asm to verify optimal codegen
+Deliverables:
+All arithmetic variants implemented
+Assembly output verified
+5.5 Phase 5: Comparison & Control Flow (Weekes 11-12)
+Implement tpt-simd-compare (comparison with masks)
+Implement tpt-simd-blend (conditional selection)
+Implement tpt-simd-select (element selection)
+Test branch elimination performance
+Deliverables:
+Control flow operations complete
+Benchmarks showing branch elimination benefits
+5.6 Phase 6: DSP Primitives (Weeks 13-14)
+Implement tpt-simd-convolve (convolution)
+Implement tpt-simd-interpolate (interpolation)
+Implement tpt-simd-matrix (matrix operations)
+Implement tpt-simd-window (window functions)
+Deliverables:
+All DSP primitives implemented
+Integration tests with FFT/MDCT
+5.7 Phase 7: Integration & Polish (Weeks 15-16)
+Integrate into tpt-kinetix (replace manual SIMD in hot loops)
+Integrate into tpt-cadence (replace manual complex math)
+Measure performance improvements
+Write comprehensive documentation
+Publish to crates.io
+Deliverables:
+Both codecs using tpt-simd
+Performance improvements measured
+Documentation complete
+Published to crates.io
+6. Performance Targets
+6.1 Benchmarking Methodology
+Compare against scalar Rust implementations
+Compare against manual core::arch intrinsics
+Compare against existing crates (wide, simba, rustfft)
+Use criterion for statistical rigor
+Test on x86_64 (AVX2), ARM64 (NEON), and fallback scalar
+6.2 Expected Performance Gains
+Operation
+Scalar
+tpt-simd
+Speedup
+Complex multiply (f32x8)
+12 cycles
+4 cycles
+3x
+Dot product (256 i16)
+256 cycles
+32 cycles
+8x
+8x8 transpose (i16)
+64 cycles
+12 cycles
+5x
+Horizontal sum (f32x8)
+8 cycles
+2 cycles
+4x
+Saturating add (i16x16)
+16 cycles
+4 cycles
+4x
+Butterfly (f32x8)
+4 cycles
+2 cycles
+2x
+6.3 Integration Impact
+tpt-kinetix (Video):
+20-30% speedup in AV1 decode
+Cleaner, more maintainable code
+Automatic ARM/NEON support
+tpt-cadence (Audio):
+40-50% speedup in FFT operations
+Elimination of manual real/imaginary shuffling
+Type-safe fixed-point arithmetic
+7. Testing Strategy
+7.1 Unit Tests
+Test every operation against scalar reference implementation
+Test edge cases (NaN, infinity, overflow, underflow)
+Test alignment assumptions
+Test all vector widths (128-bit, 256-bit, 512-bit)
+7.2 Property-Based Tests
+Use proptest to generate random inputs
+Verify SIMD results match scalar results
+Catch subtle bugs in rounding/saturation
+7.3 Integration Tests
+Run full codec decode/encode pipelines
+Verify byte-exact conformance with reference implementations
+Measure performance regression
+7.4 Cross-Architecture Tests
+Test on x86_64 (SSE, AVX, AVX2, AVX-512)
+Test on ARM64 (NEON, SVE)
+Test on RISC-V (Vector extensions)
+Test fallback scalar implementations
+8. Documentation
+8.1 API Documentation
+Every public function gets a doc comment
+Include performance characteristics
+Show example usage with real codec patterns
+Document safety requirements for unsafe functions
+8.2 Cookbook
+Provide recipes for common tasks:
+"How to implement an FFT using tpt-simd"
+"How to do motion compensation in a video codec"
+"How to convert between fixed-point formats"
+"How to apply a window function to audio data"
+8.3 Migration Guide
+"Migrating from manual intrinsics to tpt-simd"
+"Migrating from scalar code to tpt-simd"
+"Migrating from other SIMD crates to tpt-simd"
+9. Future Roadmap
+9.1 Phase 2 (6-12 months)
+Add AVX-512 specializations for all crates
+Add ARM SVE support (scalable vector length)
+Add RISC-V Vector support
+Add GPU compute backend (CUDA, Metal, Vulkan)
+9.2 Phase 3 (12-24 months)
+Add machine learning primitives (tensor operations)
+Add image processing primitives (convolution, resampling)
+Integrate with halide for automatic scheduling
+Add JIT compilation for runtime optimization
+10. Success Metrics
+10.1 Technical Metrics
+Performance: 3-8x speedup over scalar code in hot loops
+Correctness: 100% match with scalar reference implementations
+Portability: Works on x86_64, ARM64, RISC-V without code changes
+10.2 Ecosystem Metrics
+Adoption: Used by at least 3 major Rust codec projects
+Stars: 500+ GitHub stars within 6 months
+Downloads: 10,000+ crates.io downloads within 6 months
+10.3 Business Metrics
+Time savings: Reduce SIMD development time by 70%
+Bug reduction: Eliminate 90% of SIMD-related bugs (alignment, overflow, rounding)
+Maintainability: Reduce code size by 50% (no duplicate architecture-specific code)
+11. Risks & Mitigations
+11.1 Risk: LLVM Generates Suboptimal Code
+Mitigation: Use cargo-show-asm to verify output. Fall back to explicit intrinsics for critical paths.
+11.2 Risk: API is Too Complex
+Mitigation: Start with simple, common operations. Add complexity only when needed. Provide clear examples.
+11.3 Risk: Portability Leaks
+Mitigation: Test on all target architectures in CI. Use cfg attributes carefully. Provide fallback scalar implementations.
+11.4 Risk: Performance Regression
+Mitigation: Benchmark continuously. Compare against manual intrinsics. Optimize critical paths.
+11.5 Risk: Maintenance Burden
+Mitigation: Automate testing across architectures. Use CI to catch regressions. Keep crates focused and small.
+12. Conclusion
+tpt-simd fills a critical gap in the Rust ecosystem by providing high-level, portable SIMD abstractions for DSP and codec development. It enables developers to write fast, safe, maintainable code without sacrificing performance or portability.
+By building this workspace, you will:
+Accelerate your own codec development by 3-8x
+Contribute to the Rust ecosystem by providing reusable building blocks
+Establish TPT Solutions as a leader in high-performance Rust media processing
+Reduce maintenance burden by eliminating architecture-specific code duplication
+The design spec above provides a clear roadmap for implementation, testing, and integration. With focused effort over 4 months, you can have a production-ready workspace that benefits both your projects and the broader Rust community.
+Appendix A: Intrinsics Reference
+x86_64 Intrinsics Used
+Arithmetic:
+_mm256_add_ps, _mm256_sub_ps, _mm256_mul_ps, _mm256_div_ps
+_mm256_add_epi16, _mm256_sub_epi16, _mm256_adds_epi16, _mm256_subs_epi16
+_mm256_fmadd_ps, _mm256_fmsub_ps, _mm256_fmaddsub_ps
+Multiply:
+_mm256_mullo_epi16, _mm256_mulhi_epi16
+_mm256_mullo_epi32, _mm256_mulhi_epi32
+_mm256_madd_epi16, _mm256_maddubs_epi16
+_mm256_dp_ps
+Comparison:
+_mm256_cmpgt_epi32, _mm256_cmpeq_epi32
+_mm256_cmp_ps
+Blend/Select:
+_mm256_blendv_epi8, _mm256_blendv_ps
+_mm256_blend_epi32, _mm256_blend_ps
+Shuffle/Permute:
+_mm256_unpacklo_epi16, _mm256_unpackhi_epi16
+_mm256_permutevar8x32_ps, _mm256_shuffle_ps
+_mm256_packs_epi16, _mm256_packus_epi16
+Horizontal:
+_mm256_hadd_ps, _mm256_hadd_epi32
+_mm256_hsub_ps
+Memory:
+_mm256_loadu_si256, _mm256_storeu_si256
+_mm256_load_ps, _mm256_store_ps
+_mm256_i32gather_epi32, _mm256_i32gather_ps
+Shift:
+_mm256_slli_epi32, _mm256_srli_epi32, _mm256_srai_epi32
+Rounding:
+_mm256_round_ps
+ARM64 NEON Intrinsics Used
+Arithmetic:
+vaddq_f32, vsubq_f32, vmulq_f32, vdivq_f32
+vaddq_s16, vsubq_s16, vqaddq_s16, vqsubq_s16
+vfmaq_f32, vfmsq_f32
+Multiply:
+vmull_s16, vmulq_s16
+vmlal_s16, vmlsl_s16
+Comparison:
+vcgtq_s32, vceqq_s32
+vcgtq_f32, vceqq_f32
+Shuffle/Permute:
+vzipq_s16, vuzpq_s16, vtrnq_s16
+vqmovn_s16, vqmovun_s16
+Horizontal:
+vpaddq_f32, vpaddq_s32
+vpmaxq_f32, vpminq_f32
+Appendix B: Example Usage
+B.1 Complex Multiplication (FFT)
+
+use tpt_simd_complex::ComplexSimd;
+use core::simd::f32x8;
+
+let a = ComplexSimd::new(f32x8::splat(1.0), f32x8::splat(2.0));
+let b = ComplexSimd::new(f32x8::splat(3.0), f32x8::splat(4.0));
+let result = a * b;  // (1+2i)(3+4i) = (3-8) + (4+6)i = -5 + 10i
+
+B.2 Fixed-Point Motion Compensation
+
+use tpt_simd_fixed::Fixed;
+use core::simd::i32x8;
+
+let a: Fixed<i32, 16, 16, 8> = Fixed::from_f32(f32x8::splat(1.5));
+let b: Fixed<i32, 16, 16, 8> = Fixed::from_f32(f32x8::splat(2.5));
+let result = a * b;  // 1.5 * 2.5 = 3.75 with correct rounding
+
+B.3 Dot Product (FLAC LPC)
+
+use tpt_simd_dot::dot_product_i16;
+
+let a: Vec<i16> = (0..256).collect();
+let b: Vec<i16> = (0..256).collect();
+let result = dot_product_i16(&a, &b);
+
+B.4 8x8 Transpose (Video DCT)
+
+use tpt_simd_permute::transpose_8x8_i16;
+
+let mut block: [[i16; 8]; 8] = [[0; 8]; 8];
+// ... fill block ...
+transpose_8x8_i16(&mut block);
+
+B.5 FFT Butterfly
+
+use tpt_simd_butterfly::butterfly_f32;
+use core::simd::f32x8;
+
+let mut a = f32x8::from_array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
+let mut b = f32x8::from_array([8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0]);
+butterfly_f32(&mut a, &mut b);
+// a = [9, 9, 9, 9, 9, 9, 9, 9]
+// b = [-7, -5, -3, -1, 1, 3, 5, 7]
