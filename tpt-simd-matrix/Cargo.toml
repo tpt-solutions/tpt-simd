@@ -19,6 +19,7 @@ scalar-only = ["tpt-simd-core/scalar-only"]
 
 [dependencies]
 tpt-simd-core.workspace = true
+tpt-simd-permute = { path = "../tpt-simd-permute", version = "0.1.0" }
 
 [dev-dependencies]
 proptest.workspace = true

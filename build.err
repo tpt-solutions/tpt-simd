@@ -1,0 +1,40 @@
+       Fresh cfg-if v1.0.5
+       Fresh autocfg v1.5.1
+       Fresh regex-syntax v0.8.11
+       Fresh unarray v0.1.4
+       Fresh bitflags v2.13.2
+       Fresh libm v0.2.16
+       Fresh tpt-simd-vector v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-vector)
+       Fresh getrandom v0.3.4
+       Fresh zerocopy v0.8.60
+       Fresh tpt-simd-core v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-core)
+       Fresh rand_core v0.9.5
+       Fresh ppv-lite86 v0.2.21
+       Fresh num-traits v0.2.19
+       Fresh tpt-simd-horizontal v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-horizontal)
+       Fresh rand_xorshift v0.4.0
+       Fresh tpt-simd-mul v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-mul)
+       Fresh rand_chacha v0.9.0
+       Fresh rand v0.9.5
+       Fresh tpt-simd-fixed v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-fixed)
+       Fresh tpt-simd-saturate v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-saturate)
+       Fresh tpt-simd-butterfly v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-butterfly)
+       Fresh tpt-simd-permute v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-permute)
+       Fresh tpt-simd-scatter v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-scatter)
+       Fresh tpt-simd-aligned v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-aligned)
+       Fresh tpt-simd-interpolate v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-interpolate)
+       Fresh tpt-simd-compare v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-compare)
+       Fresh tpt-simd-select v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-select)
+       Fresh tpt-simd-window v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-window)
+       Fresh tpt-simd-convolve v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-convolve)
+       Fresh tpt-simd-rounding v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-rounding)
+       Fresh tpt-simd-shift v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-shift)
+       Fresh tpt-simd-dot v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-dot)
+       Fresh proptest v1.11.0
+       Fresh tpt-simd-complex v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-complex)
+       Fresh tpt-simd-matrix v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-matrix)
+       Fresh tpt-simd-blend v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-blend)
+       Fresh tpt-simd-gather v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-gather)
+       Fresh tpt-simd-testutil v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd-testutil)
+       Fresh tpt-simd v0.1.0 (C:\Programming\2 WIP\tpt-simd\tpt-simd)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.06s

@@ -459,14 +459,27 @@ dependencies = [
 name = "tpt-simd"
 version = "0.1.0"
 dependencies = [
+ "tpt-simd-aligned",
+ "tpt-simd-blend",
  "tpt-simd-butterfly",
+ "tpt-simd-compare",
  "tpt-simd-complex",
+ "tpt-simd-convolve",
  "tpt-simd-core",
  "tpt-simd-dot",
  "tpt-simd-fixed",
+ "tpt-simd-gather",
  "tpt-simd-horizontal",
+ "tpt-simd-interpolate",
+ "tpt-simd-matrix",
  "tpt-simd-mul",
+ "tpt-simd-permute",
+ "tpt-simd-rounding",
  "tpt-simd-saturate",
+ "tpt-simd-scatter",
+ "tpt-simd-select",
+ "tpt-simd-shift",
+ "tpt-simd-window",
 ]
 
 [[package]]
@@ -482,6 +495,7 @@ dependencies = [
 name = "tpt-simd-blend"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "proptest",
  "tpt-simd-core",
  "tpt-simd-testutil",
@@ -501,6 +515,7 @@ dependencies = [
 name = "tpt-simd-compare"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "proptest",
  "tpt-simd-core",
  "tpt-simd-testutil",
@@ -522,6 +537,8 @@ dependencies = [
 name = "tpt-simd-convolve"
 version = "0.1.0"
 dependencies = [
+ "criterion",
+ "libm",
  "proptest",
  "tpt-simd-core",
  "tpt-simd-testutil",
@@ -561,6 +578,7 @@ dependencies = [
 name = "tpt-simd-gather"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "proptest",
  "tpt-simd-core",
  "tpt-simd-testutil",
@@ -580,6 +598,8 @@ dependencies = [
 name = "tpt-simd-interpolate"
 version = "0.1.0"
 dependencies = [
+ "criterion",
+ "libm",
  "proptest",
  "tpt-simd-core",
  "tpt-simd-testutil",
@@ -591,6 +611,7 @@ version = "0.1.0"
 dependencies = [
  "proptest",
  "tpt-simd-core",
+ "tpt-simd-permute",
  "tpt-simd-testutil",
 ]
 
@@ -607,8 +628,10 @@ dependencies = [
 name = "tpt-simd-permute"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "proptest",
  "tpt-simd-core",
+ "tpt-simd-saturate",
  "tpt-simd-testutil",
 ]
 
@@ -616,6 +639,8 @@ dependencies = [
 name = "tpt-simd-rounding"
 version = "0.1.0"
 dependencies = [
+ "criterion",
+ "libm",
  "proptest",
  "tpt-simd-core",
  "tpt-simd-testutil",
@@ -635,6 +660,7 @@ dependencies = [
 name = "tpt-simd-scatter"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "proptest",
  "tpt-simd-core",
  "tpt-simd-testutil",
@@ -645,7 +671,9 @@ name = "tpt-simd-select"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "tpt-simd-blend",
  "tpt-simd-core",
+ "tpt-simd-gather",
  "tpt-simd-testutil",
 ]
 
@@ -653,6 +681,7 @@ dependencies = [
 name = "tpt-simd-shift"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "proptest",
  "tpt-simd-core",
  "tpt-simd-testutil",
@@ -678,6 +707,8 @@ dependencies = [
 name = "tpt-simd-window"
 version = "0.1.0"
 dependencies = [
+ "criterion",
+ "libm",
  "proptest",
  "tpt-simd-core",
  "tpt-simd-testutil",

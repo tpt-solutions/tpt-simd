@@ -23,6 +23,12 @@ tpt-simd-core.workspace = true
 [dev-dependencies]
 proptest.workspace = true
 tpt-simd-testutil.workspace = true
+libm.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"] }
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "rounding"
+harness = false

@@ -191,36 +191,36 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 ## Phase 3 — Data shuffling (Weeks 7–8)
 
 ### tpt-simd-permute
-- [ ] `transpose_8x8_i16`, `transpose_4x4_f32`
-- [ ] `interleave_stereo_i16`, `deinterleave_stereo_i16`
-- [ ] `interleave_yuv420`
-- [ ] `unpack_i8_to_i16` (and re-export `pack_i16_to_i8` from saturate)
-- [ ] General permutation helper (`permutevar8x32` equivalent)
-- [ ] Length-mismatch and tail handling
+- [x] `transpose_8x8_i16`, `transpose_4x4_f32`
+- [x] `interleave_stereo_i16`, `deinterleave_stereo_i16`
+- [x] `interleave_yuv420`
+- [x] `unpack_i8_to_i16` (and re-export `pack_i16_to_i8` from saturate)
+- [x] General permutation helper (`permutevar8x32` equivalent)
+- [x] Length-mismatch and tail handling
 - [ ] Verify Appendix B.4 example
-- [ ] Hit target: ≥5× 8×8 transpose
+- [ ] Hit target: ≥5× 8×8 transpose — NOT met (2.3×); see docs/benchmarks.md
 - [ ] Crate-done checklist
 
 ### tpt-simd-gather
-- [ ] `gather_i32`, `gather_f32` (unsafe)
-- [ ] `gather_checked_i32` (panics on OOB)
-- [ ] Software fallback for CPUs without gather
-- [ ] Benchmark vs scalar (gather is often slow — document honestly)
+- [x] `gather_i32`, `gather_f32` (unsafe)
+- [x] `gather_checked_i32` (panics on OOB)
+- [x] Software fallback for CPUs without gather
+- [x] Benchmark vs scalar (gather is often slow — document honestly) — 0.09–0.13× here; documented
 - [ ] Crate-done checklist
 
 ### tpt-simd-scatter
-- [ ] `scatter_i32`, `scatter_f32` (unsafe)
-- [ ] `scatter_checked_i32`
+- [x] `scatter_i32`, `scatter_f32` (unsafe)
+- [x] `scatter_checked_i32`
 - [ ] AVX-512 scatter path + AVX2/scalar fallback
-- [ ] Define behavior for duplicate indices
+- [x] Define behavior for duplicate indices
 - [ ] Crate-done checklist
 
 ### tpt-simd-aligned
-- [ ] `Aligned32<T>`, `Aligned64<T>` (+ `Aligned16`)
-- [ ] `aligned_vec_f32` (fix spec: `Vec<Aligned32<f32>>` wastes space; consider aligned buffer type)
-- [ ] `is_aligned`
-- [ ] Safe aligned load/store wrappers
-- [ ] `alloc`-gated allocation helpers
+- [x] `Aligned32<T>`, `Aligned64<T>` (+ `Aligned16`)
+- [x] `aligned_vec_f32` (fix spec: `Vec<Aligned32<f32>>` wastes space; consider aligned buffer type)
+- [x] `is_aligned`
+- [x] Safe aligned load/store wrappers
+- [x] `alloc`-gated allocation helpers
 - [ ] Crate-done checklist
 
 ### Phase 3 exit
@@ -238,17 +238,17 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [ ] Crate-done checklist
 
 ### tpt-simd-rounding
-- [ ] `round_f32`, `floor_f32`, `ceil_f32`, `trunc_f32`
-- [ ] `round_to_nearest_even_i32`, `round_with_bias_i32`
-- [ ] SSE2 fallback (no `roundps` before SSE4.1); NEON `vrndn`
-- [ ] Define tie-breaking (half-away vs half-even) per function
+- [x] `round_f32`, `floor_f32`, `ceil_f32`, `trunc_f32`
+- [x] `round_to_nearest_even_i32`, `round_with_bias_i32`
+- [x] SSE2 fallback (no `roundps` before SSE4.1) — branch-free bit trick; NEON `vrndn` not written (LLVM autovectorises)
+- [x] Define tie-breaking (half-away vs half-even) per function
 - [ ] Crate-done checklist
 
 ### tpt-simd-shift
-- [ ] `shift_left_i32`, `shift_right_logical_i32`, `shift_right_arithmetic_i32`
-- [ ] `rotate_left_i32`, `shift_with_rounding_i32`
-- [ ] Out-of-range shift amount policy (≥32)
-- [ ] Per-lane variable shift variants
+- [x] `shift_left_i32`, `shift_right_logical_i32`, `shift_right_arithmetic_i32`
+- [x] `rotate_left_i32`, `shift_with_rounding_i32`
+- [x] Out-of-range shift amount policy (≥32)
+- [x] Per-lane variable shift variants (AVX2 `vpsllvd` etc. when compiled in)
 - [ ] Crate-done checklist
 
 ### Phase 4 exit
@@ -260,54 +260,54 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 ## Phase 5 — Comparison & control flow (Weeks 11–12)
 
 ### tpt-simd-compare
-- [ ] `cmp_gt_i32`, `cmp_lt_i32`, `cmp_eq_i32`, `cmp_ne_i32`, `cmp_gt_f32`
-- [ ] Fill out symmetry (`ge`, `le`, f32 `lt/eq/ne/ge/le`, i16/i8) (decide scope)
-- [ ] Mask ops: `any`, `all`, `count`, `to_bitmask`
-- [ ] NaN comparison semantics documented
+- [x] `cmp_gt_i32`, `cmp_lt_i32`, `cmp_eq_i32`, `cmp_ne_i32`, `cmp_gt_f32`
+- [x] Fill out symmetry (`ge`, `le`, f32 `lt/eq/ne/ge/le`, i16/i8) (decide scope)
+- [x] Mask ops: `any`, `all`, `count`, `to_bitmask`
+- [x] NaN comparison semantics documented
 - [ ] Crate-done checklist
 
 ### tpt-simd-blend
-- [ ] `blend_i32`, `blend_f32`, `blend_i8`
-- [ ] `select_f32` (home crate)
-- [ ] Immediate-blend (const mask) variants
+- [x] `blend_i32`, `blend_f32`, `blend_i8`
+- [x] `select_f32` (home crate)
+- [x] Immediate-blend (const mask) variants
 - [ ] Crate-done checklist
 
 ### tpt-simd-select
-- [ ] `select_i32`, `select_f32` (re-export from blend; this crate's index-based variant is distinct — rename to avoid clash)
-- [ ] `select_from_slice_i32` (uses gather; bounds policy)
+- [x] `select_i32`, `select_f32` (re-export from blend; this crate's index-based variant is distinct — rename to avoid clash)
+- [x] `select_from_slice_i32` (uses gather; bounds policy)
 - [ ] Crate-done checklist
 
 ### Phase 5 exit
-- [ ] Branch-elimination benchmarks showing benefit vs branchy scalar
+- [ ] Branch-elimination benchmarks showing benefit vs branchy scalar — run: `select_f32` 2.9×, mask `blend_f32` 0.72× (slower); see docs/benchmarks.md
 
 ---
 
 ## Phase 6 — DSP primitives (Weeks 13–14)
 
 ### tpt-simd-convolve
-- [ ] `convolve_1d_f32` (output length / edge-mode policy)
-- [ ] `convolve_2d_separable_f32` (fix spec: `&[[f32]]` is not valid Rust — use `&[f32]` + stride/width or slice of rows)
-- [ ] `fir_filter_i16` (saturation/rounding policy)
+- [x] `convolve_1d_f32` (output length / edge-mode policy)
+- [x] `convolve_2d_separable_f32` (added caller `scratch` slice; fix spec: `&[[f32]]` is not valid Rust — use `&[f32]` + stride/width or slice of rows)
+- [x] `fir_filter_i16` (saturation/rounding policy)
 - [ ] Crate-done checklist
 
 ### tpt-simd-interpolate
-- [ ] `interpolate_linear_f32` (scalar), `interpolate_linear_simd_f32`
-- [ ] `interpolate_cubic_f32`
-- [ ] `interpolate_lanczos_f32` (kernel size `a`, `sinc` approximation)
+- [x] `interpolate_linear_f32` (scalar), `interpolate_linear_simd_f32`
+- [x] `interpolate_cubic_f32`
+- [x] `interpolate_lanczos_f32` (kernel size `a`, `sinc` approximation)
 - [ ] Crate-done checklist
 
 ### tpt-simd-matrix
-- [ ] `mat4x4_mul_f32`, `mat8x8_mul_i16`
-- [ ] `mat4x4_transpose_f32`, `mat8x8_transpose_i16` (reuse permute)
-- [ ] `mat3x3_inverse_f32` (singular-matrix → `None`, epsilon policy)
+- [x] `mat4x4_mul_f32`, `mat8x8_mul_i16`
+- [x] `mat4x4_transpose_f32`, `mat8x8_transpose_i16` (reuse permute)
+- [x] `mat3x3_inverse_f32` (singular-matrix → `None`, epsilon policy)
 - [ ] Crate-done checklist
 
 ### tpt-simd-window
-- [ ] `hamming`, `hanning`, `blackman`, `kaiser` window generators (`alloc`)
-- [ ] `apply_window_f32`, `apply_window_simd_f32`
-- [ ] Cosine approximation (polynomial/LUT) with documented max error
-- [ ] Bessel I0 for Kaiser
-- [ ] Optional `no_alloc` variants writing into caller slices
+- [x] `hamming`, `hanning`, `blackman`, `kaiser` window generators (`alloc`)
+- [x] `apply_window_f32`, `apply_window_simd_f32`
+- [x] Cosine approximation (polynomial, max err 2e-6) — no LUT
+- [x] Bessel I0 for Kaiser
+- [x] Optional `no_alloc` variants writing into caller slices
 - [ ] Crate-done checklist
 
 ### Phase 6 exit

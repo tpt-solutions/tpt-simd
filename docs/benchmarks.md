@@ -54,3 +54,53 @@ intrinsics beat LLVM (i16 dot product, fixed-point multiply, FMA complex multipl
   against baselines LLVM already vectorises; a single-register reduction is
   only a few cycles. The numbers above should replace the spec's cycle table.
 * `cargo-show-asm` audits have not been run (needs the tool installed).
+
+# Benchmarks (Phases 3–6)
+
+Same machine and method as above, **native only** (`-C target-cpu=native`),
+criterion with a short run (`--warm-up-time 0.5 --measurement-time 1`), so
+treat figures as indicative (±10–20%). Times are per benchmark iteration as
+defined in each crate's `benches/*.rs` (iteration sizes differ per row, so
+compare only within a row). Reproduce with `cargo bench -p <crate> --bench <name>`.
+
+| Crate / op | scalar | tpt | speedup | Notes |
+|---|---|---|---|---|
+| permute: `transpose_8x8_i16` | 11.9 ns | 5.1 ns | 2.3x | target ≥5x **not met** (SSE2 network; no AVX2 transpose) |
+| permute: `transpose_4x4_f32` | 2.5 ns | 5.6 ns | 0.45x | scalar wins (LLVM already optimal) |
+| permute: `interleave_stereo_i16` | 7.7 µs | 0.47 µs | 16x | vs indexed scalar |
+| rounding: floor / ceil / trunc | 1.4 / 6.3 / 2.8 µs | 0.45 / 0.48 / 0.58 µs | 3–13x | `vroundps` |
+| rounding: `round_ties_even` | 4.3 µs | 0.47 µs | 9x | |
+| rounding: `round` (half away) | 5.0 µs | 6.1 µs | 0.8x | no gain |
+| rounding: `round_to_nearest_even_i32` | 17.6 µs | 13.0 µs | 1.35x | |
+| shift: left / logical / arithmetic / rotate | 2.5–5.2 µs | 0.57–0.78 µs | 3.2–8x | |
+| shift: `shift_with_rounding` | 3.7 µs | 2.7 µs | 1.4x | 64-bit intermediate |
+| shift: per-lane variable | 0.59–0.63 µs | 0.51–0.60 µs | ~1.1x | scalar baseline auto-vectorises |
+| convolve: `convolve_1d_f32` | 355 µs | 177 µs | 2.0x | |
+| convolve: `fir_filter_i16` | 145 µs | 62.6 µs | 2.3x | |
+| convolve: `convolve_2d_separable_f32` | 275 µs | 356 µs | 0.77x | **slower**; follow-up |
+| interpolate: linear / cubic | 17.2 / 52.7 ns | 13.2 / 49.6 ns | 1.3x / 1.06x | |
+| interpolate: lanczos3 | 1.01 µs | 1.25 µs | 0.81x | **slower** (polynomial sinc) |
+| window: `apply_window_f32` | 335 ns | 353 ns | 0.95x | memory bound / auto-vectorised |
+| window: hamming via `cos_approx` | 28.3 µs (libm `cosf`) | 86.5 µs | 0.33x | **slower than libm**; polynomial cos not worth it as-is |
+| blend: `blend_f32` (mask) | 3.39 µs (branchy) | 4.73 µs | 0.72x | **slower** |
+| blend: `select_f32` (sign bit) | 3.39 µs (branchy) | 1.17 µs | 2.9x | |
+| compare: count `gt` i32 / f32 | 0.29 / 0.96 µs | 5.6 / 7.9 µs | 0.05x / 0.12x | **much slower**: mask materialisation + `mask_count`; scalar loop auto-vectorises |
+| gather: 256-entry table | 1.0 µs | 10.8 µs | 0.09x | hardware gather loses to scalar loads |
+| gather: 4M-entry table | 7.6 µs | 59.6 µs | 0.13x | as above; `checked` ≈ unchecked at 4M |
+| scatter: 256 / 4M | 4.5 / 61.8 µs | 4.5 / 56.7 µs | 1.0x | no AVX-512 on this machine: scalar path |
+
+## Phase 3–6 known issues / follow-ups
+
+* **compare**: the `SimdMask` array backend is a poor fit for count/reduce
+  patterns; add fused `count_*`/`movemask`-style helpers or lower to
+  `_mm256_cmpgt_epi32` + `movemask` intrinsics.
+* **gather**: documented honestly in the crate: `vpgatherdd` is slower than
+  scalar loads here. Prefer scalar loops unless indices are dependent on SIMD
+  data already in registers.
+* **blend (mask)**: lane-loop lowering is not reaching `vblendvps`; try an
+  explicit `core::arch` path.
+* **window cos**: the degree-12 polynomial is slower than `libm::cosf`; revisit
+  (lower degree, vectorised across lanes properly) or drop in favour of libm.
+* **2D separable convolve / lanczos**: slower than scalar; likely strided
+  vertical pass and per-call weight computation.
+* No `cargo-show-asm` audit has been done for any of these.

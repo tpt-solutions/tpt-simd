@@ -13,16 +13,23 @@ categories.workspace = true
 
 [features]
 default = []
-std = ["tpt-simd-core/std"]
+alloc = []
+std = ["alloc", "tpt-simd-core/std"]
 nightly = ["tpt-simd-core/nightly"]
 scalar-only = ["tpt-simd-core/scalar-only"]
 
 [dependencies]
 tpt-simd-core.workspace = true
+libm.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
 tpt-simd-testutil.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"] }
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "window"
+harness = false

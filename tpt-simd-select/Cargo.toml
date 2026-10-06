@@ -19,6 +19,8 @@ scalar-only = ["tpt-simd-core/scalar-only"]
 
 [dependencies]
 tpt-simd-core.workspace = true
+tpt-simd-blend = { path = "../tpt-simd-blend", version = "0.1.0" }
+tpt-simd-gather = { path = "../tpt-simd-gather", version = "0.1.0" }
 
 [dev-dependencies]
 proptest.workspace = true

@@ -12,8 +12,9 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-default = []
-std = ["tpt-simd-core/std"]
+default = ["alloc"]
+alloc = []
+std = ["alloc", "tpt-simd-core/std"]
 nightly = ["tpt-simd-core/nightly"]
 scalar-only = ["tpt-simd-core/scalar-only"]
 

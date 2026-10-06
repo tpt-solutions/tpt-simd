@@ -26,6 +26,19 @@ tpt-simd-horizontal = { path = "../tpt-simd-horizontal", version = "0.1.0" }
 tpt-simd-dot = { path = "../tpt-simd-dot", version = "0.1.0" }
 tpt-simd-butterfly = { path = "../tpt-simd-butterfly", version = "0.1.0" }
 tpt-simd-mul = { path = "../tpt-simd-mul", version = "0.1.0" }
+tpt-simd-aligned = { path = "../tpt-simd-aligned", version = "0.1.0" }
+tpt-simd-blend = { path = "../tpt-simd-blend", version = "0.1.0" }
+tpt-simd-compare = { path = "../tpt-simd-compare", version = "0.1.0" }
+tpt-simd-convolve = { path = "../tpt-simd-convolve", version = "0.1.0" }
+tpt-simd-gather = { path = "../tpt-simd-gather", version = "0.1.0" }
+tpt-simd-interpolate = { path = "../tpt-simd-interpolate", version = "0.1.0" }
+tpt-simd-matrix = { path = "../tpt-simd-matrix", version = "0.1.0" }
+tpt-simd-permute = { path = "../tpt-simd-permute", version = "0.1.0" }
+tpt-simd-rounding = { path = "../tpt-simd-rounding", version = "0.1.0" }
+tpt-simd-scatter = { path = "../tpt-simd-scatter", version = "0.1.0" }
+tpt-simd-select = { path = "../tpt-simd-select", version = "0.1.0" }
+tpt-simd-shift = { path = "../tpt-simd-shift", version = "0.1.0" }
+tpt-simd-window = { path = "../tpt-simd-window", version = "0.1.0" }
 
 [lints]
 workspace = true

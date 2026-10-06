@@ -320,7 +320,8 @@ mod tests {
     fn int_variants_match_scalar() {
         let xs = [i32::MIN, -1, 0, 1, 12345, i32::MAX, -65536, 65536];
         let a = Simd::<i32, 8>::from_array(xs);
-        let b = Simd::<i32, 8>::from_array([7, i32::MIN, i32::MAX, -3, 99999, i32::MAX, 65536, 65536]);
+        let b =
+            Simd::<i32, 8>::from_array([7, i32::MIN, i32::MAX, -3, 99999, i32::MAX, 65536, 65536]);
         let (lo, hi) = (mul_lo_i32(a, b), mul_hi_i32(a, b));
         for l in 0..8 {
             let p = i64::from(a[l]) * i64::from(b[l]);
@@ -333,7 +334,10 @@ mod tests {
         for l in 0..16 {
             assert_eq!(h[l], ((i32::from(x[l]) * i32::from(y[l])) >> 16) as i16);
         }
-        let w = mul_widen_i16(Simd::from_slice(&x.to_array()[..8]), Simd::from_slice(&y.to_array()[..8]));
+        let w = mul_widen_i16(
+            Simd::from_slice(&x.to_array()[..8]),
+            Simd::from_slice(&y.to_array()[..8]),
+        );
         assert_eq!(w[0], i32::from(i16::MIN) * i32::from(i16::MIN));
     }
 

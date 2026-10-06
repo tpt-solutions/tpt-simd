@@ -19,10 +19,16 @@ scalar-only = ["tpt-simd-core/scalar-only"]
 
 [dependencies]
 tpt-simd-core.workspace = true
+libm.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
 tpt-simd-testutil.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"] }
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "interpolate"
+harness = false
