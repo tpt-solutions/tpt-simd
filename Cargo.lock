@@ -460,6 +460,7 @@ name = "tpt-simd"
 version = "0.1.0"
 dependencies = [
  "tpt-simd-aligned",
+ "tpt-simd-blas",
  "tpt-simd-blend",
  "tpt-simd-butterfly",
  "tpt-simd-compare",
@@ -474,6 +475,7 @@ dependencies = [
  "tpt-simd-matrix",
  "tpt-simd-mul",
  "tpt-simd-permute",
+ "tpt-simd-reduce",
  "tpt-simd-rounding",
  "tpt-simd-saturate",
  "tpt-simd-scatter",

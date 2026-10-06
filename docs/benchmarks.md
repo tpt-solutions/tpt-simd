@@ -152,3 +152,32 @@ still slow there (~2 µs / 4096).
 * `blend_imm_*` remain on the portable lane loop (const immediates can't feed
   `_mm256_blend_ps` on stable).
 * No `cargo-show-asm` audit has been done for any of these.
+
+# Benchmarks (Phase 10: blas, reduce)
+
+Native (`-C target-cpu=native`), criterion `--warm-up-time 0.5 --measurement-time 1`,
+noisy shared machine (ratios indicative; timings swung 2-5x between runs).
+The "naive" baselines are plain single-accumulator / strided column-major triple
+loops, i.e. what tpt-math currently does; strict IEEE order stops LLVM
+vectorising them. The SIMD versions reassociate (documented tolerance, ADR 0001
+relaxed for these crates).
+
+| tpt-simd-blas | naive | tpt | speedup | GFLOP/s |
+|---|---|---|---|---|
+| gemm f32 64 / 256 / 512 | 127 µs / 24.8 ms / 231 ms | 18.7 µs / 0.83 ms / 7.3 ms | 6.8x / 29.8x / 31.5x | 28 / 40 / 37 |
+| gemm f64 64 / 256 / 512 | 289 µs / 24.3 ms / 323 ms | 35.8 µs / 1.64 ms / 13.2 ms | 8.1x / 14.8x / 24.5x | 15 / 20 / 20 |
+| gemv f32 1024 N / T | 4.52 / 1.29 ms | 157 / 295 µs | 28.8x / 4.4x | 13 / 7 |
+| dot f32 4096 / 1M | | | 4.4x / 2.8x | 8 / 5 (1M memory bound) |
+| nrm2 / asum f32 4096 | | | 4.2x / 5.2x | |
+| axpy f32 | | | 1.0x | already auto-vectorised |
+
+| tpt-simd-reduce (f32) | n=1024 naive -> tpt | n=65536 naive -> tpt |
+|---|---|---|
+| sum / mean / sum_squares / norm | ~500 -> ~80-135 ns (~6x) | ~40 -> ~6 µs (~7x) |
+| sum_compensated vs scalar Kahan | 2.2 -> ~1 µs (~2x) | 150 -> ~60 µs (~2.5x) |
+| variance / covariance | 1.1 -> 0.3 µs / 1.9 -> 0.5 µs | 80 -> 19 µs / 140 -> 34 µs |
+| argmax | 1.15 -> 0.29 µs (~4x) | 72 -> 9 µs (~8x) |
+| min / max, i32 sum/min/max | parity | parity (LLVM already vectorises; plain folds kept) |
+
+Notes: gemm without `target-cpu=native` uses the portable non-FMA kernel
+(untimed). Complex BLAS, cargo-show-asm and tpt-math wiring are not done.

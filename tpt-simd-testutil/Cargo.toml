@@ -8,6 +8,9 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 publish = false
+readme = "README.md"
+keywords.workspace = true
+categories.workspace = true
 
 [dependencies]
 proptest.workspace = true

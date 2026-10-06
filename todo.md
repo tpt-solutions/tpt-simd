@@ -397,18 +397,18 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 
 ### Prerequisites / decisions
 - [ ] Clone tpt-math and add baseline criterion benches first (gemm 64/256/1024, dot/norm, LU solve, CG on a Poisson matrix, Monte Carlo 10^7 samples); confirm gains justify the work and how much LLVM already autovectorises
-- [ ] Decide dispatch for library consumers: ADR 0001 is compile-time `cfg(target_feature)`, so users without `-C target-cpu=native` silently get the slow path. Choose runtime dispatch (`is_x86_feature_detected!`, needs `std`) behind a feature, or document required build flags; write ADR 0003
-- [ ] Decide float-determinism policy for reordered reductions and polynomial math (ADR 0001 requires bit-identical; relax to documented ULP/tolerance for `tpt-simd-math` and SIMD reductions); check tpt-math tests and formal-verification consumers for exact-value dependence
+- [ ] Decide dispatch for library consumers: ADR 0001 is compile-time `cfg(target_feature)`, so users without `-C target-cpu=native` silently get the slow path. Choose runtime dispatch (`is_x86_feature_detected!`, needs `std`) behind a feature, or document required build flags; write ADR 0003 — drafted as ADR 0003 (proposed; needs sign-off, not implemented)
+- [ ] Decide float-determinism policy for reordered reductions and polynomial math (ADR 0001 requires bit-identical; relax to documented ULP/tolerance for `tpt-simd-math` and SIMD reductions); check tpt-math tests and formal-verification consumers for exact-value dependence — tiers drafted in ADR 0003 (proposed)
 - [ ] Add new crates to the workspace; keep `no_std`, MIT/Apache-only deps
 
 ### tpt-simd-blas (highest value)
-- [ ] f32/f64 `axpy`, `scal`, `dot`, `nrm2`, `asum`
-- [ ] `gemv` (column-major, matches tpt-math storage)
-- [ ] Packed, register-blocked `gemm` microkernel (e.g. 8x4 f32 / 4x4 f64, FMA) with cache blocking
+- [x] f32/f64 `axpy`, `scal`, `dot`, `nrm2`, `asum`
+- [x] `gemv` (column-major, matches tpt-math storage)
+- [x] Packed, register-blocked `gemm` microkernel (e.g. 8x4 f32 / 4x4 f64, FMA) with cache blocking
 - [ ] Complex variants via split re/im (`ComplexSimd`)
-- [ ] Portable reference + AVX2/FMA path; NEON later
+- [x] Portable reference + AVX2/FMA path; NEON later
 - [ ] Tests vs scalar reference (tails, NaN/inf, non-multiple sizes), proptest, criterion bench, `cargo-show-asm`
-- [ ] Target: gemm >= 3x scalar f32 on AVX2
+- [x] Target: gemm >= 3x scalar f32 on AVX2 — 5.5–32x vs naive strided loop (28–43 GFLOP/s), see docs/benchmarks.md
 - [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd`
 
 ### tpt-simd-math
@@ -428,9 +428,9 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [ ] Wire into `tpt-math-linalg-sparse`
 
 ### tpt-simd-reduce
-- [ ] Pairwise / compensated sum, mean, variance, covariance over slices
-- [ ] min/max/argmin/argmax over slices
-- [ ] Builds on `tpt-simd-horizontal`; wire into `tpt-math-stats`
+- [x] Pairwise / compensated sum, mean, variance, covariance over slices — done in tpt-simd-reduce
+- [x] min/max/argmin/argmax over slices — done (plain fold; LLVM parity)
+- [x] Builds on `tpt-simd-horizontal`; wire into `tpt-math-stats` — crate done; tpt-math wiring not done
 
 ### Existing stubs that map directly to tpt-math
 - [ ] `tpt-simd-convolve` (FIR) and `tpt-simd-window` -> `tpt-math-signal-filter`
