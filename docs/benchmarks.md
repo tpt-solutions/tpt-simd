@@ -89,18 +89,66 @@ compare only within a row). Reproduce with `cargo bench -p <crate> --bench <name
 | gather: 4M-entry table | 7.6 µs | 59.6 µs | 0.13x | as above; `checked` ≈ unchecked at 4M |
 | scatter: 256 / 4M | 4.5 / 61.8 µs | 4.5 / 56.7 µs | 1.0x | no AVX-512 on this machine: scalar path |
 
+## Phase 3–6 optimisation pass (second run, native)
+
+Root cause of most regressions above: `Simd::mul_add`, `round` and `floor` in
+`tpt-simd-vector` are per-lane `libm` calls (`fmaf` is an indirect call that
+never becomes a vector instruction). Crates now avoid them in hot paths (magic
+number rounding, hand-rolled polynomials, `_mm256_fmadd_ps` under
+`cfg(target_feature)`). Results are bit-identical to the scalar references
+where documented. Scalar baselines drift ±2x between runs on this machine, so
+compare ratios only.
+
+| Crate / op | scalar | tpt | speedup | Was |
+|---|---|---|---|---|
+| window: hamming (4096) vs libm `cosf` | 15.8 µs | 3.0 µs | 5.3x | 0.33x |
+| window: blackman_into | n/a | 4.9 µs | n/a | 126 µs |
+| window: `apply_window_f32` | 116 ns | 135 ns | 0.86x | memory bound, no gain |
+| convolve: `convolve_1d_f32` | 335 µs | 5.6 µs | 60x | 2.0x (baseline is a strict-order serial FP sum) |
+| convolve: `convolve_2d_separable_f32` | 184 µs | 16.4 µs | 11x | 0.77x |
+| convolve: `fir_filter_i16` | 68.9 µs | 23.0 µs | 3.0x | 2.3x |
+| interpolate: lanczos3 | 475 ns | 269 ns | 1.8x | 0.81x |
+| interpolate: linear / cubic | 13.5 / 43.8 ns | 12.8 / 35.6 ns | 1.05x / 1.2x | |
+| blend: `blend_f32` (mask, AVX2 `vblendvps`) | 3.17 µs (branchy) | 1.10 µs | 2.9x | 0.72x |
+| blend: fused `blend_gt_f32` | 3.17 µs | 0.49 µs | 6.4x | new |
+| blend: `select_f32` | 3.17 µs | 0.52 µs | 6.1x | 2.9x |
+| compare: count gt i32, `cmp_gt` + `mask_count` | 314 ns | 736 ns | 0.43x | 0.05x |
+| compare: count gt f32, `cmp_gt` + `mask_count` | 315 ns | 851 ns | 0.37x | 0.12x |
+| compare: fused `count_gt_i32` / `_f32` | 314 / 315 ns | 130 / 98 ns | 2.4x / 3.2x | new |
+
+## Mask redesign (`SimdMask` as integer lanes)
+
+`SimdMask<T, N>` used to be `[bool; N]`; it is now `[T::MaskLane; N]` (a signed
+integer of `T`'s width, all ones = set), so compares, `& | ^ !` and `select`
+stay in vector registers and the AVX2 compare/blend/movemask paths load and
+store the lanes directly. Public API unchanged (`from_raw`/`to_raw` added).
+Native, 4096 elements, two runs each (machine is noisy; ranges shown):
+
+| Op | scalar | `cmp_gt` + `mask_count` | fused | Was (mask path) |
+|---|---|---|---|---|
+| count_gt i32 | 405–581 ns | 332–387 ns | 303 ns | 736 ns (0.43x scalar) |
+| count_gt f32 | 1.04–1.14 µs | 337–345 ns | 280–297 ns | 851 ns (0.37x scalar) |
+| blend_f32 (mask) vs branchy | 4.6–5.0 µs | 1.18–1.31 µs (3.5–4x) | 1.10–1.14 µs | 2.9x |
+
+Default (SSE2, no flags): per-vector compare+count is about on par with scalar
+(i32) and ~1.2x scalar time (f32); the portable `SimdMask::to_bitmask` loop is
+still slow there (~2 µs / 4096).
+
 ## Phase 3–6 known issues / follow-ups
 
-* **compare**: the `SimdMask` array backend is a poor fit for count/reduce
-  patterns; add fused `count_*`/`movemask`-style helpers or lower to
-  `_mm256_cmpgt_epi32` + `movemask` intrinsics.
+* **compare (per-vector)**: fixed by the mask redesign below. Fused
+  `count_*`/`blend_gt_*` helpers are still marginally fastest.
+* **Without `target-cpu=native`**: convolve's FMA falls back to per-lane
+  `libm::fmaf` (correct, not faster). Window/interpolate need no flags. Not timed.
+* **vector crate `std` feature**: with `--features std`, `mul_add`/`round`/`floor`/
+  `ceil`/`trunc`/`sqrt` use the `std` intrinsics instead of `libm` (bit-identical:
+  these ops are exactly specified). Complex multiply via the portable fused path,
+  native, 1024 elements: 2.89 µs -> 0.56 µs (5x). Without `std` the `libm`
+  per-lane calls remain (`core` has no float math methods on stable). Enable
+  `std` (and `-C target-cpu=native` for FMA) for performance.
 * **gather**: documented honestly in the crate: `vpgatherdd` is slower than
-  scalar loads here. Prefer scalar loops unless indices are dependent on SIMD
-  data already in registers.
-* **blend (mask)**: lane-loop lowering is not reaching `vblendvps`; try an
-  explicit `core::arch` path.
-* **window cos**: the degree-12 polynomial is slower than `libm::cosf`; revisit
-  (lower degree, vectorised across lanes properly) or drop in favour of libm.
-* **2D separable convolve / lanczos**: slower than scalar; likely strided
-  vertical pass and per-call weight computation.
+  scalar loads here.
+* **permute**: 4x4 f32 transpose slower than scalar; 8x8 i16 only 2.3x (target 5x).
+* `blend_imm_*` remain on the portable lane loop (const immediates can't feed
+  `_mm256_blend_ps` on stable).
 * No `cargo-show-asm` audit has been done for any of these.

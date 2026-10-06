@@ -43,6 +43,47 @@ pub const fn convolve_1d_output_len(input_len: usize, kernel_len: usize) -> usiz
     }
 }
 
+/// 8-lane `a * b + c` with a single rounding per lane. With hardware FMA
+/// enabled at compile time (`-C target-cpu=native`, `+fma`) this is one
+/// `vfmadd`; otherwise it is the per-lane `libm::fmaf` fallback (identical
+/// results, much slower).
+#[inline(always)]
+fn fma_v(a: F32x8, b: F32x8, c: F32x8) -> F32x8 {
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx", target_feature = "fma"))]
+    {
+        use core::arch::x86_64::{__m256, _mm256_fmadd_ps};
+        // SAFETY: `[f32; 8]` and `__m256` have identical size and any bit
+        // pattern is valid for both; `avx` and `fma` are statically enabled.
+        unsafe {
+            let r: __m256 = _mm256_fmadd_ps(
+                core::mem::transmute::<[f32; 8], __m256>(a.to_array()),
+                core::mem::transmute::<[f32; 8], __m256>(b.to_array()),
+                core::mem::transmute::<[f32; 8], __m256>(c.to_array()),
+            );
+            F32x8::from_array(core::mem::transmute::<__m256, [f32; 8]>(r))
+        }
+    }
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx", target_feature = "fma")))]
+    {
+        a.mul_add(b, c)
+    }
+}
+
+/// Scalar `a * b + c`, fused (see [`fma_v`]).
+#[inline(always)]
+fn fma_s(a: f32, b: f32, c: f32) -> f32 {
+    #[cfg(all(target_arch = "x86_64", target_feature = "fma"))]
+    {
+        use core::arch::x86_64::{_mm_cvtss_f32, _mm_fmadd_ss, _mm_set_ss};
+        // SAFETY: `fma` (and its SSE baseline) is statically enabled.
+        unsafe { _mm_cvtss_f32(_mm_fmadd_ss(_mm_set_ss(a), _mm_set_ss(b), _mm_set_ss(c))) }
+    }
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "fma")))]
+    {
+        libm::fmaf(a, b, c)
+    }
+}
+
 /// `dst[i] = fma(src[i], k, dst[i])` for all `i` (equal lengths).
 #[inline]
 fn axpy(dst: &mut [f32], src: &[f32], k: f32) {
@@ -51,11 +92,11 @@ fn axpy(dst: &mut [f32], src: &[f32], k: f32) {
     let mut d = dst.chunks_exact_mut(8);
     let mut s = src.chunks_exact(8);
     for (dc, sc) in (&mut d).zip(&mut s) {
-        let r = F32x8::from_slice(sc).mul_add(kv, F32x8::from_slice(dc));
+        let r = fma_v(F32x8::from_slice(sc), kv, F32x8::from_slice(dc));
         r.copy_to_slice(dc);
     }
     for (x, y) in d.into_remainder().iter_mut().zip(s.remainder()) {
-        *x = libm::fmaf(*y, k, *x);
+        *x = fma_s(*y, k, *x);
     }
 }
 
@@ -116,19 +157,6 @@ pub fn convolve_1d_scalar_f32(input: &[f32], kernel: &[f32], output: &mut [f32])
     }
 }
 
-/// Index range `lo..hi` of `0..len` for which `x + shift` is also in `0..len`.
-#[inline]
-fn tap_range(len: usize, shift: isize) -> Option<(usize, usize)> {
-    let len_i = len as isize;
-    let lo = (-shift).max(0);
-    let hi = (len_i - shift).min(len_i);
-    if lo >= hi {
-        None
-    } else {
-        Some((lo as usize, hi as usize))
-    }
-}
-
 /// Separable 2-D convolution of a row-major image, "same" output size.
 ///
 /// * `input` and `output` are `width * height` samples, row-major
@@ -174,24 +202,87 @@ pub fn convolve_2d_separable_f32(
     }
     let ch = (kernel_h.len() / 2) as isize;
     for (src_row, dst_row) in input.chunks_exact(width).zip(tmp.chunks_exact_mut(width)) {
-        for (i, &kv) in kernel_h.iter().enumerate() {
-            let shift = ch - i as isize;
-            if let Some((lo, hi)) = tap_range(width, shift) {
-                let s = (lo as isize + shift) as usize;
-                axpy(&mut dst_row[lo..hi], &src_row[s..s + (hi - lo)], kv);
-            }
-        }
+        horizontal_row(src_row, dst_row, kernel_h, ch);
     }
     let cv = (kernel_v.len() / 2) as isize;
-    for (j, &kv) in kernel_v.iter().enumerate() {
-        let shift = cv - j as isize;
-        if let Some((lo, hi)) = tap_range(height, shift) {
-            let s = (lo as isize + shift) as usize;
-            axpy(
-                &mut output[lo * width..hi * width],
-                &tmp[s * width..(s + hi - lo) * width],
-                kv,
-            );
+    for (y, out_row) in output.chunks_exact_mut(width).enumerate() {
+        vertical_row(tmp, out_row, y, width, height, kernel_v, cv);
+    }
+}
+
+/// One output row of the horizontal pass. Interior 8-wide blocks (every tap
+/// in range) are accumulated in registers in ascending tap order; the few
+/// edge samples use the bounds-checked scalar form. Both perform the same
+/// fused operations in the same order as the scalar reference.
+fn horizontal_row(src: &[f32], dst: &mut [f32], kernel: &[f32], ch: isize) {
+    let width = src.len();
+    let smax = ch;
+    let smin = ch - (kernel.len() as isize - 1);
+    let lo = (-smin).max(0) as usize;
+    let end = width.saturating_sub(smax.max(0) as usize);
+    let mut x = 0;
+    while x < width {
+        if x >= lo && x + 8 <= end {
+            let mut acc = F32x8::zero();
+            for (i, &kv) in kernel.iter().enumerate() {
+                let s = (x as isize + ch - i as isize) as usize;
+                acc = fma_v(F32x8::from_slice(&src[s..s + 8]), F32x8::splat(kv), acc);
+            }
+            acc.copy_to_slice(&mut dst[x..x + 8]);
+            x += 8;
+        } else {
+            let mut acc = 0.0f32;
+            for (i, &kv) in kernel.iter().enumerate() {
+                let sx = x as isize + ch - i as isize;
+                if (0..width as isize).contains(&sx) {
+                    acc = fma_s(kv, src[sx as usize], acc);
+                }
+            }
+            dst[x] = acc;
+            x += 1;
+        }
+    }
+}
+
+/// Output row `y` of the vertical pass: every output sample is accumulated
+/// over the vertical taps in registers (ascending tap order, out-of-range
+/// rows skipped), so each output row is written exactly once.
+fn vertical_row(
+    tmp: &[f32],
+    out_row: &mut [f32],
+    y: usize,
+    width: usize,
+    height: usize,
+    kernel: &[f32],
+    cv: isize,
+) {
+    let mut x = 0;
+    while x < width {
+        let vec = x + 8 <= width;
+        let mut acc = F32x8::zero();
+        let mut acc_s = 0.0f32;
+        for (j, &kv) in kernel.iter().enumerate() {
+            let sy = y as isize + cv - j as isize;
+            if !(0..height as isize).contains(&sy) {
+                continue;
+            }
+            let base = sy as usize * width + x;
+            if vec {
+                acc = fma_v(
+                    F32x8::from_slice(&tmp[base..base + 8]),
+                    F32x8::splat(kv),
+                    acc,
+                );
+            } else {
+                acc_s = fma_s(kv, tmp[base], acc_s);
+            }
+        }
+        if vec {
+            acc.copy_to_slice(&mut out_row[x..x + 8]);
+            x += 8;
+        } else {
+            out_row[x] = acc_s;
+            x += 1;
         }
     }
 }
@@ -389,10 +480,10 @@ mod tests {
 
         #[test]
         fn conv2d_matches_scalar(
-            (w, h) in (1usize..14, 1usize..14),
+            (w, h) in (1usize..40, 1usize..20),
             kh in prop::collection::vec(-2.0f32..2.0, 1..7),
             kv in prop::collection::vec(-2.0f32..2.0, 1..7),
-            seed in prop::collection::vec(-50.0f32..50.0, 196),
+            seed in prop::collection::vec(-50.0f32..50.0, 800),
         ) {
             let img: Vec<f32> = seed[..w * h].to_vec();
             let (mut a, mut b) = (vec![0.0; w * h], vec![0.0; w * h]);

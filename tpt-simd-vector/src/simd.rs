@@ -1,5 +1,6 @@
 //! The array-backed [`Simd`] vector type.
 
+use crate::element::MaskLane;
 use crate::element::{LaneCast, SimdElement, SimdFloat, SimdInt};
 use crate::mask::SimdMask;
 use core::ops::{
@@ -172,37 +173,49 @@ impl<T: SimdElement, const N: usize> Simd<T, N> {
     /// `self == other` per lane.
     #[inline(always)]
     pub fn simd_eq(self, other: Self) -> SimdMask<T, N> {
-        SimdMask::from_array(core::array::from_fn(|i| self.0[i] == other.0[i]))
+        SimdMask::from_raw(core::array::from_fn(|i| {
+            <T::MaskLane as MaskLane>::from_bool(self.0[i] == other.0[i])
+        }))
     }
 
     /// `self != other` per lane.
     #[inline(always)]
     pub fn simd_ne(self, other: Self) -> SimdMask<T, N> {
-        SimdMask::from_array(core::array::from_fn(|i| self.0[i] != other.0[i]))
+        SimdMask::from_raw(core::array::from_fn(|i| {
+            <T::MaskLane as MaskLane>::from_bool(self.0[i] != other.0[i])
+        }))
     }
 
     /// `self < other` per lane.
     #[inline(always)]
     pub fn simd_lt(self, other: Self) -> SimdMask<T, N> {
-        SimdMask::from_array(core::array::from_fn(|i| self.0[i] < other.0[i]))
+        SimdMask::from_raw(core::array::from_fn(|i| {
+            <T::MaskLane as MaskLane>::from_bool(self.0[i] < other.0[i])
+        }))
     }
 
     /// `self <= other` per lane.
     #[inline(always)]
     pub fn simd_le(self, other: Self) -> SimdMask<T, N> {
-        SimdMask::from_array(core::array::from_fn(|i| self.0[i] <= other.0[i]))
+        SimdMask::from_raw(core::array::from_fn(|i| {
+            <T::MaskLane as MaskLane>::from_bool(self.0[i] <= other.0[i])
+        }))
     }
 
     /// `self > other` per lane.
     #[inline(always)]
     pub fn simd_gt(self, other: Self) -> SimdMask<T, N> {
-        SimdMask::from_array(core::array::from_fn(|i| self.0[i] > other.0[i]))
+        SimdMask::from_raw(core::array::from_fn(|i| {
+            <T::MaskLane as MaskLane>::from_bool(self.0[i] > other.0[i])
+        }))
     }
 
     /// `self >= other` per lane.
     #[inline(always)]
     pub fn simd_ge(self, other: Self) -> SimdMask<T, N> {
-        SimdMask::from_array(core::array::from_fn(|i| self.0[i] >= other.0[i]))
+        SimdMask::from_raw(core::array::from_fn(|i| {
+            <T::MaskLane as MaskLane>::from_bool(self.0[i] >= other.0[i])
+        }))
     }
 }
 
@@ -305,7 +318,9 @@ impl<T: SimdFloat, const N: usize> Simd<T, N> {
     /// Mask of lanes that are NaN.
     #[inline(always)]
     pub fn is_nan(self) -> SimdMask<T, N> {
-        SimdMask::from_array(core::array::from_fn(|i| self.0[i].lane_is_nan()))
+        SimdMask::from_raw(core::array::from_fn(|i| {
+            <T::MaskLane as MaskLane>::from_bool(self.0[i].lane_is_nan())
+        }))
     }
 }
 

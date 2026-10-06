@@ -113,7 +113,7 @@ pub fn sinc_f32(x: f32) -> f32 {
 
 /// 8-lane normalised sinc using a polynomial `sin(pi r)` approximation.
 ///
-/// Range reduction: `n = round(x)`, `r = x - n` (`|r| <= 1/2`),
+/// Range reduction: `n = round(x)` (magic-number rounding), `r = x - n` (`|r| <= 1/2`),
 /// `sin(pi x) = (-1)^n sin(pi r)`, and `sin(pi r)` is an odd degree-11 Taylor
 /// polynomial in `r` (truncation error `< 6e-8`).
 ///
@@ -130,29 +130,42 @@ pub fn sinc_f32(x: f32) -> f32 {
 /// ```
 #[inline]
 pub fn sinc_simd_f32(x: F32x8) -> F32x8 {
+    F32x8::from_array(sinc_lanes(x.to_array()))
+}
+
+/// Plain-array sinc kernel: only `+ - * /`, comparisons and bit casts in
+/// fixed-trip-count lane loops (no `round`/`floor`/`fma` library calls), so
+/// each loop compiles to one vector instruction per step.
+#[inline(always)]
+fn sinc_lanes(x: [f32; 8]) -> [f32; 8] {
     const C1: f32 = core::f32::consts::PI;
     const C3: f32 = -5.167_712_8;
     const C5: f32 = 2.550_164;
     const C7: f32 = -0.599_264_5;
     const C9: f32 = 0.082_145_89;
     const C11: f32 = -0.007_370_431;
-    let s = F32x8::splat;
-    let n = x.round();
-    let r = x - n;
-    let r2 = r * r;
-    let mut p = s(C11);
-    for c in [C9, C7, C5, C3, C1] {
-        p = p.mul_add(r2, s(c));
+    // 1.5 * 2^23: adding it rounds to nearest integer (ties to even) and
+    // leaves the integer in the low mantissa bits (parity = bit 0).
+    const MAGIC: f32 = 12_582_912.0;
+    let mut out = [0.0f32; 8];
+    for i in 0..8 {
+        let t = x[i] + MAGIC;
+        let n = t - MAGIC;
+        let r = x[i] - n;
+        let r2 = r * r;
+        let mut p = C11;
+        for c in [C9, C7, C5, C3, C1] {
+            p = p * r2 + c;
+        }
+        let flip = (t.to_bits() & 1) << 31;
+        let px = C1 * x[i];
+        let tiny = x[i].abs() < 1e-6;
+        // Avoid 0/0 in the unused lane.
+        let denom = if tiny { 1.0 } else { px };
+        let v = f32::from_bits((p * r).to_bits() ^ flip) / denom;
+        out[i] = if tiny { 1.0 } else { v };
     }
-    let sin_pr = p * r;
-    // parity of n: 0 or 1 (floor handles negative n).
-    let parity = n - s(2.0) * (n * s(0.5)).floor();
-    let sign = s(1.0) - s(2.0) * parity;
-    let px = s(core::f32::consts::PI) * x;
-    let tiny = x.abs().simd_lt(s(1e-6));
-    // Avoid 0/0 in the unused lane.
-    let denom = tiny.select(s(1.0), px);
-    tiny.select(s(1.0), sign * sin_pr / denom)
+    out
 }
 
 /// Scalar Lanczos interpolation with kernel size `a`.
@@ -212,17 +225,30 @@ pub fn interpolate_lanczos_scalar_f32(samples: &[f32], t: f32, a: usize) -> f32 
 /// ```
 pub fn interpolate_lanczos_f32(samples: &[F32x8], t: F32x8, a: usize) -> F32x8 {
     assert!(a > 0 && samples.len() == 2 * a, "need 2*a samples, a > 0");
-    let af = F32x8::splat(a as f32);
-    let zero = F32x8::zero();
-    let (mut acc, mut wsum) = (zero, zero);
-    for (i, &s) in samples.iter().enumerate() {
-        let x = t - F32x8::splat(i as f32 - (a as f32 - 1.0));
-        let inside = x.abs().simd_lt(af);
-        let w = inside.select(sinc_simd_f32(x) * sinc_simd_f32(x / af), zero);
-        acc = w.mul_add(s, acc);
-        wsum += w;
+    let af = a as f32;
+    let t = t.to_array();
+    let (mut acc, mut wsum) = ([0.0f32; 8], [0.0f32; 8]);
+    for (i, s) in samples.iter().enumerate() {
+        let off = i as f32 - (af - 1.0);
+        let mut x = [0.0f32; 8];
+        let mut xa = [0.0f32; 8];
+        for l in 0..8 {
+            x[l] = t[l] - off;
+            xa[l] = x[l] / af;
+        }
+        let (s1, s2) = (sinc_lanes(x), sinc_lanes(xa));
+        let s = s.to_array();
+        for l in 0..8 {
+            let w = if x[l].abs() < af { s1[l] * s2[l] } else { 0.0 };
+            acc[l] += w * s[l];
+            wsum[l] += w;
+        }
     }
-    acc / wsum
+    let mut out = [0.0f32; 8];
+    for l in 0..8 {
+        out[l] = acc[l] / wsum[l];
+    }
+    F32x8::from_array(out)
 }
 
 #[cfg(test)]

@@ -10,6 +10,8 @@ pub use tpt_simd_core::*;
 #[doc(inline)]
 pub use tpt_simd_aligned as aligned;
 #[doc(inline)]
+pub use tpt_simd_blas as blas;
+#[doc(inline)]
 pub use tpt_simd_blend as blend;
 #[doc(inline)]
 pub use tpt_simd_butterfly as butterfly;
@@ -35,6 +37,8 @@ pub use tpt_simd_matrix as matrix;
 pub use tpt_simd_mul as mul;
 #[doc(inline)]
 pub use tpt_simd_permute as permute;
+#[doc(inline)]
+pub use tpt_simd_reduce as reduce;
 #[doc(inline)]
 pub use tpt_simd_rounding as rounding;
 #[doc(inline)]

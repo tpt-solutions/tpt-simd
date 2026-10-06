@@ -23,11 +23,11 @@ mod element;
 mod mask;
 mod simd;
 
-pub use element::{LaneCast, SimdElement, SimdFloat, SimdInt};
+pub use element::{LaneCast, MaskLane, SimdElement, SimdFloat, SimdInt};
 pub use mask::SimdMask;
 pub use simd::Simd;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "std"))]
 extern crate std;
 #[cfg(test)]
 mod tests;

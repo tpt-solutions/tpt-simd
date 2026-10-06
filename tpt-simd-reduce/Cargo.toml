@@ -1,0 +1,34 @@
+[package]
+name = "tpt-simd-reduce"
+description = "SIMD slice reductions: sum, compensated sum, mean, variance, covariance, min/max/argmin/argmax, norm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+std = ["tpt-simd-core/std", "tpt-simd-horizontal/std"]
+nightly = ["tpt-simd-core/nightly", "tpt-simd-horizontal/nightly"]
+scalar-only = ["tpt-simd-core/scalar-only", "tpt-simd-horizontal/scalar-only"]
+
+[dependencies]
+tpt-simd-core.workspace = true
+tpt-simd-horizontal = { path = "../tpt-simd-horizontal", version = "0.1.0", default-features = false }
+
+[dev-dependencies]
+proptest.workspace = true
+tpt-simd-testutil.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"] }
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "reduce"
+harness = false

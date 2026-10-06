@@ -18,6 +18,20 @@ horizontal reductions, transposes, saturating arithmetic and more.
 - Stable backend via `tpt-simd-vector`; `core::simd` behind the `nightly` feature
 - Direct integration path into tpt-kinetix and tpt-cadence
 
+## Getting full performance
+
+Two opt-ins, both off by default so `no_std` users are unaffected:
+
+- **`std` feature** (e.g. `tpt-simd = { version = "0.1", features = ["std"] }`):
+  float `mul_add`/`round`/`floor`/`ceil`/`trunc`/`sqrt` use the `std` intrinsics
+  instead of per-lane `libm` calls. Results are bit-identical; the portable
+  complex multiply is ~5x faster. Without it, those ops fall back to `libm`.
+- **`-C target-cpu=native`** (or specific `-C target-feature=+avx2,+fma`):
+  dispatch is compile-time (see [ADR 0001](docs/adr/0001-backend-and-dispatch.md)),
+  so the AVX2/FMA paths are only used when the target features are enabled.
+
+Measured numbers and caveats: [docs/benchmarks.md](docs/benchmarks.md).
+
 ## License
 
 Licensed under either of

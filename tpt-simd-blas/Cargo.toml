@@ -1,0 +1,36 @@
+[package]
+name = "tpt-simd-blas"
+description = "BLAS-style f32/f64 kernels: level-1, gemv and a packed, blocked gemm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = ["alloc"]
+# `gemm_*`/`gemv_*` convenience entry points that allocate their own packing buffers.
+alloc = []
+std = ["alloc", "tpt-simd-core/std"]
+nightly = ["tpt-simd-core/nightly"]
+scalar-only = ["tpt-simd-core/scalar-only"]
+
+[dependencies]
+tpt-simd-core.workspace = true
+libm.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tpt-simd-testutil.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"] }
+
+[lints]
+workspace = true
+
+[[bench]]
+name = "blas"
+harness = false

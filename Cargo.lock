@@ -492,6 +492,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tpt-simd-blas"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "libm",
+ "proptest",
+ "tpt-simd-core",
+ "tpt-simd-testutil",
+]
+
+[[package]]
 name = "tpt-simd-blend"
 version = "0.1.0"
 dependencies = [
@@ -632,6 +643,17 @@ dependencies = [
  "proptest",
  "tpt-simd-core",
  "tpt-simd-saturate",
+ "tpt-simd-testutil",
+]
+
+[[package]]
+name = "tpt-simd-reduce"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "proptest",
+ "tpt-simd-core",
+ "tpt-simd-horizontal",
  "tpt-simd-testutil",
 ]
 

@@ -29,7 +29,7 @@ pub mod width;
 
 pub use aliases::*;
 pub use complex::ComplexSimd;
-pub use tpt_simd_vector::{LaneCast, Simd, SimdElement, SimdFloat, SimdInt, SimdMask};
+pub use tpt_simd_vector::{LaneCast, MaskLane, Simd, SimdElement, SimdFloat, SimdInt, SimdMask};
 pub use traits::{DefaultBackend, SimdOps, SimdVector};
 
 #[cfg(test)]

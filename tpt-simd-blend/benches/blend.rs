@@ -2,10 +2,14 @@
 //!
 //! The condition lanes are pseudo-random, so the scalar `if` mispredicts
 //! about half the time unless LLVM if-converts it.
+//!
+//! * `mask`: per-vector `simd_gt` mask then [`blend_f32`].
+//! * `fused_gt`: [`blend_gt_f32`] (compare + blend, no mask).
+//! * `select_f32/sign_bit`: sign-bit blend (`vblendvps`).
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
-use tpt_simd_blend::{blend_f32, select_f32};
+use tpt_simd_blend::{blend_f32, blend_gt_f32, select_f32};
 use tpt_simd_core::F32x8;
 
 fn branchy(cond: &[f32], a: &[f32], b: &[f32], out: &mut [f32]) {
@@ -48,6 +52,26 @@ fn bench(c: &mut Criterion) {
             {
                 let m = F32x8::from_slice(cc).simd_gt(z);
                 blend_f32(m, F32x8::from_slice(aa), F32x8::from_slice(bb)).copy_to_slice(o);
+            }
+            black_box(&out);
+        })
+    });
+    c.bench_function("blend_f32/fused_gt", |bn| {
+        bn.iter(|| {
+            let z = F32x8::splat(0.0);
+            for (((o, cc), aa), bb) in out
+                .chunks_exact_mut(8)
+                .zip(black_box(&cond).chunks_exact(8))
+                .zip(black_box(&a).chunks_exact(8))
+                .zip(black_box(&b).chunks_exact(8))
+            {
+                blend_gt_f32(
+                    F32x8::from_slice(cc),
+                    z,
+                    F32x8::from_slice(aa),
+                    F32x8::from_slice(bb),
+                )
+                .copy_to_slice(o);
             }
             black_box(&out);
         })

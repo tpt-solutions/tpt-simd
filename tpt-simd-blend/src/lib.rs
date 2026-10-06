@@ -13,8 +13,14 @@
 //!   `i` of `a` (note: *opposite* operand order to the Intel immediate
 //!   intrinsics, matching `blend_*`/`SimdMask::select` where true means `a`).
 //!
-//! All functions are branch-free; LLVM lowers them to `vblendv*` /
-//! `vpblendd` on AVX2.
+//! All functions are branch-free. When built with AVX2 enabled (e.g.
+//! `-C target-cpu=native`) [`blend_i32`], [`blend_f32`], [`blend_i8`] and
+//! [`select_f32`] use explicit `vblendvps`/`vpblendvb`; otherwise the
+//! portable array implementation is used (identical results).
+//!
+//! [`blend_gt_f32`] and [`blend_gt_i32`] fuse a `>` compare with the blend
+//! and avoid materialising a mask; prefer them when the condition is a
+//! plain greater-than.
 //!
 //! ```
 //! use tpt_simd_blend::blend_i32;
@@ -32,6 +38,200 @@ extern crate std;
 use tpt_simd_core::Simd;
 pub use tpt_simd_core::SimdMask;
 
+#[cfg(all(
+    any(target_arch = "x86", target_arch = "x86_64"),
+    target_feature = "avx2"
+))]
+mod x86 {
+    //! AVX2 implementations (selected statically via `target_feature`).
+    #[cfg(target_arch = "x86")]
+    use core::arch::x86::*;
+    #[cfg(target_arch = "x86_64")]
+    use core::arch::x86_64::*;
+    use tpt_simd_core::{Simd, SimdMask};
+
+    #[inline(always)]
+    fn ld_ps(a: &Simd<f32, 8>) -> __m256 {
+        // SAFETY: `a.0` is 8 f32 = 32 readable bytes; unaligned load.
+        unsafe { _mm256_loadu_ps(a.0.as_ptr()) }
+    }
+
+    #[inline(always)]
+    fn ld_epi(a: &Simd<i32, 8>) -> __m256 {
+        // SAFETY: `a.0` is 8 i32 = 32 readable bytes; unaligned load; the
+        // cast only reinterprets the bits.
+        unsafe { _mm256_castsi256_ps(_mm256_loadu_si256(a.0.as_ptr().cast())) }
+    }
+
+    #[inline(always)]
+    fn st_ps(v: __m256) -> Simd<f32, 8> {
+        let mut out = [0.0f32; 8];
+        // SAFETY: the store writes exactly 32 bytes into `out`.
+        unsafe { _mm256_storeu_ps(out.as_mut_ptr(), v) };
+        Simd::from_array(out)
+    }
+
+    /// Raw mask lanes (all ones / zero, 4 bytes each) reinterpreted as the
+    /// selector for `vblendvps`; a plain 32-byte load, no conversion.
+    #[inline(always)]
+    fn mask_ps<T: tpt_simd_core::SimdElement>(m: SimdMask<T, 8>) -> __m256 {
+        assert_eq!(core::mem::size_of::<[T::MaskLane; 8]>(), 32);
+        let raw = m.to_raw();
+        // SAFETY: `raw` is exactly 32 readable bytes (asserted above);
+        // unaligned load; the cast only reinterprets the bits.
+        unsafe { _mm256_castsi256_ps(_mm256_loadu_si256(raw.as_ptr().cast())) }
+    }
+
+    #[inline(always)]
+    pub fn blend_i32(m: SimdMask<i32, 8>, a: Simd<i32, 8>, b: Simd<i32, 8>) -> Simd<i32, 8> {
+        // SAFETY: AVX is statically enabled; bit-reinterpreting casts only.
+        let r = unsafe { _mm256_blendv_ps(ld_epi(&b), ld_epi(&a), mask_ps(m)) };
+        let mut out = [0i32; 8];
+        // SAFETY: the store writes exactly 32 bytes into `out`.
+        unsafe { _mm256_storeu_si256(out.as_mut_ptr().cast(), _mm256_castps_si256(r)) };
+        Simd::from_array(out)
+    }
+
+    #[inline(always)]
+    pub fn blend_f32(m: SimdMask<f32, 8>, a: Simd<f32, 8>, b: Simd<f32, 8>) -> Simd<f32, 8> {
+        // SAFETY: AVX is statically enabled.
+        st_ps(unsafe { _mm256_blendv_ps(ld_ps(&b), ld_ps(&a), mask_ps(m)) })
+    }
+
+    #[inline(always)]
+    pub fn blend_i8(m: SimdMask<i8, 32>, a: Simd<i8, 32>, b: Simd<i8, 32>) -> Simd<i8, 32> {
+        let raw = m.to_raw();
+        let mut out = [0i8; 32];
+        // SAFETY: each array is exactly 32 readable/writable bytes; AVX2 is
+        // statically enabled. The raw mask lanes (0 / -1 bytes) are the
+        // `vpblendvb` selector as-is.
+        unsafe {
+            let r = _mm256_blendv_epi8(
+                _mm256_loadu_si256(b.0.as_ptr().cast()),
+                _mm256_loadu_si256(a.0.as_ptr().cast()),
+                _mm256_loadu_si256(raw.as_ptr().cast()),
+            );
+            _mm256_storeu_si256(out.as_mut_ptr().cast(), r);
+        }
+        Simd::from_array(out)
+    }
+
+    #[inline(always)]
+    pub fn select_f32(c: Simd<f32, 8>, a: Simd<f32, 8>, b: Simd<f32, 8>) -> Simd<f32, 8> {
+        // SAFETY: AVX is statically enabled.
+        st_ps(unsafe { _mm256_blendv_ps(ld_ps(&b), ld_ps(&a), ld_ps(&c)) })
+    }
+
+    #[inline(always)]
+    pub fn blend_gt_f32(
+        x: Simd<f32, 8>,
+        y: Simd<f32, 8>,
+        a: Simd<f32, 8>,
+        b: Simd<f32, 8>,
+    ) -> Simd<f32, 8> {
+        // SAFETY: AVX is statically enabled.
+        st_ps(unsafe {
+            let m = _mm256_cmp_ps::<_CMP_GT_OQ>(ld_ps(&x), ld_ps(&y));
+            _mm256_blendv_ps(ld_ps(&b), ld_ps(&a), m)
+        })
+    }
+
+    #[inline(always)]
+    pub fn blend_gt_i32(
+        x: Simd<i32, 8>,
+        y: Simd<i32, 8>,
+        a: Simd<i32, 8>,
+        b: Simd<i32, 8>,
+    ) -> Simd<i32, 8> {
+        let mut out = [0i32; 8];
+        // SAFETY: AVX2 is statically enabled; the store writes 32 bytes.
+        unsafe {
+            let m = _mm256_cmpgt_epi32(
+                _mm256_castps_si256(ld_epi(&x)),
+                _mm256_castps_si256(ld_epi(&y)),
+            );
+            let r = _mm256_blendv_ps(ld_epi(&b), ld_epi(&a), _mm256_castsi256_ps(m));
+            _mm256_storeu_si256(out.as_mut_ptr().cast(), _mm256_castps_si256(r));
+        }
+        Simd::from_array(out)
+    }
+}
+
+/// Per lane: `if x > y { a } else { b }` for `f32x8` (a fused compare +
+/// blend; NaN in `x` or `y` selects `b`, like the scalar `>`).
+///
+/// Equivalent to `blend_f32(x.simd_gt(y), a, b)` but never materialises a
+/// mask: on AVX2 it is one `vcmpps` + one `vblendvps`.
+///
+/// # Panics
+/// Never.
+///
+/// ```
+/// use tpt_simd_blend::blend_gt_f32;
+/// use tpt_simd_core::F32x8;
+/// let x = F32x8::from_array([1.0, 3.0, f32::NAN, 0.0, 5.0, 5.0, 9.0, -1.0]);
+/// let r = blend_gt_f32(x, F32x8::splat(2.0), F32x8::splat(1.0), F32x8::splat(0.0));
+/// assert_eq!(r.to_array(), [0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0]);
+/// ```
+#[inline]
+pub fn blend_gt_f32(
+    x: Simd<f32, 8>,
+    y: Simd<f32, 8>,
+    a: Simd<f32, 8>,
+    b: Simd<f32, 8>,
+) -> Simd<f32, 8> {
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    ))]
+    {
+        x86::blend_gt_f32(x, y, a, b)
+    }
+    #[cfg(not(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    )))]
+    {
+        x.simd_gt(y).select(a, b)
+    }
+}
+
+/// Per lane: `if x > y { a } else { b }` for `i32x8` (signed compare), fused
+/// like [`blend_gt_f32`].
+///
+/// # Panics
+/// Never.
+///
+/// ```
+/// use tpt_simd_blend::blend_gt_i32;
+/// use tpt_simd_core::I32x8;
+/// let x = I32x8::from_array([1, 3, -5, 0, 5, 5, 9, i32::MIN]);
+/// let r = blend_gt_i32(x, I32x8::splat(2), I32x8::splat(1), I32x8::splat(0));
+/// assert_eq!(r.to_array(), [0, 1, 0, 0, 1, 1, 1, 0]);
+/// ```
+#[inline]
+pub fn blend_gt_i32(
+    x: Simd<i32, 8>,
+    y: Simd<i32, 8>,
+    a: Simd<i32, 8>,
+    b: Simd<i32, 8>,
+) -> Simd<i32, 8> {
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    ))]
+    {
+        x86::blend_gt_i32(x, y, a, b)
+    }
+    #[cfg(not(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    )))]
+    {
+        x.simd_gt(y).select(a, b)
+    }
+}
+
 /// Per lane: `if mask { a } else { b }` for `i32x8`.
 ///
 /// Performance: one `vblendvps`/`vpblendvb` on AVX2.
@@ -47,7 +247,20 @@ pub use tpt_simd_core::SimdMask;
 /// ```
 #[inline]
 pub fn blend_i32(mask: SimdMask<i32, 8>, a: Simd<i32, 8>, b: Simd<i32, 8>) -> Simd<i32, 8> {
-    mask.select(a, b)
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    ))]
+    {
+        x86::blend_i32(mask, a, b)
+    }
+    #[cfg(not(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    )))]
+    {
+        mask.select(a, b)
+    }
 }
 
 /// Per lane: `if mask { a } else { b }` for `f32x8`. Lane values (including
@@ -65,7 +278,20 @@ pub fn blend_i32(mask: SimdMask<i32, 8>, a: Simd<i32, 8>, b: Simd<i32, 8>) -> Si
 /// ```
 #[inline]
 pub fn blend_f32(mask: SimdMask<f32, 8>, a: Simd<f32, 8>, b: Simd<f32, 8>) -> Simd<f32, 8> {
-    mask.select(a, b)
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    ))]
+    {
+        x86::blend_f32(mask, a, b)
+    }
+    #[cfg(not(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    )))]
+    {
+        mask.select(a, b)
+    }
 }
 
 /// Per lane: `if mask { a } else { b }` for `i8x32`.
@@ -85,7 +311,20 @@ pub fn blend_f32(mask: SimdMask<f32, 8>, a: Simd<f32, 8>, b: Simd<f32, 8>) -> Si
 /// ```
 #[inline]
 pub fn blend_i8(mask: SimdMask<i8, 32>, a: Simd<i8, 32>, b: Simd<i8, 32>) -> Simd<i8, 32> {
-    mask.select(a, b)
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    ))]
+    {
+        x86::blend_i8(mask, a, b)
+    }
+    #[cfg(not(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    )))]
+    {
+        mask.select(a, b)
+    }
 }
 
 /// Per lane: `a` if the **sign bit** of `condition` is set, else `b`
@@ -111,11 +350,24 @@ pub fn blend_i8(mask: SimdMask<i8, 32>, a: Simd<i8, 32>, b: Simd<i8, 32>) -> Sim
 /// ```
 #[inline]
 pub fn select_f32(condition: Simd<f32, 8>, a: Simd<f32, 8>, b: Simd<f32, 8>) -> Simd<f32, 8> {
-    let c = condition.to_array();
-    let (x, y) = (a.to_array(), b.to_array());
-    Simd::from_array(core::array::from_fn(|i| {
-        if c[i].is_sign_negative() { x[i] } else { y[i] }
-    }))
+    #[cfg(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    ))]
+    {
+        x86::select_f32(condition, a, b)
+    }
+    #[cfg(not(all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "avx2"
+    )))]
+    {
+        let c = condition.to_array();
+        let (x, y) = (a.to_array(), b.to_array());
+        Simd::from_array(core::array::from_fn(|i| {
+            if c[i].is_sign_negative() { x[i] } else { y[i] }
+        }))
+    }
 }
 
 /// Compile-time-mask blend for `i32x8`: lane `i` is `a[i]` if bit `i` of
@@ -174,7 +426,7 @@ pub fn blend_imm_i8<const MASK: u32>(a: Simd<i8, 32>, b: Simd<i8, 32>) -> Simd<i
     Simd::from_fn(|i| if (MASK >> i) & 1 != 0 { a[i] } else { b[i] })
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(feature = "std")))]
 extern crate std;
 
 #[cfg(test)]
@@ -211,6 +463,27 @@ mod tests {
     }
 
     #[test]
+    fn blend_with_compare_mask_raw() {
+        let x = I32x8::from_array([1, 5, 2, 6, 3, 7, 4, 8]);
+        let m = x.simd_gt(I32x8::splat(4));
+        assert_eq!(m.to_raw(), [0, -1, 0, -1, 0, -1, 0, -1]);
+        let r = blend_i32(m, I32x8::splat(1), I32x8::splat(0));
+        assert_eq!(r.to_array(), [0, 1, 0, 1, 0, 1, 0, 1]);
+        let r = blend_f32(
+            SimdMask::<f32, 8>::from_raw([-1, 0, 0, -1, 0, 0, 0, -1]),
+            F32x8::splat(1.0),
+            F32x8::splat(2.0),
+        );
+        assert_eq!(r.to_array(), [1.0, 2.0, 2.0, 1.0, 2.0, 2.0, 2.0, 1.0]);
+        let r = blend_i8(
+            SimdMask::<i8, 32>::from_raw(core::array::from_fn(|i| if i % 3 == 0 { -1 } else { 0 })),
+            I8x32::splat(1),
+            I8x32::splat(0),
+        );
+        assert_eq!(r.to_array(), core::array::from_fn(|i| i8::from(i % 3 == 0)));
+    }
+
+    #[test]
     fn imm_extremes() {
         let (a, b) = (I32x8::splat(1), I32x8::splat(2));
         assert_eq!(blend_imm_i32::<0>(a, b), b);
@@ -239,6 +512,16 @@ mod tests {
                 blend_imm_f32::<0x3C>(a, b).to_array().map(f32::to_bits),
                 ref_blend(0x3C, a.to_array().map(f32::to_bits), b.to_array().map(f32::to_bits))
             );
+        }
+
+        #[test]
+        fn fused_gt_vs_scalar(x in lanes::<f32, _, 8>(f32_with_specials()), y in lanes::<f32, _, 8>(f32_with_specials()), a in lanes::<f32, _, 8>(f32_with_specials()), b in lanes::<f32, _, 8>(f32_with_specials()),
+                xi in lanes::<i32, _, 8>(i32_edgy()), yi in lanes::<i32, _, 8>(i32_edgy()), ai in lanes::<i32, _, 8>(i32_edgy()), bi in lanes::<i32, _, 8>(i32_edgy())) {
+            let bits = (0..8).fold(0u64, |m, i| m | (u64::from(x.to_array()[i] > y.to_array()[i]) << i));
+            let want = ref_blend(bits, a.to_array().map(f32::to_bits), b.to_array().map(f32::to_bits));
+            prop_assert_eq!(blend_gt_f32(x, y, a, b).to_array().map(f32::to_bits), want);
+            let bits = (0..8).fold(0u64, |m, i| m | (u64::from(xi.to_array()[i] > yi.to_array()[i]) << i));
+            prop_assert_eq!(blend_gt_i32(xi, yi, ai, bi).to_array(), ref_blend(bits, ai.to_array(), bi.to_array()));
         }
 
         #[test]

@@ -42,9 +42,11 @@ const PI_LO: f32 = 9.676_536e-4; // PI - PI_HI
 
 /// 8-lane polynomial cosine of `x` radians.
 ///
-/// Range reduction `n = round(x / pi)`, `r = x - n*pi` (two-constant
-/// Cody-Waite, `|r| <= pi/2`), `cos(x) = (-1)^n cos(r)`, with `cos(r)` an
-/// even degree-12 Taylor polynomial in `r` (truncation error `< 7e-9`).
+/// Range reduction `n = round(x / pi)` (magic-number rounding), `r = x - n*pi`
+/// (two-constant Cody-Waite, `|r| <= pi/2`), `cos(x) = (-1)^n cos(r)`, with
+/// `cos(r)` an even degree-12 Taylor polynomial in `r` (truncation error
+/// `< 7e-9`). Evaluated with plain multiply/add (no fused operations), so the
+/// result is the same on every target and the whole kernel vectorises.
 ///
 /// **Documented maximum absolute error: `2e-6`** for `|x| <= 1000` (the
 /// observed worst case in the crate's tests is well under `1e-6` for
@@ -59,6 +61,17 @@ const PI_LO: f32 = 9.676_536e-4; // PI - PI_HI
 /// ```
 #[inline]
 pub fn cos_approx_simd_f32(x: F32x8) -> F32x8 {
+    F32x8::from_array(cos_lanes(x.to_array()))
+}
+
+/// Plain-array cosine kernel. It deliberately uses only `+ - *`, bit casts
+/// and fixed-trip-count lane loops (no `round`/`floor`/`fma` library calls),
+/// so the compiler turns each loop into one vector instruction per step.
+#[inline(always)]
+fn cos_lanes(x: [f32; 8]) -> [f32; 8] {
+    // 1.5 * 2^23: adding it rounds to the nearest integer (ties to even) and
+    // leaves that integer in the low mantissa bits, so its parity is bit 0.
+    const MAGIC: f32 = 12_582_912.0;
     const C: [f32; 7] = [
         1.0,
         -0.5,
@@ -68,17 +81,27 @@ pub fn cos_approx_simd_f32(x: F32x8) -> F32x8 {
         -2.755_732e-7,
         2.087_675_7e-9,
     ];
-    let s = F32x8::splat;
-    let n = (x * s(core::f32::consts::FRAC_1_PI)).round();
-    let r = (-n).mul_add(s(PI_HI), x);
-    let r = (-n).mul_add(s(PI_LO), r);
-    let r2 = r * r;
-    let mut p = s(C[6]);
-    for &c in C[..6].iter().rev() {
-        p = p.mul_add(r2, s(c));
+    let mut out = [0.0f32; 8];
+    let mut t = [0.0f32; 8];
+    let mut n = [0.0f32; 8];
+    for i in 0..8 {
+        t[i] = x[i] * core::f32::consts::FRAC_1_PI + MAGIC;
+        n[i] = t[i] - MAGIC;
     }
-    let parity = n - s(2.0) * (n * s(0.5)).floor();
-    p * (s(1.0) - s(2.0) * parity)
+    let mut r = [0.0f32; 8];
+    for i in 0..8 {
+        r[i] = (x[i] - n[i] * PI_HI) - n[i] * PI_LO;
+    }
+    for i in 0..8 {
+        let r2 = r[i] * r[i];
+        let mut p = C[6];
+        for &c in C[..6].iter().rev() {
+            p = p * r2 + c;
+        }
+        let flip = (t[i].to_bits() & 1) << 31;
+        out[i] = f32::from_bits(p.to_bits() ^ flip);
+    }
+    out
 }
 
 /// Scalar convenience wrapper over [`cos_approx_simd_f32`] (same error
@@ -144,16 +167,31 @@ fn cosine_sum_into(out: &mut [f32], a0: f64, a1: f64, a2: f64) {
         }
         _ => {}
     }
-    let denom = (n - 1) as f64;
-    let two_pi = 2.0 * core::f64::consts::PI;
+    // Phase step in f64; each phase is rounded once to f32.
+    let step = 2.0 * core::f64::consts::PI / ((n - 1) as f64);
+    let (a0, a1, a2) = (a0 as f32, a1 as f32, a2 as f32);
     let mut base = 0usize;
     for chunk in out.chunks_mut(8) {
-        // Phases are formed in f64 then rounded once to f32.
-        let ph1 = F32x8::from_fn(|i| (two_pi * ((base + i) as f64) / denom) as f32);
-        let ph2 = F32x8::from_fn(|i| (2.0 * two_pi * ((base + i) as f64) / denom) as f32);
-        let w = F32x8::splat(a0 as f32) - F32x8::splat(a1 as f32) * cos_approx_simd_f32(ph1)
-            + F32x8::splat(a2 as f32) * cos_approx_simd_f32(ph2);
-        w.store_partial(chunk);
+        let mut ph1 = [0.0f32; 8];
+        let mut ph2 = [0.0f32; 8];
+        for i in 0..8 {
+            let ph = ((base + i) as f64) * step;
+            ph1[i] = ph as f32;
+            ph2[i] = (2.0 * ph) as f32;
+        }
+        let c1 = cos_lanes(ph1);
+        let mut w = [0.0f32; 8];
+        if a2 == 0.0 {
+            for i in 0..8 {
+                w[i] = a0 - a1 * c1[i];
+            }
+        } else {
+            let c2 = cos_lanes(ph2);
+            for i in 0..8 {
+                w[i] = a0 - a1 * c1[i] + a2 * c2[i];
+            }
+        }
+        F32x8::from_array(w).store_partial(chunk);
         base += 8;
     }
 }

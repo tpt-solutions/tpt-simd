@@ -118,7 +118,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [x] Arithmetic/bitwise/comparison ops, splat, from_array/to_array, load/store (aligned + unaligned)
 - [ ] `core::arch` fast paths: SSE2/AVX2 (x86_64), NEON (aarch64) — decided per-crate instead (fixed, mul, dot have AVX2 paths); none in vector; no NEON anywhere
 - [x] Scalar fallback for all other targets
-- [ ] Verify codegen: array backend auto-vectorizes; fast paths beat it
+- [ ] Verify codegen: array backend auto-vectorizes; fast paths beat it — `mul_add`/`round`/`floor` are per-lane libm calls without the `std` feature; with `std` they use std intrinsics (5x on portable complex mul; see docs/benchmarks.md)
 - [x] Layout/ABI tests (size, align, lane order)
 - [ ] Tests mirroring `core::simd` behavior so the two backends are interchangeable
 - [ ] Vector-crate-done checklist
@@ -278,7 +278,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [ ] Crate-done checklist
 
 ### Phase 5 exit
-- [ ] Branch-elimination benchmarks showing benefit vs branchy scalar — run: `select_f32` 2.9×, mask `blend_f32` 0.72× (slower); see docs/benchmarks.md
+- [x] Branch-elimination benchmarks showing benefit vs branchy scalar — `blend_f32` 2.9×, fused `blend_gt_f32` 6.4×, `select_f32` 6.1× (docs/benchmarks.md)
 
 ---
 
@@ -363,7 +363,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [ ] ARM64: NEON paths for every crate (Appendix A NEON intrinsics list)
 - [ ] ARM64: SVE implementation (scalable vector length; test several VLs in QEMU)
 - [ ] RISC-V: RVV implementation (check `core::arch::riscv64` stabilization status; fallback if intrinsics unstable)
-- [ ] Scalar fallback verified on every crate
+- [ ] Scalar fallback verified on every crate — `cargo check --workspace --exclude tpt-simd-testutil --no-default-features` passes on thumbv7em-none-eabihf, wasm32-unknown-unknown, riscv32imc-none-elf, aarch64-none-softfloat (compile only, not run)
 - [ ] Test all vector widths (128/256/512-bit)
 - [ ] Runtime dispatch correctness (right path picked, no UB on unsupported CPUs)
 - [ ] Byte-exact cross-arch results where documented; document float-differences otherwise
