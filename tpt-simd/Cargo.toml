@@ -19,6 +19,13 @@ scalar-only = ["tpt-simd-core/scalar-only"]
 
 [dependencies]
 tpt-simd-core.workspace = true
+tpt-simd-complex = { path = "../tpt-simd-complex", version = "0.1.0" }
+tpt-simd-fixed = { path = "../tpt-simd-fixed", version = "0.1.0" }
+tpt-simd-saturate = { path = "../tpt-simd-saturate", version = "0.1.0" }
+tpt-simd-horizontal = { path = "../tpt-simd-horizontal", version = "0.1.0" }
+tpt-simd-dot = { path = "../tpt-simd-dot", version = "0.1.0" }
+tpt-simd-butterfly = { path = "../tpt-simd-butterfly", version = "0.1.0" }
+tpt-simd-mul = { path = "../tpt-simd-mul", version = "0.1.0" }
 
 [lints]
 workspace = true

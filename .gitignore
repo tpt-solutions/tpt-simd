@@ -30,3 +30,4 @@ desktop.ini
 .env
 .env.*
 .claude/settings.local.json
+/target-*/

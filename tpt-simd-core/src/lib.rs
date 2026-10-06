@@ -14,7 +14,7 @@
 //!
 //! The stable backend is `tpt-simd-vector`. The `nightly` feature is
 //! reserved for a `core::simd` backend and is currently a no-op; see
-//! `docs/adr/0001-backend-strategy.md`.
+//! `docs/adr/0001-backend-and-dispatch.md`.
 #![no_std]
 #![forbid(unsafe_code)]
 

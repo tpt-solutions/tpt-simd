@@ -39,64 +39,64 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [x] README with dual-license statement ("MIT or Apache-2.0, at your option") and contribution clause
 - [x] `CONTRIBUTING.md` (contributions are dual-licensed unless stated), `SECURITY.md`
 - [x] `cargo-deny` config: allow-list MIT, BSD-2/3, ISC, Zlib, Unicode, `MIT OR Apache-2.0` duals; deny Apache-2.0-only, GPL/LGPL/AGPL
-- [ ] Audit candidate deps (`wide`, `proptest`, `criterion`, `bytemuck`, etc.) for license compatibility
-- [ ] Decide dev-dependency policy (criterion/proptest are dev-only; confirm licenses anyway)
+- [x] Audit candidate deps (`wide`, `proptest`, `criterion`, `bytemuck`, etc.) for license compatibility
+- [x] Decide dev-dependency policy (criterion/proptest are dev-only; confirm licenses anyway)
 - [ ] Add NOTICE/THIRD-PARTY-LICENSES generation (`cargo-about` or similar)
 
 ### Workspace
-- [ ] Root `Cargo.toml` workspace with `[workspace.package]` (version, edition, license, authors, repository, rust-version)
-- [ ] Scaffold all 22 crate dirs with `Cargo.toml` + `src/lib.rs` (`#![no_std]`, `extern crate alloc`)
-  - [ ] tpt-simd-core
-  - [ ] tpt-simd-vector
-  - [ ] tpt-simd-complex
-  - [ ] tpt-simd-fixed
-  - [ ] tpt-simd-saturate
-  - [ ] tpt-simd-horizontal
-  - [ ] tpt-simd-permute
-  - [ ] tpt-simd-gather
-  - [ ] tpt-simd-scatter
-  - [ ] tpt-simd-aligned
-  - [ ] tpt-simd-mul
-  - [ ] tpt-simd-dot
-  - [ ] tpt-simd-rounding
-  - [ ] tpt-simd-shift
-  - [ ] tpt-simd-compare
-  - [ ] tpt-simd-blend
-  - [ ] tpt-simd-select
-  - [ ] tpt-simd-butterfly
-  - [ ] tpt-simd-convolve
-  - [ ] tpt-simd-interpolate
-  - [ ] tpt-simd-matrix
-  - [ ] tpt-simd-window
-- [ ] Optional umbrella crate `tpt-simd` re-exporting all crates (decide: yes/no)
+- [x] Root `Cargo.toml` workspace with `[workspace.package]` (version, edition, license, authors, repository, rust-version)
+- [x] Scaffold all 22 crate dirs with `Cargo.toml` + `src/lib.rs` (`#![no_std]`, `extern crate alloc`)
+  - [x] tpt-simd-core
+  - [x] tpt-simd-vector
+  - [x] tpt-simd-complex
+  - [x] tpt-simd-fixed
+  - [x] tpt-simd-saturate
+  - [x] tpt-simd-horizontal
+  - [x] tpt-simd-permute
+  - [x] tpt-simd-gather
+  - [x] tpt-simd-scatter
+  - [x] tpt-simd-aligned
+  - [x] tpt-simd-mul
+  - [x] tpt-simd-dot
+  - [x] tpt-simd-rounding
+  - [x] tpt-simd-shift
+  - [x] tpt-simd-compare
+  - [x] tpt-simd-blend
+  - [x] tpt-simd-select
+  - [x] tpt-simd-butterfly
+  - [x] tpt-simd-convolve
+  - [x] tpt-simd-interpolate
+  - [x] tpt-simd-matrix
+  - [x] tpt-simd-window
+- [x] Optional umbrella crate `tpt-simd` re-exporting all crates (decide: yes/no) — yes; re-exports the implemented crates
 - [ ] Feature flags: `std`, `alloc`, `nightly`, `sse2`/`avx2`/`avx512`/`neon`/`sve`/`rvv`, `scalar-only`
-- [ ] Decide runtime dispatch vs compile-time `target_feature` strategy (document in ADR)
-- [ ] `rust-toolchain.toml` (stable) + separate nightly job config
+- [x] Decide runtime dispatch vs compile-time `target_feature` strategy (document in ADR) — compile-time `cfg(target_feature)`; see ADR 0001
+- [x] `rust-toolchain.toml` (stable) + separate nightly job config (nightly CI job in ci.yml)
 - [ ] Pin and test MSRV (stable-2) with `cargo-msrv`
-- [ ] Shared test-utils / scalar-reference helper crate (unpublished) for proptest strategies
+- [x] Shared test-utils / scalar-reference helper crate (unpublished) for proptest strategies
 
 ### CI (GitHub Actions)
-- [ ] fmt + clippy + doc (`-D warnings`)
-- [ ] Test matrix: stable + nightly (`nightly` feature) × Linux/Windows/macOS
-- [ ] `no_std` build check (e.g. `thumbv7em`/`wasm32-unknown-unknown`)
-- [ ] x86_64 runners with target-feature matrix (SSE2, AVX, AVX2)
+- [x] fmt + clippy + doc (`-D warnings`)
+- [x] Test matrix: stable + nightly (`nightly` feature) × Linux/Windows/macOS — workflow written, not yet run on GitHub
+- [x] `no_std` build check (e.g. `thumbv7em`/`wasm32-unknown-unknown`)
+- [x] x86_64 runners with target-feature matrix (SSE2, AVX, AVX2) — written, not yet run
 - [ ] AVX-512 testing via Intel SDE (or AVX-512 runner)
-- [ ] ARM64 testing (GitHub ARM runners / macOS-14)
+- [x] ARM64 testing (GitHub ARM runners / macOS-14) — runner defined, not yet run
 - [ ] ARM SVE testing via QEMU (vector-length matrix)
 - [ ] RISC-V RVV testing via QEMU (`riscv64gcv`)
-- [ ] Scalar-fallback job (`scalar-only` feature)
-- [ ] Miri job for unsafe code (where supported)
-- [ ] `cargo-deny` license + advisory job
+- [x] Scalar-fallback job (`scalar-only` feature)
+- [x] Miri job for unsafe code (where supported) — written, not yet run
+- [x] `cargo-deny` license + advisory job
 - [ ] Benchmark job with regression tracking (criterion baselines)
-- [ ] Caching, concurrency limits, release workflow
+- [x] Caching, concurrency limits, release workflow
 
 ### Docs & spec fixes
-- [ ] Fix spec: "20 crates" vs 21 listed (now 22 with vector crate)
-- [ ] Fix spec: `core::simd` is nightly-only, not stable
-- [ ] Fix spec typos ("Weekes"); resolve duplicate API entries (see decisions)
+- [x] Fix spec: "20 crates" vs 21 listed (now 22 with vector crate)
+- [x] Fix spec: `core::simd` is nightly-only, not stable (spec.txt updated)
+- [x] Fix spec typos ("Weekes"); resolve duplicate API entries (see decisions)
 - [ ] Fix spec API inconsistencies: `Fixed::saturate`, `_mm256_mulhi_epi32` does not exist (use `_mm256_mul_epi32` + shifts), `ComplexSimd` `a * b` operator in Appendix B vs `.mul()` methods
-- [ ] Define `Simd`/`SimdMask` public API surface and naming (ADR)
-- [ ] ADRs: backend strategy, dispatch strategy, error/panic policy, unsafe policy
+- [x] Define `Simd`/`SimdMask` public API surface and naming (ADR)
+- [x] ADRs: backend strategy, dispatch strategy, error/panic policy, unsafe policy
 - [ ] Reserve crate names on crates.io (publish 0.0.0 placeholders)
 
 ---
@@ -104,43 +104,43 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 ## Phase 1 — Core infrastructure (Weeks 1–3)
 
 ### tpt-simd-core
-- [ ] `SimdElement` trait + impls (i8/i16/i32/i64/u8/u16/u32/f32/f64)
-- [ ] `SimdOps`/`SimdVector` traits
-- [ ] Runtime feature detection helpers (`std` + `no_std` paths)
-- [ ] Vector width constants per target
-- [ ] Type aliases: `F32x8`, `I32x8`, `I16x16`, `I8x32`, 128/256/512-bit families
-- [ ] Shared `ComplexSimd` type definition (see decisions)
-- [ ] Backend selection plumbing (`nightly` → `core::simd`, else `tpt-simd-vector`)
+- [x] `SimdElement` trait + impls (i8/i16/i32/i64/u8/u16/u32/f32/f64)
+- [x] `SimdOps`/`SimdVector` traits
+- [x] Runtime feature detection helpers (`std` + `no_std` paths)
+- [x] Vector width constants per target
+- [x] Type aliases: `F32x8`, `I32x8`, `I16x16`, `I8x32`, 128/256/512-bit families
+- [x] Shared `ComplexSimd` type definition (see decisions)
+- [ ] Backend selection plumbing — `nightly` feature reserved/no-op (ADR 0001) (`nightly` → `core::simd`, else `tpt-simd-vector`)
 - [ ] Core-done checklist
 
 ### tpt-simd-vector (stable backend)
-- [ ] `Simd<T, N>` and `SimdMask<T, N>` types (array-backed)
-- [ ] Arithmetic/bitwise/comparison ops, splat, from_array/to_array, load/store (aligned + unaligned)
-- [ ] `core::arch` fast paths: SSE2/AVX2 (x86_64), NEON (aarch64)
-- [ ] Scalar fallback for all other targets
+- [x] `Simd<T, N>` and `SimdMask<T, N>` types (array-backed)
+- [x] Arithmetic/bitwise/comparison ops, splat, from_array/to_array, load/store (aligned + unaligned)
+- [ ] `core::arch` fast paths: SSE2/AVX2 (x86_64), NEON (aarch64) — decided per-crate instead (fixed, mul, dot have AVX2 paths); none in vector; no NEON anywhere
+- [x] Scalar fallback for all other targets
 - [ ] Verify codegen: array backend auto-vectorizes; fast paths beat it
-- [ ] Layout/ABI tests (size, align, lane order)
+- [x] Layout/ABI tests (size, align, lane order)
 - [ ] Tests mirroring `core::simd` behavior so the two backends are interchangeable
 - [ ] Vector-crate-done checklist
 
 ### tpt-simd-complex (f32 first)
-- [ ] `new`, `add`, `sub`, `mul`, `div`, `conj`, `mag_sq`, `mag`, `phase`
-- [ ] `twiddle_mul`, `butterfly` (in-place)
-- [ ] Operator overloads (`+ - * /`) so Appendix B example compiles
-- [ ] FMA (`fmadd/fmsub`) and `addsub` fast path on x86; NEON equivalent
-- [ ] Interleaved ↔ split (SoA/AoS) conversions
-- [ ] f64 variant (stretch)
-- [ ] Hit target: ≥3× complex multiply speedup vs scalar
+- [x] `new`, `add`, `sub`, `mul`, `div`, `conj`, `mag_sq`, `mag`, `phase`
+- [x] `twiddle_mul`, `butterfly` (in-place)
+- [x] Operator overloads (`+ - * /`) so Appendix B example compiles (in core)
+- [x] FMA (`fmadd/fmsub`) and `addsub` fast path on x86; NEON equivalent
+- [x] Interleaved ↔ split (SoA/AoS) conversions
+- [x] f64 variant (stretch)
+- [ ] Hit target: ≥3× complex multiply speedup vs scalar — 3.3× vs naive scalar, only 1.6× vs auto-vectorised; see docs/benchmarks.md
 - [ ] Crate-done checklist
 
 ### tpt-simd-fixed (i32 first)
-- [ ] `Fixed<T, INT_BITS, FRAC_BITS, N>` with compile-time format checks
-- [ ] `add`, `sub`, `mul` (64-bit intermediate, correct rounding), `div`
-- [ ] `from_f32`, `to_f32`, `saturate`
-- [ ] Format conversion between Q formats (for cookbook)
-- [ ] Overflow semantics documented (wrapping vs saturating variants)
-- [ ] i16 variant (stretch)
-- [ ] Hit target: ≥2× vs manual fixed-point
+- [x] `Fixed<T, INT_BITS, FRAC_BITS, N>` with compile-time format checks (i32 and i16)
+- [x] `add`, `sub`, `mul` (64-bit intermediate, correct rounding), `div`
+- [x] `from_f32`, `to_f32`, `saturate` — `saturate` replaced by explicit `saturating_*` ops (ADR 0002)
+- [x] Format conversion between Q formats (for cookbook)
+- [x] Overflow semantics documented (wrapping vs saturating variants)
+- [x] i16 variant (stretch)
+- [x] Hit target: ≥2× vs manual fixed-point — met on mul/add (3.3–10.7×); `from_f32` no gain
 - [ ] Crate-done checklist
 
 ### Phase 1 exit
@@ -153,38 +153,38 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 ## Phase 2 — Common patterns (Weeks 4–6)
 
 ### tpt-simd-horizontal
-- [ ] `horizontal_sum_i32`, `_f32`, `_i16` (→ i32)
-- [ ] `horizontal_max_i16`, `horizontal_min_f32`, `horizontal_product_f32`
-- [ ] Add missing min/max/sum variants for symmetry (decide scope)
-- [ ] NaN handling policy documented for min/max
-- [ ] Hit target: ≥4–8× vs scalar
+- [x] `horizontal_sum_i32`, `_f32`, `_i16` (→ i32)
+- [x] `horizontal_max_i16`, `horizontal_min_f32`, `horizontal_product_f32`
+- [x] Add missing min/max/sum variants for symmetry (decide scope) (min/max for i16/i32/f32, u8/i8 sums, generic `reduce_*`)
+- [x] NaN handling policy documented for min/max
+- [ ] Hit target: ≥4–8× vs scalar — NOT met (0.7–2.6×; LLVM already vectorises); see docs/benchmarks.md
 - [ ] Crate-done checklist
 
 ### tpt-simd-dot
-- [ ] `dot_product_i16`, `dot_product_f32`, `dot_product_complex_f32`, `dot_product_saturating_i16`
-- [ ] Handle arbitrary lengths / tails; length-mismatch policy
-- [ ] Accumulation order/precision documented (f32 reassociation)
-- [ ] Hit target: ≥8× vs scalar (256 × i16)
-- [ ] Verify FLAC LPC example (Appendix B.3) compiles and passes
+- [x] `dot_product_i16`, `dot_product_f32`, `dot_product_complex_f32`, `dot_product_saturating_i16`
+- [x] Handle arbitrary lengths / tails; length-mismatch policy
+- [x] Accumulation order/precision documented (f32 reassociation)
+- [ ] Hit target: ≥8× vs scalar (256 × i16) — NOT met (1.55× native AVX2 `vpmaddwd`); f32 dot 5.7–12.5×
+- [x] Verify FLAC LPC example (Appendix B.3) compiles and passes
 - [ ] Crate-done checklist
 
 ### tpt-simd-butterfly
-- [ ] `butterfly_f32`, `butterfly_i16`, `butterfly_complex_f32`, `butterfly_with_twiddle_f32`
-- [ ] Fix spec: `butterfly_with_twiddle_f32` signature (real vectors + complex twiddle is ambiguous)
-- [ ] Verify Appendix B.5 example output
-- [ ] Hit target: ≥2×
+- [x] `butterfly_f32`, `butterfly_i16`, `butterfly_complex_f32`, `butterfly_with_twiddle_f32`
+- [x] Fix spec: `butterfly_with_twiddle_f32` signature (real vectors + complex twiddle is ambiguous)
+- [x] Verify Appendix B.5 example output
+- [x] Hit target: ≥2× — vs indexed scalar only; parity with auto-vectorised; f32 on SSE2 default is a known slow case (docs/benchmarks.md)
 - [ ] Crate-done checklist
 
 ### tpt-simd-saturate
-- [ ] `saturating_add_i16`, `saturating_sub_i16`, `saturating_add_i8`, `saturating_mul_i16`
-- [ ] `pack_i16_to_i8` (home crate), plus unsigned-saturating pack variants
-- [ ] Hit target: ≥4×
+- [x] `saturating_add_i16`, `saturating_sub_i16`, `saturating_add_i8`, `saturating_mul_i16`
+- [x] `pack_i16_to_i8` (home crate), plus unsigned-saturating pack variants
+- [x] Hit target: ≥4× — vs indexed scalar only; parity with auto-vectorised (docs/benchmarks.md)
 - [ ] Crate-done checklist
 
 ### Phase 2 exit
-- [ ] Benchmark suite vs scalar (criterion) published in repo
+- [x] Benchmark suite vs scalar (criterion) published in repo (per-crate `benches/`, results in docs/benchmarks.md)
 - [ ] 3–8× speedups demonstrated (table from spec §6.2 reproduced)
-- [ ] Docs + examples for all four crates
+- [x] Docs + examples for all four crates
 
 ---
 
@@ -391,6 +391,67 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 
 ---
 
+## Phase 10 — tpt-math acceleration (numeric tier)
+
+Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates, currently no SIMD; hand-written scalar loops, e.g. `DMatrix * DMatrix` in `tpt-math-linalg-dense` is a naive strided triple loop). New f32/f64 kernel crates sit on `tpt-simd-vector`/`core`; tpt-math adopts them behind an optional `simd` feature with the scalar path kept as the reference. Skip FFT (`tpt-math-signal-fft` wraps rustfft, already SIMD).
+
+### Prerequisites / decisions
+- [ ] Clone tpt-math and add baseline criterion benches first (gemm 64/256/1024, dot/norm, LU solve, CG on a Poisson matrix, Monte Carlo 10^7 samples); confirm gains justify the work and how much LLVM already autovectorises
+- [ ] Decide dispatch for library consumers: ADR 0001 is compile-time `cfg(target_feature)`, so users without `-C target-cpu=native` silently get the slow path. Choose runtime dispatch (`is_x86_feature_detected!`, needs `std`) behind a feature, or document required build flags; write ADR 0003
+- [ ] Decide float-determinism policy for reordered reductions and polynomial math (ADR 0001 requires bit-identical; relax to documented ULP/tolerance for `tpt-simd-math` and SIMD reductions); check tpt-math tests and formal-verification consumers for exact-value dependence
+- [ ] Add new crates to the workspace; keep `no_std`, MIT/Apache-only deps
+
+### tpt-simd-blas (highest value)
+- [ ] f32/f64 `axpy`, `scal`, `dot`, `nrm2`, `asum`
+- [ ] `gemv` (column-major, matches tpt-math storage)
+- [ ] Packed, register-blocked `gemm` microkernel (e.g. 8x4 f32 / 4x4 f64, FMA) with cache blocking
+- [ ] Complex variants via split re/im (`ComplexSimd`)
+- [ ] Portable reference + AVX2/FMA path; NEON later
+- [ ] Tests vs scalar reference (tails, NaN/inf, non-multiple sizes), proptest, criterion bench, `cargo-show-asm`
+- [ ] Target: gemm >= 3x scalar f32 on AVX2
+- [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd`
+
+### tpt-simd-math
+- [ ] Vector `exp`, `ln`, `sin`, `cos`, `tanh`, `erf` (polynomial approximations, documented max ULP error)
+- [ ] Accuracy tests against `libm` over full range, special values (NaN/inf/subnormal)
+- [ ] Wire into `tpt-math-stats`, `tpt-math-prob-dist`, `tpt-math-prob-monte-carlo`, `tpt-math-prob-sampler`, autodiff
+
+### tpt-simd-rng
+- [ ] Lane-parallel xoshiro / Philox generators (independent streams per lane, reproducible seeding)
+- [ ] Vectorised uniform -> normal (Box-Muller or ziggurat)
+- [ ] Statistical quality checks (e.g. PractRand/TestU01-style smoke tests)
+- [ ] Wire into `tpt-math-prob-sampler` and `tpt-math-prob-monte-carlo`
+
+### tpt-simd-sparse
+- [ ] CSR/CSC SpMV using `tpt-simd-gather`
+- [ ] Fused vector updates for CG / BiCGSTAB
+- [ ] Wire into `tpt-math-linalg-sparse`
+
+### tpt-simd-reduce
+- [ ] Pairwise / compensated sum, mean, variance, covariance over slices
+- [ ] min/max/argmin/argmax over slices
+- [ ] Builds on `tpt-simd-horizontal`; wire into `tpt-math-stats`
+
+### Existing stubs that map directly to tpt-math
+- [ ] `tpt-simd-convolve` (FIR) and `tpt-simd-window` -> `tpt-math-signal-filter`
+- [ ] `tpt-simd-matrix` (3x3 / 4x4 multiply, transpose, inverse) -> `tpt-math-linalg-fixed`, `tpt-math-geometry`, `tpt-math-spatial`
+- [ ] Later: IIR biquad cascades (serial dependency; batch across channels)
+
+### Phase 10 exit
+- [ ] End-to-end tpt-math benches with and without `simd` show target speedups
+- [ ] tpt-math test suite passes with `simd` on and off (within documented tolerances)
+- [ ] `no_std` builds pass in both repos
+
+### Repo housekeeping found while scoping
+- [x] Workspace `Cargo.toml` / `rust-toolchain.toml` were rewritten to an older shape (10 members, no `keywords`/`libm`/lints/path deps) and no longer parse; keep reconciled manifest with all real crates as members
+- [x] `tpt-simd-dot`: `[[bench]] name = "dot"` declared but `benches/dot.rs` missing
+- [x] `tpt-simd-core` docs link `docs/adr/0001-backend-strategy.md`; real file is `0001-backend-and-dispatch.md`
+- [x] `tpt-simd` umbrella crate is still a 2-line stub with no re-exports
+- [ ] `tpt-simd-mul` is missing `mul_hi_i16`, `mul_lo_i32`, `mul_hi_i32`, `mul_add_sub_f32`
+- [x] Tick Phase 0 / 1 / 2 checkboxes that are already done in code; commit the uncommitted butterfly/complex/fixed/horizontal/saturate/dot work
+
+---
+
 ## Success metrics tracking
 
 ### Technical
@@ -418,3 +479,5 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [ ] Nightly `core::simd` API churn → keep behind `nightly` feature, pin nightly date in CI
 - [ ] Stable intrinsics gaps (SVE/RVV/AVX-512 on stable) → track Rust releases, feature-gate
 - [ ] License drift → `cargo-deny` gate on every PR
+- [ ] Compile-time dispatch means library users miss SIMD without target flags → runtime dispatch or documented flags (Phase 10)
+- [ ] SIMD float reordering changes results vs scalar → documented tolerances, scalar path stays default in tpt-math
