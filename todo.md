@@ -33,12 +33,12 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 ## Phase 0 — Project setup (before Week 1)
 
 ### Repo & licensing
-- [ ] `git init`, default branch, `.gitignore`, `.gitattributes`
+- [x] `git init`, default branch (`master`), `.gitignore`, `.gitattributes`
 - [ ] Create GitHub repo under TPT Solutions org
-- [ ] Add `LICENSE-MIT` and `LICENSE-APACHE` (copyright TPT Solutions)
-- [ ] README with dual-license statement ("MIT or Apache-2.0, at your option") and contribution clause
-- [ ] `CONTRIBUTING.md` (contributions are dual-licensed unless stated), `CODE_OF_CONDUCT.md`, `SECURITY.md`
-- [ ] `cargo-deny` config: allow-list MIT, BSD-2/3, ISC, Zlib, Unicode, `MIT OR Apache-2.0` duals; deny Apache-2.0-only, GPL/LGPL/AGPL
+- [x] Add `LICENSE-MIT` and `LICENSE-APACHE` (copyright TPT Solutions)
+- [x] README with dual-license statement ("MIT or Apache-2.0, at your option") and contribution clause
+- [x] `CONTRIBUTING.md` (contributions are dual-licensed unless stated), `SECURITY.md`
+- [x] `cargo-deny` config: allow-list MIT, BSD-2/3, ISC, Zlib, Unicode, `MIT OR Apache-2.0` duals; deny Apache-2.0-only, GPL/LGPL/AGPL
 - [ ] Audit candidate deps (`wide`, `proptest`, `criterion`, `bytemuck`, etc.) for license compatibility
 - [ ] Decide dev-dependency policy (criterion/proptest are dev-only; confirm licenses anyway)
 - [ ] Add NOTICE/THIRD-PARTY-LICENSES generation (`cargo-about` or similar)

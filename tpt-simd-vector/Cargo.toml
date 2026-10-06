@@ -1,0 +1,27 @@
+[package]
+name = "tpt-simd-vector"
+description = "Stable, array-backed Simd and SimdMask types: the backend for tpt-simd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+std = []
+nightly = []
+scalar-only = []
+
+[dependencies]
+libm.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

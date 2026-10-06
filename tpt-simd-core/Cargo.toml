@@ -1,0 +1,28 @@
+[package]
+name = "tpt-simd-core"
+description = "Core traits, type aliases and feature detection for tpt-simd"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "../README.md"
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+default = []
+std = ["tpt-simd-vector/std"]
+nightly = ["tpt-simd-vector/nightly"]
+scalar-only = ["tpt-simd-vector/scalar-only"]
+
+[dependencies]
+tpt-simd-vector.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+tpt-simd-testutil.workspace = true
+
+[lints]
+workspace = true

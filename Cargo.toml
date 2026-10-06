@@ -1,0 +1,35 @@
+[workspace]
+resolver = "3"
+members = ["tpt-simd", "tpt-simd-*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+authors = ["TPT Solutions"]
+repository = "https://github.com/tpt-solutions/tpt-simd"
+rust-version = "1.95"
+readme = "README.md"
+keywords = ["simd", "dsp", "codec", "no_std"]
+categories = ["algorithms", "no-std", "multimedia"]
+
+[workspace.dependencies]
+libm = { version = "0.2", default-features = false }
+proptest = { version = "1", default-features = false, features = ["std"] }
+criterion = { version = "0.8", default-features = false }
+
+tpt-simd-vector = { path = "tpt-simd-vector", version = "0.1.0", default-features = false }
+tpt-simd-core = { path = "tpt-simd-core", version = "0.1.0", default-features = false }
+tpt-simd-testutil = { path = "tpt-simd-testutil", version = "0.1.0" }
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "warn"
+
+[profile.bench]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

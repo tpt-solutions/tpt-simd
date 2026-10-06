@@ -1,0 +1,26 @@
+# cargo-deny configuration: permissive, MIT-compatible dependencies only.
+
+[advisories]
+yanked = "deny"
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+]
+# `MIT OR Apache-2.0` duals pass because MIT is allowed; Apache-2.0-only
+# and copyleft licenses (GPL/LGPL/AGPL) are rejected by omission.
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
