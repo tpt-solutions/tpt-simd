@@ -5,18 +5,16 @@ use crate::real::Real;
 
 /// Lanes per accumulator vector.
 const W: usize = 8;
-/// Independent accumulator vectors.
-const U: usize = 4;
 /// Elements per unrolled block.
-const B: usize = W * U;
+const B: usize = W * 4;
 
-type Acc<T> = [[T; W]; U];
+type Acc<T> = [T; B];
 
 #[inline(always)]
 fn combine<T: Real>(acc: Acc<T>) -> T {
     let mut v = [T::ZERO; W];
     for j in 0..W {
-        v[j] = (acc[0][j] + acc[1][j]) + (acc[2][j] + acc[3][j]);
+        v[j] = (acc[j] + acc[W + j]) + (acc[2 * W + j] + acc[3 * W + j]);
     }
     let mut w = W;
     while w > 1 {
@@ -43,14 +41,12 @@ fn same_len(a: usize, b: usize, what: &str) {
 #[must_use]
 pub fn dot<T: Real>(x: &[T], y: &[T]) -> T {
     same_len(x.len(), y.len(), "dot");
-    let mut acc: Acc<T> = [[T::ZERO; W]; U];
-    let (xc, yc) = (x.chunks_exact(B), y.chunks_exact(B));
-    let (xt, yt) = (xc.remainder(), yc.remainder());
-    for (a, b) in xc.zip(yc) {
-        for k in 0..U {
-            for j in 0..W {
-                acc[k][j] = acc[k][j] + a[k * W + j] * b[k * W + j];
-            }
+    let mut acc: Acc<T> = [T::ZERO; B];
+    let (xb, xt) = x.as_chunks::<B>();
+    let (yb, yt) = y.as_chunks::<B>();
+    for (a, b) in xb.iter().zip(yb) {
+        for i in 0..B {
+            acc[i] = acc[i] + a[i] * b[i];
         }
     }
     let mut t = combine(acc);
@@ -111,21 +107,19 @@ pub fn bicgstab_p_update<T: Real>(beta: T, omega: T, r: &[T], v: &[T], p: &mut [
 pub fn axpy_dot<T: Real>(alpha: T, x: &[T], y: &mut [T], z: &[T]) -> T {
     same_len(x.len(), y.len(), "axpy_dot");
     same_len(z.len(), y.len(), "axpy_dot");
-    let mut acc: Acc<T> = [[T::ZERO; W]; U];
-    let n = y.len() / B * B;
-    let (yb, yt) = y.split_at_mut(n);
-    for ((yc, xc), zc) in yb.chunks_exact_mut(B).zip(x.chunks_exact(B)).zip(z.chunks_exact(B)) {
-        for k in 0..U {
-            for j in 0..W {
-                let i = k * W + j;
-                let ynew = yc[i] + alpha * xc[i];
-                yc[i] = ynew;
-                acc[k][j] = acc[k][j] + ynew * zc[i];
-            }
+    let mut acc: Acc<T> = [T::ZERO; B];
+    let (yb, yt) = y.as_chunks_mut::<B>();
+    let (xb, xt) = x.as_chunks::<B>();
+    let (zb, zt) = z.as_chunks::<B>();
+    for ((yc, xc), zc) in yb.iter_mut().zip(xb).zip(zb) {
+        for i in 0..B {
+            let ynew = yc[i] + alpha * xc[i];
+            yc[i] = ynew;
+            acc[i] = acc[i] + ynew * zc[i];
         }
     }
     let mut t = combine(acc);
-    for ((yi, &xi), &zi) in yt.iter_mut().zip(&x[n..]).zip(&z[n..]) {
+    for ((yi, &xi), &zi) in yt.iter_mut().zip(xt).zip(zt) {
         *yi = *yi + alpha * xi;
         t = t + *yi * zi;
     }
@@ -141,21 +135,18 @@ pub fn axpy_dot<T: Real>(alpha: T, x: &[T], y: &mut [T], z: &[T]) -> T {
 /// If the lengths differ.
 pub fn axpy_sqnorm<T: Real>(alpha: T, x: &[T], y: &mut [T]) -> T {
     same_len(x.len(), y.len(), "axpy_sqnorm");
-    let mut acc: Acc<T> = [[T::ZERO; W]; U];
-    let n = y.len() / B * B;
-    let (yb, yt) = y.split_at_mut(n);
-    for (yc, xc) in yb.chunks_exact_mut(B).zip(x.chunks_exact(B)) {
-        for k in 0..U {
-            for j in 0..W {
-                let i = k * W + j;
-                let ynew = yc[i] + alpha * xc[i];
-                yc[i] = ynew;
-                acc[k][j] = acc[k][j] + ynew * ynew;
-            }
+    let mut acc: Acc<T> = [T::ZERO; B];
+    let (yb, yt) = y.as_chunks_mut::<B>();
+    let (xb, xt) = x.as_chunks::<B>();
+    for (yc, xc) in yb.iter_mut().zip(xb) {
+        for i in 0..B {
+            let ynew = yc[i] + alpha * xc[i];
+            yc[i] = ynew;
+            acc[i] = acc[i] + ynew * ynew;
         }
     }
     let mut t = combine(acc);
-    for (yi, &xi) in yt.iter_mut().zip(&x[n..]) {
+    for (yi, &xi) in yt.iter_mut().zip(xt) {
         *yi = *yi + alpha * xi;
         t = t + *yi * *yi;
     }
@@ -174,28 +165,21 @@ pub fn cg_update<T: Real>(alpha: T, p: &[T], q: &[T], x: &mut [T], r: &mut [T]) 
     same_len(p.len(), x.len(), "cg_update");
     same_len(q.len(), x.len(), "cg_update");
     same_len(r.len(), x.len(), "cg_update");
-    let mut acc: Acc<T> = [[T::ZERO; W]; U];
-    let n = x.len() / B * B;
-    let (xb, xt) = x.split_at_mut(n);
-    let (rb, rt) = r.split_at_mut(n);
-    for (((xc, rc), pc), qc) in xb
-        .chunks_exact_mut(B)
-        .zip(rb.chunks_exact_mut(B))
-        .zip(p.chunks_exact(B))
-        .zip(q.chunks_exact(B))
-    {
-        for k in 0..U {
-            for j in 0..W {
-                let i = k * W + j;
-                xc[i] = xc[i] + alpha * pc[i];
-                let rnew = rc[i] - alpha * qc[i];
-                rc[i] = rnew;
-                acc[k][j] = acc[k][j] + rnew * rnew;
-            }
+    let mut acc: Acc<T> = [T::ZERO; B];
+    let (xb, xt) = x.as_chunks_mut::<B>();
+    let (rb, rt) = r.as_chunks_mut::<B>();
+    let (pb, pt) = p.as_chunks::<B>();
+    let (qb, qt) = q.as_chunks::<B>();
+    for (((xc, rc), pc), qc) in xb.iter_mut().zip(rb.iter_mut()).zip(pb).zip(qb) {
+        for i in 0..B {
+            xc[i] = xc[i] + alpha * pc[i];
+            let rnew = rc[i] - alpha * qc[i];
+            rc[i] = rnew;
+            acc[i] = acc[i] + rnew * rnew;
         }
     }
     let mut t = combine(acc);
-    for (((xi, ri), &pi), &qi) in xt.iter_mut().zip(rt.iter_mut()).zip(&p[n..]).zip(&q[n..]) {
+    for (((xi, ri), &pi), &qi) in xt.iter_mut().zip(rt.iter_mut()).zip(pt).zip(qt) {
         *xi = *xi + alpha * pi;
         *ri = *ri - alpha * qi;
         t = t + *ri * *ri;

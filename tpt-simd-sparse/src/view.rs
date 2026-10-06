@@ -61,7 +61,10 @@ impl fmt::Display for SparseError {
                 "indptr ends at {indptr_last} but indices has {indices} and data has {data} entries"
             ),
             Self::IndexOutOfRange { pos, index, bound } => {
-                write!(f, "index {index} at position {pos} is out of range (bound {bound})")
+                write!(
+                    f,
+                    "index {index} at position {pos} is out of range (bound {bound})"
+                )
             }
             Self::DimensionTooLarge(d) => write!(f, "dimension {d} does not fit a u32 index"),
         }
@@ -324,11 +327,8 @@ mod owned {
             ncols: usize,
             triplets: &[(usize, usize, T)],
         ) -> Result<Self, SparseError> {
-            let (indptr, indices, data) = bucket(
-                nrows,
-                ncols,
-                triplets.iter().map(|&(r, c, v)| (r, c, v)),
-            )?;
+            let (indptr, indices, data) =
+                bucket(nrows, ncols, triplets.iter().map(|&(r, c, v)| (r, c, v)))?;
             Self::try_new(nrows, ncols, indptr, indices, data)
         }
 
@@ -406,8 +406,8 @@ mod owned {
                 }
             }
             // Here "major" is the column.
-            let (indptr, indices, data) = bucket(self.ncols, self.nrows, trip.into_iter())
-                .expect("indices were validated");
+            let (indptr, indices, data) =
+                bucket(self.ncols, self.nrows, trip.into_iter()).expect("indices were validated");
             CscMatrix {
                 nrows: self.nrows,
                 ncols: self.ncols,
@@ -458,7 +458,11 @@ mod owned {
         let mut indptr = vec![0usize; major_dim + 1];
         for (pos, &(m, n, _)) in items.iter().enumerate() {
             if m >= major_dim || n >= minor_dim {
-                let (bad, bound) = if m >= major_dim { (m, major_dim) } else { (n, minor_dim) };
+                let (bad, bound) = if m >= major_dim {
+                    (m, major_dim)
+                } else {
+                    (n, minor_dim)
+                };
                 return Err(SparseError::IndexOutOfRange {
                     pos,
                     index: u32::try_from(bad).unwrap_or(u32::MAX),

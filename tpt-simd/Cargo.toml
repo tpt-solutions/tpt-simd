@@ -41,6 +41,9 @@ tpt-simd-shift = { path = "../tpt-simd-shift", version = "0.1.0" }
 tpt-simd-window = { path = "../tpt-simd-window", version = "0.1.0" }
 tpt-simd-blas = { path = "../tpt-simd-blas", version = "0.1.0" }
 tpt-simd-reduce = { path = "../tpt-simd-reduce", version = "0.1.0" }
+tpt-simd-math = { path = "../tpt-simd-math", version = "0.1.0" }
+tpt-simd-rng = { path = "../tpt-simd-rng", version = "0.1.0" }
+tpt-simd-sparse = { path = "../tpt-simd-sparse", version = "0.1.0" }
 
 [lints]
 workspace = true

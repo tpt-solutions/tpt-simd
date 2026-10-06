@@ -69,10 +69,16 @@
 //!
 //! ## Vectorisation
 //!
-//! The xoshiro step and the `u32`/`f32`/`f64` conversions compile to
-//! `vpaddq`/`vpsllq`/`vpsrlq`/`vpxor`/`vcvtdq2ps` on AVX2 (64-bit rotates are
-//! shift+or without AVX-512). See `docs/benchmarks.md`-style numbers in the
-//! crate README / benches (`cargo bench -p tpt-simd-rng --bench rng`).
+//! The xoshiro step, the `u32`/`f32`/`f64` conversions and the Box-Muller
+//! maths compile to AVX2 (`vpaddq`, `vpsllq`, `vpxor`, `vcvtdq2ps`, ...) with
+//! `-C target-cpu=native`. Two LLVM quirks are worked around: 64-bit rotates
+//! by *constant* amounts are scalarised by the AVX2 cost model (so the
+//! rotation amounts are stored per lane in the generator, opaque to the
+//! optimiser, and compile to `vpsllvq`/`vpsrlvq`), and there is no 64-bit
+//! vector multiply or rotate before AVX-512, so raw `u64` output gains little
+//! over a well-pipelined scalar loop while `u32`/`f32` output (two values per
+//! word) is roughly 2x faster and normals 5-8x faster than a scalar libm
+//! Box-Muller. Numbers: `cargo bench -p tpt-simd-rng --bench rng`.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -114,7 +120,7 @@ fn halves(x: [u64; 8]) -> [u32; 16] {
 }
 
 #[inline(always)]
-fn fill_with<T: Copy + Default, const C: usize>(out: &mut [T], mut gen_chunk: impl FnMut() -> [T; C]) {
+fn fill_with<T: Copy, const C: usize>(out: &mut [T], mut gen_chunk: impl FnMut() -> [T; C]) {
     let mut it = out.chunks_exact_mut(C);
     for c in &mut it {
         c.copy_from_slice(&gen_chunk());
@@ -134,73 +140,103 @@ pub trait Rng8 {
     fn next_u64x8(&mut self) -> [u64; 8];
 
     /// Fills `out` with random `u64`s.
+    #[inline]
     fn fill_u64(&mut self, out: &mut [u64]) {
-        fill_with(out, || self.next_u64x8());
+        fill_with(
+            out,
+            #[inline(always)]
+            || self.next_u64x8(),
+        );
     }
 
     /// Fills `out` with random `u32`s.
+    #[inline]
     fn fill_u32(&mut self, out: &mut [u32]) {
-        fill_with(out, || halves(self.next_u64x8()));
+        fill_with(
+            out,
+            #[inline(always)]
+            || halves(self.next_u64x8()),
+        );
     }
 
     /// Fills `out` with uniform `f32` in `[0, 1)` (never 1.0).
+    #[inline]
     fn fill_f32(&mut self, out: &mut [f32]) {
-        fill_with(out, || {
-            let h = halves(self.next_u64x8());
-            let mut o = [0.0f32; 16];
-            for i in 0..16 {
-                o[i] = u32_to_unit_f32(h[i]);
-            }
-            o
-        });
+        fill_with(
+            out,
+            #[inline(always)]
+            || {
+                let h = halves(self.next_u64x8());
+                let mut o = [0.0f32; 16];
+                for i in 0..16 {
+                    o[i] = u32_to_unit_f32(h[i]);
+                }
+                o
+            },
+        );
     }
 
     /// Fills `out` with uniform `f64` in `[0, 1)` (never 1.0).
+    #[inline]
     fn fill_f64(&mut self, out: &mut [f64]) {
-        fill_with(out, || {
-            let w = self.next_u64x8();
-            let mut o = [0.0f64; 8];
-            for i in 0..8 {
-                o[i] = u64_to_unit_f64(w[i]);
-            }
-            o
-        });
+        fill_with(
+            out,
+            #[inline(always)]
+            || {
+                let w = self.next_u64x8();
+                let mut o = [0.0f64; 8];
+                for i in 0..8 {
+                    o[i] = u64_to_unit_f64(w[i]);
+                }
+                o
+            },
+        );
     }
 
     /// Fills `out` with standard normal `f32` (Box-Muller, see crate docs).
+    #[inline]
     fn fill_normal_f32(&mut self, out: &mut [f32]) {
-        fill_with(out, || {
-            let h = halves(self.next_u64x8());
-            let mut u1 = [0.0f32; 8];
-            let mut u2 = [0.0f32; 8];
-            for i in 0..8 {
-                u1[i] = 1.0 - u32_to_unit_f32(h[i]);
-                u2[i] = u32_to_unit_f32(h[8 + i]);
-            }
-            let (z0, z1) = box_muller_f32(u1, u2);
-            let mut o = [0.0f32; 16];
-            o[..8].copy_from_slice(&z0);
-            o[8..].copy_from_slice(&z1);
-            o
-        });
+        fill_with(
+            out,
+            #[inline(always)]
+            || {
+                let h = halves(self.next_u64x8());
+                let mut u1 = [0.0f32; 8];
+                let mut u2 = [0.0f32; 8];
+                for i in 0..8 {
+                    u1[i] = 1.0 - u32_to_unit_f32(h[i]);
+                    u2[i] = u32_to_unit_f32(h[8 + i]);
+                }
+                let (z0, z1) = box_muller_f32(u1, u2);
+                let mut o = [0.0f32; 16];
+                o[..8].copy_from_slice(&z0);
+                o[8..].copy_from_slice(&z1);
+                o
+            },
+        );
     }
 
     /// Fills `out` with standard normal `f64` (Box-Muller, see crate docs).
+    #[inline]
     fn fill_normal_f64(&mut self, out: &mut [f64]) {
-        fill_with(out, || {
-            let a = self.next_u64x8();
-            let b = self.next_u64x8();
-            let mut u1 = [0.0f64; 8];
-            let mut u2 = [0.0f64; 8];
-            for i in 0..8 {
-                u1[i] = 1.0 - u64_to_unit_f64(a[i]);
-                u2[i] = u64_to_unit_f64(b[i]);
-            }
-            let (z0, z1) = box_muller_f64(u1, u2);
-            let mut o = [0.0f64; 16];
-            o[..8].copy_from_slice(&z0);
-            o[8..].copy_from_slice(&z1);
-            o
-        });
+        fill_with(
+            out,
+            #[inline(always)]
+            || {
+                let a = self.next_u64x8();
+                let b = self.next_u64x8();
+                let mut u1 = [0.0f64; 8];
+                let mut u2 = [0.0f64; 8];
+                for i in 0..8 {
+                    u1[i] = 1.0 - u64_to_unit_f64(a[i]);
+                    u2[i] = u64_to_unit_f64(b[i]);
+                }
+                let (z0, z1) = box_muller_f64(u1, u2);
+                let mut o = [0.0f64; 16];
+                o[..8].copy_from_slice(&z0);
+                o[8..].copy_from_slice(&z1);
+                o
+            },
+        );
     }
 }

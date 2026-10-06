@@ -4,6 +4,9 @@
 //! used (no `mul_add`, no libm), so results are bit-identical on every
 //! target and feature set.
 
+// Coefficients are quoted verbatim from their published sources / fits.
+#![allow(clippy::excessive_precision)]
+
 /// `1.5 * 2^23`: adding then subtracting rounds to nearest integer for
 /// `|t| < 2^22`, and leaves that integer in the low mantissa bits.
 const MAGIC: f32 = 12_582_912.0;
@@ -23,13 +26,7 @@ fn pow2(e: i32) -> f32 {
 #[inline(always)]
 pub(crate) fn exp(x: f32) -> f32 {
     // Saturate; NaN fails both comparisons and is restored at the end.
-    let xc = if x > 89.0 {
-        89.0
-    } else if x < -104.0 {
-        -104.0
-    } else {
-        x
-    };
+    let xc = x.clamp(-104.0, 89.0);
     let t = xc * LOG2_E + MAGIC;
     let n = t - MAGIC;
     let ni = (t.to_bits() as i32).wrapping_sub(MAGIC_BITS);
@@ -88,15 +85,18 @@ pub(crate) fn ln(x: f32) -> f32 {
 #[inline(always)]
 fn reduce_pio2(x: f32) -> (f32, i32) {
     const TWO_OVER_PI: f32 = core::f32::consts::FRAC_2_PI;
-    // pi/2 split in three parts with few mantissa bits (products with the
-    // quadrant count stay exact).
+    // pi/2 = A + B + C + D + E with A, B, C having 8 significant bits each, so
+    // `q * A`, `q * B`, `q * C` are exact for |q| < 2^16 (|x| < ~1e5) and
+    // the subtractions below only round at the scale of the result.
     const A: f32 = 1.570_312_5;
-    const B: f32 = 4.837_512_969_970_703e-4;
-    const C: f32 = 7.549_789_948_768_648e-8;
+    const B: f32 = 4.844_665_527_343_75e-4;
+    const C: f32 = -6.407_499_313_354_492e-7;
+    const D: f32 = 9.920_936_294_705_03e-10;
+    const E: f32 = -4.978_996_314_197_971e-17;
     let t = x * TWO_OVER_PI + MAGIC;
     let q = t - MAGIC;
     let qi = (t.to_bits() as i32).wrapping_sub(MAGIC_BITS);
-    (((x - q * A) - q * B) - q * C, qi)
+    (((((x - q * A) - q * B) - q * C) - q * D) - q * E, qi)
 }
 
 /// Cephes sinf kernel, `|r| <= pi/4`.
@@ -116,7 +116,7 @@ fn cos_poly(r: f32) -> f32 {
     let mut p = 2.443_315_711_809_948e-5_f32;
     p = p * z - 1.388_731_625_493_765e-3;
     p = p * z + 4.166_664_568_298_827e-2;
-    (p * z) * (z * z) - 0.5 * z + 1.0
+    p * (z * z) - 0.5 * z + 1.0
 }
 
 /// Inputs beyond this magnitude are outside the supported range and give NaN.
@@ -129,6 +129,8 @@ pub(crate) fn sin(x: f32) -> f32 {
     let c = cos_poly(r);
     let v = if q & 1 != 0 { c } else { s };
     let v = if q & 2 != 0 { -v } else { v };
+    // Keep the sign of zero (the reduction and polynomial lose it).
+    let v = if x == 0.0 { x } else { v };
     // The comparison is false for NaN and +-inf, which both give NaN.
     if x.abs() <= TRIG_LIMIT { v } else { f32::NAN }
 }
@@ -153,7 +155,7 @@ pub(crate) fn tanh(x: f32) -> f32 {
     p = p * z - 5.373_971_555_31e-2;
     p = p * z + 1.333_144_220_36e-1;
     p = p * z - 3.333_328_194_22e-1;
-    let small = (p * z) * x + x;
+    let small = if x == 0.0 { x } else { (p * z) * x + x };
     // Otherwise 1 - 2 / (exp(2|x|) + 1); exp overflow to inf gives exactly 1.
     let big = (1.0 - 2.0 / (exp(a + a) + 1.0)).copysign(x);
     let res = if a < 0.625 { small } else { big };
@@ -172,7 +174,7 @@ pub(crate) fn erf(x: f32) -> f32 {
     p = p * u - 2.686_543_8e-2;
     p = p * u + 1.128_378_3e-1;
     p = p * u - 3.761_263_8e-1;
-    p = p * u + 1.128_379_2;
+    p = p * u + core::f32::consts::FRAC_2_SQRT_PI;
     let small = p * x;
     // 1 <= |x| < 4: erfc(a) = t * exp(-a^2 + h(t)), t = 1 / (1 + a / 2).
     let t = 1.0 / (1.0 + 0.5 * a);

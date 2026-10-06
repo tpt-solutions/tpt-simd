@@ -472,15 +472,18 @@ dependencies = [
  "tpt-simd-gather",
  "tpt-simd-horizontal",
  "tpt-simd-interpolate",
+ "tpt-simd-math",
  "tpt-simd-matrix",
  "tpt-simd-mul",
  "tpt-simd-permute",
  "tpt-simd-reduce",
+ "tpt-simd-rng",
  "tpt-simd-rounding",
  "tpt-simd-saturate",
  "tpt-simd-scatter",
  "tpt-simd-select",
  "tpt-simd-shift",
+ "tpt-simd-sparse",
  "tpt-simd-window",
 ]
 
@@ -619,6 +622,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tpt-simd-math"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "libm",
+ "proptest",
+ "tpt-simd-core",
+ "tpt-simd-testutil",
+]
+
+[[package]]
 name = "tpt-simd-matrix"
 version = "0.1.0"
 dependencies = [
@@ -657,6 +671,16 @@ dependencies = [
  "tpt-simd-core",
  "tpt-simd-horizontal",
  "tpt-simd-testutil",
+]
+
+[[package]]
+name = "tpt-simd-rng"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "libm",
+ "proptest",
+ "tpt-simd-core",
 ]
 
 [[package]]
@@ -709,6 +733,16 @@ dependencies = [
  "proptest",
  "tpt-simd-core",
  "tpt-simd-testutil",
+]
+
+[[package]]
+name = "tpt-simd-sparse"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "proptest",
+ "tpt-simd-core",
+ "tpt-simd-gather",
 ]
 
 [[package]]

@@ -11,12 +11,12 @@
 //!
 //! | function | domain | max error |
 //! |---|---|---|
-//! | [`ln_f32`] | normal positive `f32` | 2 ulp |
-//! | [`sincos_turns_f32`] | `|t| < 2^20` | 3e-7 absolute |
+//! | [`ln_f32`] | normal positive `f32` | 1 ulp |
+//! | [`sincos_turns_f32`] | `abs(t) < 2^20` | 2e-7 absolute |
 //! | [`sqrt_f32`] | `0 <= x`, normal | 1 ulp |
-//! | [`ln_f64`] | normal positive `f64` | 4 ulp |
-//! | [`sincos_turns_f64`] | `|t| < 2^40` | 4e-16 absolute |
-//! | [`sqrt_f64`] | `0 <= x`, normal | 2 ulp |
+//! | [`ln_f64`] | normal positive `f64` | 2 ulp |
+//! | [`sincos_turns_f64`] | `abs(t) < 2^40` | 8e-16 absolute (dominated by the `2*pi*t` rounding) |
+//! | [`sqrt_f64`] | `0 <= x`, normal | 1 ulp |
 
 const L: usize = 8;
 
@@ -45,7 +45,7 @@ pub fn ln_f32(x: [f32; L]) -> [f32; L] {
         y = y * f - 1.666_805_8e-1;
         y = y * f + 2.000_071_5e-1;
         y = y * f - 2.499_999_4e-1;
-        y = y * f + 3.333_333_1e-1;
+        y = y * f + 3.333_333_4e-1;
         y = y * f * z;
         let ef = e as f32;
         y += ef * -2.121_944_4e-4;
@@ -59,7 +59,7 @@ pub fn ln_f32(x: [f32; L]) -> [f32; L] {
 ///
 /// `t` is reduced to the nearest quarter turn exactly, then cephes `sinf` /
 /// `cosf` polynomials are evaluated on `[-pi/4, pi/4]` and the quadrant is
-/// applied with integer swaps and sign-bit XORs. Valid for `|t| < 2^20`.
+/// applied with integer swaps and sign-bit XORs. Valid for `abs(t) < 2^20`.
 #[inline(always)]
 pub fn sincos_turns_f32(t: [f32; L]) -> ([f32; L], [f32; L]) {
     const MAGIC: f32 = 12_582_912.0; // 1.5 * 2^23: round-to-nearest-even trick
@@ -72,7 +72,8 @@ pub fn sincos_turns_f32(t: [f32; L]) -> ([f32; L], [f32; L]) {
         let th = r * TAU;
         let z = th * th;
         let s = th + th * z * (((-1.951_529_6e-4 * z) + 8.332_161e-3) * z - 1.666_665_5e-1);
-        let c = 1.0 - 0.5 * z + z * z * (((2.443_315_7e-5 * z) - 1.388_731_6e-3) * z + 4.166_664_6e-2);
+        let c =
+            1.0 - 0.5 * z + z * z * (((2.443_315_7e-5 * z) - 1.388_731_6e-3) * z + 4.166_664_6e-2);
         let qi = (q as i32) as u32;
         let swap = qi & 1 != 0;
         let (so, co) = if swap { (c, s) } else { (s, c) };
@@ -108,8 +109,8 @@ pub fn sqrt_f32(x: [f32; L]) -> [f32; L] {
 /// Zero, subnormals, negatives, infinities and NaN give unspecified results.
 #[inline(always)]
 pub fn ln_f64(x: [f64; L]) -> [f64; L] {
-    const LN2_HI: f64 = 6.931_471_803_691_238_164_90e-1;
-    const LN2_LO: f64 = 1.908_214_929_270_587_700_02e-10;
+    const LN2_HI: f64 = 6.931_471_803_691_238e-1;
+    const LN2_LO: f64 = 1.908_214_929_270_587_7e-10;
     let mut out = [0.0f64; L];
     for i in 0..L {
         let bits = x[i].to_bits();
@@ -142,7 +143,7 @@ pub fn ln_f64(x: [f64; L]) -> [f64; L] {
 }
 
 /// `(sin(2*pi*t), cos(2*pi*t))` for eight `f64` values of `t` (in turns),
-/// valid for `|t| < 2^40`. Quarter-turn reduction as in
+/// valid for `abs(t) < 2^40`. Quarter-turn reduction as in
 /// [`sincos_turns_f32`], then Taylor polynomials on `[-pi/4, pi/4]`.
 #[inline(always)]
 pub fn sincos_turns_f64(t: [f64; L]) -> ([f64; L], [f64; L]) {

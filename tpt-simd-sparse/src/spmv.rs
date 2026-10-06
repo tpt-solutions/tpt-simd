@@ -10,17 +10,18 @@ pub enum RowStrategy {
     /// One accumulator, strictly left to right (latency-bound reference
     /// strategy; the order of the naive loop).
     Scalar,
-    /// Four independent accumulators for every line.
+    /// Four independent accumulators for every line. Fastest or tied on
+    /// every benchmarked shape, so it is the default ([`DEFAULT_STRATEGY`]).
     Lanes4,
     /// Eight independent accumulators for every line.
     Lanes8,
     /// Lines shorter than 8 use the scalar loop, longer ones eight
-    /// accumulators. This is what the plain entry points use.
+    /// accumulators (measured no better than [`Lanes4`](Self::Lanes4)).
     Hybrid,
 }
 
 /// Strategy used by [`spmv_csr`] and [`spmv_csc_t`].
-pub const DEFAULT_STRATEGY: RowStrategy = RowStrategy::Hybrid;
+pub const DEFAULT_STRATEGY: RowStrategy = RowStrategy::Lanes4;
 
 /// Reduces the `W` lane accumulators with a fixed halving tree.
 #[inline(always)]

@@ -14,7 +14,7 @@
 //! | [`dot`], [`sqnorm`], [`axpy`], [`xpay`] | level-1 vector kernels |
 //! | [`axpy_dot`], [`axpy_sqnorm`], [`cg_update`] | fused update + reduction in one pass |
 //! | [`bicgstab_p_update`] | `p = r + beta*(p - omega*v)` |
-//! | [`reference`] | naive scalar versions of everything above |
+//! | [`mod@reference`] | naive scalar versions of everything above |
 //!
 //! ```
 //! use tpt_simd_sparse::{CsrMatrix, spmv_csr};
@@ -60,10 +60,10 @@
 //! No FMA is used and orders depend only on the code, so results are
 //! reproducible across targets and feature sets.
 //!
-//! * Gather-style kernels ([`spmv_csr`], [`spmv_csc_t`]): a line with fewer
-//!   than 8 entries is summed left to right; otherwise entry `k` of each
-//!   8-chunk goes to accumulator `k % 8`, the 8 accumulators combine with a
-//!   halving tree, then the `< 8` leftover entries are added left to right.
+//! * Gather-style kernels ([`spmv_csr`], [`spmv_csc_t`]): entry `k` of each
+//!   4-chunk of a line goes to accumulator `k % 4`; the accumulators combine
+//!   as `(a0 + a2) + (a1 + a3)`, then the `< 4` leftover entries are added
+//!   left to right (so lines shorter than 4 are plain left-to-right sums).
 //!   The result is then scaled: `alpha * t + beta * y`.
 //! * Scatter-style kernels ([`spmv_csr_t`], [`spmv_csc`]): `y` is first
 //!   scaled by `beta`, then contributions are added in storage order,
@@ -77,18 +77,46 @@
 //!   the unfused pass sequence.
 //!
 //! A naive left-to-right loop differs from these by a few ulps of `Σ|terms|`;
-//! compare with a tolerance relative to `Σ|terms|` ([`reference`] is the
+//! compare with a tolerance relative to `Σ|terms|` ([`mod@reference`] is the
 //! left-to-right version).
 //!
 //! ## Measured findings
 //!
-//! See `docs/benchmarks.md`-style numbers in the "Results" section of the
-//! crate README and the `benches/sparse.rs` comments. Summary: SpMV on
-//! these sizes is limited by memory latency/bandwidth and the dependent
-//! add chain; the strategies in [`RowStrategy`] were compared, and a
-//! hardware-gather variant (`tpt-simd-gather`, `vgatherdps`) was measured
-//! and rejected because gather is slower than scalar loads on the
-//! benchmark machine.
+//! Numbers are from one noisy Windows machine (AVX2, `-C target-cpu=native`,
+//! f32, interleaved best-of-150 timings from `examples/strategies.rs`); the
+//! absolute values are memory-bound and only the ratios matter.
+//!
+//! * SpMV is bandwidth/latency bound: **~1.0-1.4x** over the naive safe
+//!   loop for CSR, up to ~2x on long rows (128 nnz/row), 0.4-0.6 ns per
+//!   stored entry for every strategy.
+//! * Rows are independent, so the out-of-order core already overlaps the
+//!   add chains of neighbouring rows; extra accumulators help mostly on
+//!   long rows. `Lanes4` was fastest or tied everywhere and is the default.
+//!   `Lanes8` and the scalar-short-row `Hybrid` gave no gain; the scalar
+//!   single accumulator is slowest on Poisson (0.58 vs 0.41 ns/nnz).
+//! * Dropping the bounds check on `x[idx]` (sound because views are
+//!   validated) made no measurable difference: the one-accumulator kernel
+//!   with unchecked loads times the same as the safe-indexing reference
+//!   (0.575 vs 0.573 ns/nnz on Poisson).
+//! * A hardware-gather row kernel (`vgatherdps` through `tpt-simd-gather`,
+//!   bench-only code) came out 5-15% *faster* than `Lanes4` on rows of 12
+//!   or more entries when `x` fits in L2, and slower or equal on 5-entry
+//!   rows. It is not adopted: f32 only (the gather crate has no `f64`),
+//!   AVX2 only, needs `unsafe` and `u32 -> i32` index conversion, and the
+//!   gain is within the run-to-run noise of this machine. It is an
+//!   optional follow-up, not a regression: the earlier micro-benchmark in
+//!   `docs/benchmarks.md` (gather slower than scalar loads) was an isolated
+//!   gather loop, where the multiply-accumulate and loop overhead are not
+//!   amortised the way they are in SpMV.
+//! * Transposed/CSC products (scatter) run at 0.6-1.0 ns/nnz, 1.2-1.6x
+//!   slower than the gather-style product because of the read-modify-write
+//!   of `y`; `spmv_csr_t` is 1.0-2.1x faster than the naive scatter
+//!   reference (long rows gain most).
+//! * Fused vector updates matter: `cg_update` (two axpy + norm in one
+//!   pass) is ~1.5x faster than three separate passes in cache and ~1.1x
+//!   from memory (4 Mi elements), ~3x vs naive scalar passes in cache.
+//!   (Do not write the multi-accumulator state as `[[T; 8]; 4]`: LLVM kept
+//!   it in memory and the fused loops ran ~10x slower than a flat `[T; 32]`.)
 #![no_std]
 #![deny(unsafe_op_in_unsafe_fn)]
 

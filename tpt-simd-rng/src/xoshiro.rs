@@ -1,6 +1,7 @@
 //! SplitMix64, scalar xoshiro256++ and the 8-lane [`Xoshiro256ppX8`].
 
 use crate::Rng8;
+use core::hint::black_box;
 use tpt_simd_core::Simd;
 
 /// SplitMix64 (Vigna), used for seeding. Any `u64` seed is valid (including
@@ -120,6 +121,31 @@ impl Xoshiro256pp {
     }
 }
 
+type V = [u64; 8];
+
+#[inline(always)]
+fn add(a: V, b: V) -> V {
+    core::array::from_fn(|i| a[i].wrapping_add(b[i]))
+}
+#[inline(always)]
+fn xor(a: V, b: V) -> V {
+    core::array::from_fn(|i| a[i] ^ b[i])
+}
+#[inline(always)]
+fn shl<const K: u32>(a: V) -> V {
+    core::array::from_fn(|i| a[i] << K)
+}
+/// Rotate left by per-lane amounts `k` and `nk = 64 - k`.
+///
+/// The amounts live in the generator (see [`Xoshiro256ppX8`]) and are opaque
+/// to the optimiser: with *constant* amounts LLVM's AVX2 cost model
+/// scalarises 64-bit rotates (one `rorx` per lane plus extract/insert),
+/// whereas per-lane amounts become `vpsllvq`/`vpsrlvq`/`vpor`.
+#[inline(always)]
+fn rotl(a: V, k: V, nk: V) -> V {
+    core::array::from_fn(|i| (a[i] << k[i]) | (a[i] >> nk[i]))
+}
+
 /// Eight xoshiro256++ streams advanced in lock step (structure of arrays, so
 /// each state word update is one vector operation).
 ///
@@ -140,6 +166,9 @@ impl Xoshiro256pp {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Xoshiro256ppX8 {
     s: [[u64; 8]; 4],
+    /// Rotation amounts `[23, 41, 45, 19]` splatted per lane, hidden from the
+    /// optimiser (see [`rotl`]).
+    rot: [V; 4],
 }
 
 impl Xoshiro256ppX8 {
@@ -174,7 +203,10 @@ impl Xoshiro256ppX8 {
                 row[i] = l.s[k];
             }
         }
-        Self { s }
+        Self {
+            s,
+            rot: black_box([[23; 8], [41; 8], [45; 8], [19; 8]]),
+        }
     }
 
     /// Extracts lane `i` as a scalar generator at its current position.
@@ -202,18 +234,16 @@ impl Xoshiro256ppX8 {
     /// One step of all eight lanes.
     #[inline(always)]
     pub fn step(&mut self) -> [u64; 8] {
-        let s = &mut self.s;
-        let mut out = [0u64; 8];
-        for i in 0..8 {
-            out[i] = s[0][i].wrapping_add(s[3][i]).rotate_left(23).wrapping_add(s[0][i]);
-            let t = s[1][i] << 17;
-            s[2][i] ^= s[0][i];
-            s[3][i] ^= s[1][i];
-            s[1][i] ^= s[2][i];
-            s[0][i] ^= s[3][i];
-            s[2][i] ^= t;
-            s[3][i] = s[3][i].rotate_left(45);
-        }
+        let [k23, n23, k45, n45] = self.rot;
+        let [s0, s1, s2, s3] = &mut self.s;
+        let out = add(rotl(add(*s0, *s3), k23, n23), *s0);
+        let t = shl::<17>(*s1);
+        *s2 = xor(*s2, *s0);
+        *s3 = xor(*s3, *s1);
+        *s1 = xor(*s1, *s2);
+        *s0 = xor(*s0, *s3);
+        *s2 = xor(*s2, t);
+        *s3 = rotl(*s3, k45, n45);
         out
     }
 

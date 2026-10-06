@@ -45,17 +45,17 @@
 //!
 //! | Function | Range | Max ULP measured | Bound asserted |
 //! |---|---|---|---|
-//! | `exp` | `[-87.3, 88.72]` (normal results) | EXP_NORMAL | EXP_NORMAL_B |
-//! | `exp` | `[-103.97, -87.3]` (subnormal results) | EXP_SUB | EXP_SUB_B |
-//! | `ln` | all positive finite, incl. subnormals | LN | LN_B |
-//! | `sin`, `cos` | `abs(x) <= 8192` | TRIG | TRIG_B |
-//! | `sin`, `cos` | `8192 < abs(x) <= 100000` | TRIG_BIG | TRIG_BIG_B |
-//! | `tanh` | all finite | TANH | TANH_B |
-//! | `erf` | all finite | ERF | ERF_B |
+//! | `exp` | `[-87.3, 88.72]` (normal results) | 0.97 | 1.1 |
+//! | `exp` | `[-103.97, -87.3]` (subnormal results) | 0.75 | 1.0 |
+//! | `ln` | all positive finite, incl. subnormals | 0.79 | 1.0 |
+//! | `sin`, `cos` | `abs(x) <= 8192` | 2.43 | 3.0 |
+//! | `sin`, `cos` | `8192 < abs(x) <= 100000` | 3.42 | 3.5 |
+//! | `tanh` | all finite | 1.28 | 1.5 |
+//! | `erf` | all finite | 2.64 | 3.0 |
 //!
 //! `sin`/`cos` are relative-error limited near the zeros of the function
-//! (the reduced argument carries an absolute error of a few `1e-8`); the
-//! absolute error is below `2e-7` over `abs(x) <= 8192`. The ULP numbers
+//! (the reduction is a 5-part Cody-Waite split of pi/2 whose first three products are exact, but the polynomial itself rounds at `1e-7` absolute); the
+//! absolute error is below `1e-7` over `abs(x) <= 8192` (measured `9.6e-8`). The ULP numbers
 //! above are measured against the exact value over the whole range, zeros
 //! included.
 //!

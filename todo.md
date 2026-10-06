@@ -412,19 +412,19 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd`
 
 ### tpt-simd-math
-- [ ] Vector `exp`, `ln`, `sin`, `cos`, `tanh`, `erf` (polynomial approximations, documented max ULP error)
-- [ ] Accuracy tests against `libm` over full range, special values (NaN/inf/subnormal)
+- [x] Vector `exp`, `ln`, `sin`, `cos`, `tanh`, `erf` (polynomial approximations, documented max ULP error) — f32 only; max ULP 0.8–3.4 (docs in crate)
+- [x] Accuracy tests against `libm` over full range, special values (NaN/inf/subnormal)
 - [ ] Wire into `tpt-math-stats`, `tpt-math-prob-dist`, `tpt-math-prob-monte-carlo`, `tpt-math-prob-sampler`, autodiff
 
 ### tpt-simd-rng
-- [ ] Lane-parallel xoshiro / Philox generators (independent streams per lane, reproducible seeding)
-- [ ] Vectorised uniform -> normal (Box-Muller or ziggurat)
-- [ ] Statistical quality checks (e.g. PractRand/TestU01-style smoke tests)
+- [x] Lane-parallel xoshiro / Philox generators (independent streams per lane, reproducible seeding)
+- [x] Vectorised uniform -> normal (Box-Muller or ziggurat) — Box-Muller, 5-7.5x vs libm scalar
+- [x] Statistical quality checks (e.g. PractRand/TestU01-style smoke tests) — chi-square/moment/bit-balance smoke tests (not PractRand)
 - [ ] Wire into `tpt-math-prob-sampler` and `tpt-math-prob-monte-carlo`
 
 ### tpt-simd-sparse
-- [ ] CSR/CSC SpMV using `tpt-simd-gather`
-- [ ] Fused vector updates for CG / BiCGSTAB
+- [x] CSR/CSC SpMV using `tpt-simd-gather` — implemented with multi-accumulator loads (gather measured, not adopted; ~1.2–2x, memory bound)
+- [x] Fused vector updates for CG / BiCGSTAB — ~1.5x vs 3 passes (cache-resident)
 - [ ] Wire into `tpt-math-linalg-sparse`
 
 ### tpt-simd-reduce

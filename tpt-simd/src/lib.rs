@@ -32,6 +32,8 @@ pub use tpt_simd_horizontal as horizontal;
 #[doc(inline)]
 pub use tpt_simd_interpolate as interpolate;
 #[doc(inline)]
+pub use tpt_simd_math as math;
+#[doc(inline)]
 pub use tpt_simd_matrix as matrix;
 #[doc(inline)]
 pub use tpt_simd_mul as mul;
@@ -39,6 +41,8 @@ pub use tpt_simd_mul as mul;
 pub use tpt_simd_permute as permute;
 #[doc(inline)]
 pub use tpt_simd_reduce as reduce;
+#[doc(inline)]
+pub use tpt_simd_rng as rng;
 #[doc(inline)]
 pub use tpt_simd_rounding as rounding;
 #[doc(inline)]
@@ -49,5 +53,7 @@ pub use tpt_simd_scatter as scatter;
 pub use tpt_simd_select as select;
 #[doc(inline)]
 pub use tpt_simd_shift as shift;
+#[doc(inline)]
+pub use tpt_simd_sparse as sparse;
 #[doc(inline)]
 pub use tpt_simd_window as window;

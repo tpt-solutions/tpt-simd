@@ -181,3 +181,22 @@ relaxed for these crates).
 
 Notes: gemm without `target-cpu=native` uses the portable non-FMA kernel
 (untimed). Complex BLAS, cargo-show-asm and tpt-math wiring are not done.
+
+## Phase 10: math, rng, sparse
+
+Native, noisy machine (other builds running; single runs swung up to 10x, so
+figures are best-of-runs / interleaved and indicative).
+
+| Crate / op | vs baseline | Notes |
+|---|---|---|
+| math: exp / ln / sin / cos / tanh / erf (f32 slices) | 4.7-9.9x / 2.5x / 4.3x / 5.3x / 5.6-8.9x / 3.2-3.9x vs libm scalar loop | max ULP 0.97 / 0.79 / 3.4 / 3.4 / 1.28 / 2.64; sin/cos NaN for abs(x) > 1e5; no FMA, bit-identical across targets |
+| rng: uniform f32 / normal f32 / normal f64 | 2.5x / 7.5x / 5.2x vs scalar xoshiro / libm Box-Muller | |
+| rng: raw u64 / uniform f64 | 1.1-1.4x | AVX2 lacks 64-bit rotate/multiply |
+| sparse: SpMV CSR (Poisson / random) | 1.2-1.4x (2x on 128 nnz/row) | memory/latency bound |
+| sparse: fused `cg_update` | 1.5x vs 3 passes (n=65536), 1.1x at 4M | memory bound at large n |
+
+Sparse finding: hardware gather beat the default 4-accumulator kernel by 5-15%
+on f32 rows of 12+ entries when `x` fits in L2 (isolated gather loops were slower
+than scalar loads, see Phase 3-6 above). Not adopted: f32-only, AVX2-only,
+needs `unsafe`, within noise. Pitfall: a `[[T; 8]; 4]` accumulator spilled to
+memory (10x slower); flat `[T; 32]` fixed it.
