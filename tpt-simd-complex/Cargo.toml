@@ -13,16 +13,24 @@ categories.workspace = true
 
 [features]
 default = []
-std = ["tpt-simd-core/std"]
-nightly = ["tpt-simd-core/nightly"]
-scalar-only = ["tpt-simd-core/scalar-only"]
+std = ["tpt-simd-core/std", "tpt-simd-mul/std"]
+nightly = ["tpt-simd-core/nightly", "tpt-simd-mul/nightly"]
+scalar-only = ["tpt-simd-core/scalar-only", "tpt-simd-mul/scalar-only"]
 
 [dependencies]
 tpt-simd-core.workspace = true
+tpt-simd-mul = { path = "../tpt-simd-mul", version = "0.1.0" }
+libm.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
 tpt-simd-testutil.workspace = true
+
+criterion = { workspace = true, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "complex"
+harness = false
 
 [lints]
 workspace = true

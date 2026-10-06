@@ -6,9 +6,9 @@ Status: Design Phase
 1. Executive Summary
 tpt-simd is a proposed Rust workspace providing high-level, portable SIMD abstractions that wrap low-level architecture intrinsics (core::arch) for DSP and codec development. It bridges the gap between raw intrinsics and domain-specific needs, offering reusable building blocks that are currently missing from the Rust ecosystem.
 Core Problem: Every Rust codec developer reinvents the same 20 SIMD patterns (complex multiply, fixed-point arithmetic, butterflies, transpose, dot products, etc.) because no unified abstraction layer exists.
-Solution: Extract these patterns into a coherent set of 20 focused crates, each wrapping 2-5 intrinsics to solve a specific, common problem.
+Solution: Extract these patterns into a coherent set of 22 focused crates (the 21 below plus tpt-simd-vector, the stable backend), each wrapping 2-5 intrinsics to solve a specific, common problem.
 Key Value Propositions:
-20 focused crates covering the complete SIMD abstraction surface for DSP
+22 focused crates covering the complete SIMD abstraction surface for DSP
 Zero-cost abstractions that compile to optimal SIMD instructions
 Portable across x86_64 (SSE/AVX/AVX2/AVX-512), ARM64 (NEON/SVE), and RISC-V (Vector)
 Type-safe wrappers that eliminate common SIMD bugs (alignment, overflow, rounding)
@@ -28,7 +28,7 @@ Subtle bugs: Incorrect rounding, alignment issues, saturation errors
 Portability nightmares: Separate x86 and ARM implementations per project
 Maintenance burden: Every project maintains its own SIMD code
 2.2 Why These Abstractions Don't Exist
-Timing: Rust's portable SIMD (core::simd) only recently stabilized
+Timing: Rust's portable SIMD (core::simd) is still nightly-only, so a stable backend (tpt-simd-vector) is needed
 Fragmentation: Existing crates (wide, simba, rustfft) solve parts of the problem but aren't unified
 Expertise barrier: Requires SIMD hardware knowledge + codec expertise + Rust type system mastery
 Tiny market: Only ~100 Rust developers work on codecs
@@ -37,7 +37,7 @@ Boring infrastructure: No glory in dot product libraries
 2.3 The Gap in the Ecosystem
 Current Rust SIMD landscape:
 core::arch: Raw intrinsics — powerful but verbose, unsafe, architecture-specific
-core::simd: Portable SIMD — stable but low-level, no domain abstractions
+core::simd: Portable SIMD — nightly-only and low-level, no domain abstractions
 wide: SIMD wrappers — general-purpose, no complex/fixed-point support
 rustfft: FFT implementation — great but not reusable for other DSP
 num-complex: Complex numbers — scalar only, not SIMD-optimized
@@ -148,7 +148,7 @@ impl<T, const INT_BITS: u32, const FRAC_BITS: u32, const N: usize> Fixed<T, INT_
 
 Intrinsics Used:
 _mm256_mullo_epi32 (multiply low)
-_mm256_mulhi_epi32 (multiply high for 64-bit results)
+_mm256_mul_epi32 on even/odd lanes plus shifts (64-bit intermediate; _mm256_mulhi_epi32 does not exist)
 Shift and rounding operations
 Performance Target: 2x speedup over manual fixed-point with correct rounding.
 tpt-simd-saturate
@@ -449,7 +449,7 @@ Profile with cargo-show-asm to verify optimal codegen
 Deliverables:
 All arithmetic variants implemented
 Assembly output verified
-5.5 Phase 5: Comparison & Control Flow (Weekes 11-12)
+5.5 Phase 5: Comparison & Control Flow (Weeks 11-12)
 Implement tpt-simd-compare (comparison with masks)
 Implement tpt-simd-blend (conditional selection)
 Implement tpt-simd-select (element selection)
@@ -607,7 +607,7 @@ _mm256_add_epi16, _mm256_sub_epi16, _mm256_adds_epi16, _mm256_subs_epi16
 _mm256_fmadd_ps, _mm256_fmsub_ps, _mm256_fmaddsub_ps
 Multiply:
 _mm256_mullo_epi16, _mm256_mulhi_epi16
-_mm256_mullo_epi32, _mm256_mulhi_epi32
+_mm256_mullo_epi32, _mm256_mul_epi32
 _mm256_madd_epi16, _mm256_maddubs_epi16
 _mm256_dp_ps
 Comparison:
@@ -652,7 +652,7 @@ Appendix B: Example Usage
 B.1 Complex Multiplication (FFT)
 
 use tpt_simd_complex::ComplexSimd;
-use core::simd::f32x8;
+use tpt_simd_core::F32x8 as f32x8; // stable backend; core::simd is nightly-only
 
 let a = ComplexSimd::new(f32x8::splat(1.0), f32x8::splat(2.0));
 let b = ComplexSimd::new(f32x8::splat(3.0), f32x8::splat(4.0));
@@ -661,7 +661,7 @@ let result = a * b;  // (1+2i)(3+4i) = (3-8) + (4+6)i = -5 + 10i
 B.2 Fixed-Point Motion Compensation
 
 use tpt_simd_fixed::Fixed;
-use core::simd::i32x8;
+use tpt_simd_core::I32x8 as i32x8;
 
 let a: Fixed<i32, 16, 16, 8> = Fixed::from_f32(f32x8::splat(1.5));
 let b: Fixed<i32, 16, 16, 8> = Fixed::from_f32(f32x8::splat(2.5));
@@ -686,7 +686,7 @@ transpose_8x8_i16(&mut block);
 B.5 FFT Butterfly
 
 use tpt_simd_butterfly::butterfly_f32;
-use core::simd::f32x8;
+use tpt_simd_core::F32x8 as f32x8; // stable backend; core::simd is nightly-only
 
 let mut a = f32x8::from_array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
 let mut b = f32x8::from_array([8.0, 7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0]);
