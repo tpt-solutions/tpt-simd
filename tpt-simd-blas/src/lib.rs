@@ -16,6 +16,11 @@
 //! | `gemv_*` | `y = alpha * A x + beta * y` |
 //! | `gemv_t_*` | `y = alpha * A^T x + beta * y` |
 //! | `gemm_*` | `C = alpha * A B + beta * C` |
+//! | `getrf_*` | `P A = L U` (blocked, partial pivoting) |
+//! | `getrs_*` | solve `A X = B` from the `getrf` factors |
+//! | `trsm_*` | `B = alpha * op(A)^-1 B`, `A` triangular (left side) |
+//! | `potrf_*` | `A = L L^T` (blocked Cholesky, lower) |
+//! | `potrs_*` | solve `A X = B` from the `potrf` factor |
 //!
 //! ## Accumulation order and tolerance (ADR 0001 relaxation)
 //!
@@ -63,6 +68,58 @@
 //! use `gemm_with_workspace_*` and size the buffer with
 //! `gemm_workspace_len_*`.
 //!
+//! ## Factorisations
+//!
+//! `getrf`/`getrs`/`trsm`/`potrf`/`potrs` follow LAPACK conventions
+//! (column-major, leading dimensions, in place):
+//!
+//! * `getrf(m, n, a, lda, ipiv)` overwrites `A` (`m x n`) with the unit-lower
+//!   `L` (below the diagonal) and `U`. `ipiv[i]` (zero-based, `>= i`) is the
+//!   row swapped with row `i`; `ipiv` needs `min(m, n)` entries. An exactly
+//!   zero pivot gives `Err(SingularError { index })` for the first such
+//!   column, but the factorisation is still completed (zero multipliers).
+//! * `getrs(n, nrhs, a, lda, ipiv, b, ldb)` solves `A X = B` in place (no
+//!   transpose). It does not check for singular `U`: a zero diagonal yields
+//!   inf/NaN, as in LAPACK. An inverse is `getrs` on the identity.
+//! * `trsm(uplo, trans, diag, m, n, alpha, a, lda, b, ldb)` solves
+//!   `op(A) X = alpha B` (left side) for `m x m` triangular `A`. Only the
+//!   selected triangle is read (and never the diagonal for [`Diag::Unit`]).
+//!   `alpha == 0` writes zeros. A zero diagonal divides by zero (inf/NaN).
+//! * `potrf(n, a, lda)` factors a symmetric positive definite matrix from its
+//!   **lower** triangle only; the strictly upper triangle is neither read nor
+//!   written. A pivot that is `<= 0` or NaN gives
+//!   `Err(NotPositiveDefiniteError { index })` and stops (the rest of `A` is
+//!   unspecified). `potrs(n, nrhs, a, lda, b, ldb)` solves with that factor.
+//!
+//! The blocked algorithms (right-looking, panel width 32) update the trailing
+//! matrix with the packed `gemm` kernel, so they use the AVX2+FMA
+//! microkernel automatically (compile-time or `runtime-dispatch`). `trsm`
+//! uses 64-wide diagonal blocks solved with `axpy`/`dot` and updates the rest
+//! with `gemm` (`gemv` for a single right-hand side). Panel factorisations
+//! are unblocked `axpy` column updates.
+//!
+//! **Tolerance.** Like `gemm`, the updates are reassociated, so factors differ
+//! from the naive [`reference`] versions (plain left-to-right sums) by
+//! rounding. The usual backward-error bounds hold: for `getrf` with partial
+//! pivoting `|P A - L U| <= c n eps |L||U|` (growth-factor dependent), for
+//! `potrf` `|A - L L^T| <= c n eps |L||L^T|`. Pivot choices can differ from
+//! the reference only for (near-)ties. Compare solutions by the residual
+//! `||A x - b|| / (||A|| ||x||)`, not bitwise.
+//!
+//! **NaN/inf.** There is no NaN/inf screening. A NaN in a `getrf` pivot
+//! column is never chosen as pivot unless it is the first candidate, and it
+//! propagates through the updates (no panic); `potrf` reports a NaN pivot as
+//! `NotPositiveDefiniteError`. `axpy`-style updates skip zero multipliers, so
+//! a NaN/inf multiplied by an exact zero multiplier is not propagated (same
+//! rule as `axpy` with `alpha == 0`).
+//!
+//! **Workspace.** The `_with_workspace_*` variants take a caller buffer sized
+//! by `getrf_workspace_len_*`, `potrf_workspace_len_*` or
+//! `trsm_workspace_len_*` (which is also what `getrs`/`potrs` need, with
+//! `m = n`); the variants without the suffix allocate it (`alloc` feature).
+//! The length is 0 for small problems. Zero dimensions are valid and read
+//! nothing.
+//!
 //! ## Panics
 //!
 //! Operands too short for their dimensions/leading dimension, `lda < rows`,
@@ -104,6 +161,11 @@ extern crate std;
 mod check;
 #[macro_use]
 mod imp;
+#[macro_use]
+mod lapack;
+#[macro_use]
+mod lapack_api;
+pub use lapack::{Diag, NotPositiveDefiniteError, SingularError, Trans, Uplo};
 #[cfg(all(
     not(feature = "scalar-only"),
     target_arch = "x86_64",
@@ -138,6 +200,57 @@ blas_impl!(
     nc = 512,
     sqrt = libm::sqrt,
     kernel = crate::x86::kernel_f64
+);
+
+lapack_impl!(
+    fsingle,
+    f32,
+    blas = single,
+    sqrt = libm::sqrtf,
+    nb = 32,
+    tb = 64
+);
+lapack_impl!(
+    fdouble,
+    f64,
+    blas = double,
+    sqrt = libm::sqrt,
+    nb = 32,
+    tb = 64
+);
+lapack_api!(
+    fsingle,
+    f32,
+    getrf_f32,
+    getrf_with_workspace_f32,
+    getrf_workspace_len_f32,
+    getrs_f32,
+    getrs_with_workspace_f32,
+    trsm_f32,
+    trsm_with_workspace_f32,
+    trsm_workspace_len_f32,
+    potrf_f32,
+    potrf_with_workspace_f32,
+    potrf_workspace_len_f32,
+    potrs_f32,
+    potrs_with_workspace_f32
+);
+lapack_api!(
+    fdouble,
+    f64,
+    getrf_f64,
+    getrf_with_workspace_f64,
+    getrf_workspace_len_f64,
+    getrs_f64,
+    getrs_with_workspace_f64,
+    trsm_f64,
+    trsm_with_workspace_f64,
+    trsm_workspace_len_f64,
+    potrf_f64,
+    potrf_with_workspace_f64,
+    potrf_workspace_len_f64,
+    potrs_f64,
+    potrs_with_workspace_f64
 );
 
 macro_rules! public_api {
@@ -264,6 +377,38 @@ pub mod reference {
             }
         };
     }
+    macro_rules! lwrap {
+        ($f:ident, $t:ident, $getrf:ident, $getrs:ident, $trsm:ident, $potrf:ident, $potrs:ident) => {
+            #[doc = concat!("Naive unblocked LU with partial pivoting (`", stringify!($t), "`); same conventions as the fast `getrf`.")]
+            pub fn $getrf(m: usize, n: usize, a: &mut [$t], lda: usize, ipiv: &mut [usize]) -> Result<(), crate::SingularError> {
+                crate::$f::reference::getrf(m, n, a, lda, ipiv)
+            }
+            #[doc = concat!("Naive row swaps plus forward/back substitution (`", stringify!($t), "`).")]
+            #[allow(clippy::too_many_arguments)]
+            pub fn $getrs(n: usize, nrhs: usize, a: &[$t], lda: usize, ipiv: &[usize], b: &mut [$t], ldb: usize) {
+                crate::$f::reference::getrs(n, nrhs, a, lda, ipiv, b, ldb)
+            }
+            #[doc = concat!("Naive substitution `B = alpha * op(A)^-1 B` (`", stringify!($t), "`), left side.")]
+            #[allow(clippy::too_many_arguments)]
+            pub fn $trsm(uplo: crate::Uplo, trans: crate::Trans, diag: crate::Diag, m: usize, n: usize, alpha: $t, a: &[$t], lda: usize, b: &mut [$t], ldb: usize) {
+                crate::$f::reference::trsm(uplo, trans, diag, m, n, alpha, a, lda, b, ldb)
+            }
+            #[doc = concat!("Naive row-oriented lower Cholesky (`", stringify!($t), "`).")]
+            pub fn $potrf(n: usize, a: &mut [$t], lda: usize) -> Result<(), crate::NotPositiveDefiniteError> {
+                crate::$f::reference::potrf(n, a, lda)
+            }
+            #[doc = concat!("Naive solve with the lower Cholesky factor (`", stringify!($t), "`).")]
+            pub fn $potrs(n: usize, nrhs: usize, a: &[$t], lda: usize, b: &mut [$t], ldb: usize) {
+                crate::$f::reference::potrs(n, nrhs, a, lda, b, ldb)
+            }
+        };
+    }
+    lwrap!(
+        fsingle, f32, getrf_f32, getrs_f32, trsm_f32, potrf_f32, potrs_f32
+    );
+    lwrap!(
+        fdouble, f64, getrf_f64, getrs_f64, trsm_f64, potrf_f64, potrs_f64
+    );
     wrap!(
         single, f32, axpy_f32, dot_f32, nrm2_f32, asum_f32, gemv_f32, gemv_t_f32, gemm_f32
     );
@@ -274,3 +419,5 @@ pub mod reference {
 
 #[cfg(all(test, feature = "alloc"))]
 mod tests;
+#[cfg(all(test, feature = "alloc"))]
+mod tests_lapack;

@@ -8,8 +8,8 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 readme = "README.md"
-keywords.workspace = true
-categories.workspace = true
+keywords = ["simd", "scatter", "avx512", "vector", "indexing"]
+categories = ["algorithms", "no-std", "hardware-support"]
 
 [features]
 default = []

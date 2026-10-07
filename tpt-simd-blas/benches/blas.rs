@@ -1,4 +1,4 @@
-//! gemm / gemv / dot vs the naive scalar loops in `tpt_simd_blas::reference`.
+//! gemm / gemv / dot, and LU / Cholesky solves, vs the naive scalar loops in `tpt_simd_blas::reference`.
 //!
 //! Throughput is reported as flop/s via `Throughput::Elements(flops)`
 //! (criterion prints it as "elem/s", i.e. GFLOP/s when divided by 1e9).
@@ -179,5 +179,141 @@ fn level1(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, gemm, gemv, level1);
+fn xorshift_fill(n: usize, mut s: u64) -> Vec<f64> {
+    (0..n)
+        .map(|_| {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            (s >> 11) as f64 / (1u64 << 53) as f64 - 0.5
+        })
+        .collect()
+}
+
+/// Generates the LU-solve and Cholesky benchmark groups for one element type.
+macro_rules! factor_benches {
+    ($lu:ident, $chol:ident, $t:ident, $getrf:ident, $getrs:ident, $potrf:ident, $potrs:ident, $tag:literal) => {
+        fn $lu(c: &mut Criterion) {
+            for &n in &[64usize, 256, 512] {
+                let mut g = c.benchmark_group(format!("lu_solve_{}_{n}", $tag));
+                g.throughput(Throughput::Elements((2 * n * n * n / 3 + 2 * n * n) as u64));
+                if n >= 512 {
+                    g.sample_size(10);
+                }
+                let a: Vec<$t> = xorshift_fill(n * n, 42)
+                    .into_iter()
+                    .map(|v| v as $t)
+                    .collect();
+                let b: Vec<$t> = xorshift_fill(n, 43).into_iter().map(|v| v as $t).collect();
+                let mut work = a.clone();
+                let mut x = b.clone();
+                let mut ipiv = vec![0usize; n];
+                g.bench_function("naive", |bn| {
+                    bn.iter(|| {
+                        work.copy_from_slice(black_box(&a));
+                        x.copy_from_slice(&b);
+                        naive::$getrf(n, n, &mut work, n, &mut ipiv).unwrap();
+                        naive::$getrs(n, 1, &work, n, &ipiv, &mut x, n);
+                    })
+                });
+                g.bench_function("tpt", |bn| {
+                    bn.iter(|| {
+                        work.copy_from_slice(black_box(&a));
+                        x.copy_from_slice(&b);
+                        blas::$getrf(n, n, &mut work, n, &mut ipiv).unwrap();
+                        blas::$getrs(n, 1, &work, n, &ipiv, &mut x, n);
+                    })
+                });
+                g.finish();
+            }
+        }
+
+        fn $chol(c: &mut Criterion) {
+            for &n in &[64usize, 256, 512] {
+                let mut g = c.benchmark_group(format!("cholesky_{}_{n}", $tag));
+                g.throughput(Throughput::Elements((n * n * n / 3 + 2 * n * n) as u64));
+                if n >= 512 {
+                    g.sample_size(10);
+                }
+                // Symmetric, diagonally dominant => SPD.
+                let mut a: Vec<$t> = xorshift_fill(n * n, 44)
+                    .into_iter()
+                    .map(|v| v as $t)
+                    .collect();
+                for j in 0..n {
+                    for i in 0..j {
+                        a[i + j * n] = a[j + i * n];
+                    }
+                    a[j + j * n] = a[j + j * n].abs() + n as $t;
+                }
+                let b: Vec<$t> = xorshift_fill(n, 45).into_iter().map(|v| v as $t).collect();
+                let mut work = a.clone();
+                let mut x = b.clone();
+                g.bench_function("naive", |bn| {
+                    bn.iter(|| {
+                        work.copy_from_slice(black_box(&a));
+                        x.copy_from_slice(&b);
+                        naive::$potrf(n, &mut work, n).unwrap();
+                        naive::$potrs(n, 1, &work, n, &mut x, n);
+                    })
+                });
+                g.bench_function("tpt", |bn| {
+                    bn.iter(|| {
+                        work.copy_from_slice(black_box(&a));
+                        x.copy_from_slice(&b);
+                        blas::$potrf(n, &mut work, n).unwrap();
+                        blas::$potrs(n, 1, &work, n, &mut x, n);
+                    })
+                });
+                g.finish();
+            }
+        }
+    };
+}
+
+factor_benches!(
+    lu_f64, chol_f64, f64, getrf_f64, getrs_f64, potrf_f64, potrs_f64, "f64"
+);
+factor_benches!(
+    lu_f32, chol_f32, f32, getrf_f32, getrs_f32, potrf_f32, potrs_f32, "f32"
+);
+
+/// Factorisation only (no solve), f64, to separate the blocked kernels' cost.
+fn factor_only(c: &mut Criterion) {
+    for &n in &[64usize, 256, 512] {
+        let mut g = c.benchmark_group(format!("getrf_f64_{n}"));
+        g.throughput(Throughput::Elements((2 * n * n * n / 3) as u64));
+        if n >= 512 {
+            g.sample_size(10);
+        }
+        let a = xorshift_fill(n * n, 42);
+        let mut work = a.clone();
+        let mut ipiv = vec![0usize; n];
+        g.bench_function("naive", |bn| {
+            bn.iter(|| {
+                work.copy_from_slice(black_box(&a));
+                naive::getrf_f64(n, n, &mut work, n, &mut ipiv).unwrap();
+            })
+        });
+        g.bench_function("tpt", |bn| {
+            bn.iter(|| {
+                work.copy_from_slice(black_box(&a));
+                blas::getrf_f64(n, n, &mut work, n, &mut ipiv).unwrap();
+            })
+        });
+        g.finish();
+    }
+}
+
+criterion_group!(
+    benches,
+    gemm,
+    gemv,
+    level1,
+    lu_f64,
+    chol_f64,
+    lu_f32,
+    chol_f32,
+    factor_only
+);
 criterion_main!(benches);

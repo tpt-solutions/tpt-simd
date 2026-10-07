@@ -398,7 +398,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 ### Prerequisites / decisions
 - [x] Clone tpt-math and add baseline criterion benches first (gemm 64/256/1024, dot/norm, LU solve, CG on a Poisson matrix, Monte Carlo 10^7 samples); confirm gains justify the work and how much LLVM already autovectorises — done for gemm/dot/norm/LU solve (docs/benchmarks.md); gemm 4–57x, dot 3–4x, norm 5x. Not yet: CG on Poisson, Monte Carlo 10^7
 - [x] Decide dispatch for library consumers: ADR 0001 is compile-time `cfg(target_feature)`, so users without `-C target-cpu=native` silently get the slow path. Choose runtime dispatch (`is_x86_feature_detected!`, needs `std`) behind a feature, or document required build flags; write ADR 0003 — ADR 0003 accepted; `runtime-dispatch` implemented for blas (umbrella forwards it)
-- [ ] Decide float-determinism policy for reordered reductions and polynomial math (ADR 0001 requires bit-identical; relax to documented ULP/tolerance for `tpt-simd-math` and SIMD reductions); check tpt-math tests and formal-verification consumers for exact-value dependence — tiers accepted in ADR 0003; still to do: check tpt-math tests for exact-value dependence
+- [x] Decide float-determinism policy for reordered reductions and polynomial math (ADR 0001 requires bit-identical; relax to documented ULP/tolerance for `tpt-simd-math` and SIMD reductions); check tpt-math tests and formal-verification consumers for exact-value dependence — tiers accepted in ADR 0003; tpt-math suites (71) pass with simd on and off, so no exact-value dependence found
 - [ ] Add new crates to the workspace; keep `no_std`, MIT/Apache-only deps
 
 ### tpt-simd-blas (highest value)
@@ -409,7 +409,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] Portable reference + AVX2/FMA path; NEON later
 - [ ] Tests vs scalar reference (tails, NaN/inf, non-multiple sizes), proptest, criterion bench, `cargo-show-asm`
 - [x] Target: gemm >= 3x scalar f32 on AVX2 — 5.5–32x vs naive strided loop (28–43 GFLOP/s), see docs/benchmarks.md
-- [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd`
+- [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd` — DONE for DMatrix mul/mat-vec/dot/norm via `simd`/`simd-runtime` features (uncommitted in tpt-math); NOT yet: LU/Cholesky/QR inner loops, tpt-math-linalg-complex
 
 ### tpt-simd-math
 - [x] Vector `exp`, `ln`, `sin`, `cos`, `tanh`, `erf` (polynomial approximations, documented max ULP error) — f32 only; max ULP 0.8–3.4 (docs in crate)

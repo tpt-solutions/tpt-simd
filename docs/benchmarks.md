@@ -222,3 +222,25 @@ Adoption notes: `DMatrix`/`DVector` keep their `Vec` private and expose no
 slice accessor, so tpt-math needs `as_slice()`/`as_mut_slice()` before it can
 call the kernels. LU/Cholesky/QR need a blocked/`axpy`-based inner loop in
 tpt-simd (or tpt-math calling `axpy`/`gemm` from its own factorisations).
+
+### End to end through tpt-math (`simd` feature wired into `DMatrix`/`DVector`)
+
+`tpt-math-linalg-dense` now has an off-by-default `simd` feature (and
+`simd-runtime`) that routes `DMatrix * DMatrix`, `DMatrix * DVector`, `dot` and
+`norm` to `tpt-simd-blas` for f32/f64. Same bench harness, plain build (no
+target flags), tpt-math's own API:
+
+| f64 op | feature off | `simd` | speedup | `simd-runtime` | speedup |
+|---|---|---|---|---|---|
+| `DMatrix * DMatrix` 64 | 174 µs | 39 µs | 4.4x | 16.9 µs | 10x |
+| 256 | 12.7 ms | 2.71 ms | 4.7x | 1.51 ms | 8.4x |
+| 512 | 337 ms | 19.1 ms | 18x | 8.15 ms | 41x |
+| `dot` 1024 / 65536 | 988 ns / 59 µs | 124 ns / 13.1 µs | 8x / 4.5x | 107 ns / 10.4 µs | 9x / 5.7x |
+| `norm` 1024 / 65536 | 930 ns / 59.9 µs | 104 ns / 7.5 µs | 8.9x / 8x | 90 ns / 6.2 µs | 10x / 9.7x |
+| LU `solve` 64 / 256 | 152 µs / 5.1 ms | unchanged (not wired) | | | |
+
+(Machine noisy: the feature-off baseline itself varied 1.5-2x between runs.)
+tpt-math workspace: fmt, clippy `-D warnings` and all 71 test suites pass with
+the feature off and on, so no test depends on bit-exact scalar sums. Enabling the
+feature adds `T: 'static` to those operations; `tpt-math-linalg-sparse`
+`conjugate_gradient`/`bicgstab` needed `+ 'static` (added unconditionally).
