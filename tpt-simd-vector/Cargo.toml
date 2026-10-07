@@ -7,9 +7,9 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-readme = "../README.md"
-keywords.workspace = true
-categories.workspace = true
+readme = "README.md"
+keywords = ["simd", "vector", "portable", "lanes", "no_std"]
+categories = ["algorithms", "no-std", "hardware-support", "data-structures"]
 
 [features]
 default = []

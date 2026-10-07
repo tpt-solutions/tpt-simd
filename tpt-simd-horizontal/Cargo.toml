@@ -8,8 +8,8 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 readme = "README.md"
-keywords.workspace = true
-categories.workspace = true
+keywords = ["simd", "horizontal", "reduction", "min-max", "no-std"]
+categories = ["algorithms", "mathematics", "no-std"]
 
 [features]
 default = []

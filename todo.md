@@ -7,7 +7,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [x] License: dual MIT OR Apache-2.0, copyright TPT Solutions
 - [x] Dependencies must be MIT-compatible (permissive; **no Apache-2.0-only deps**)
 - [x] Backend: `core::simd` behind `nightly` feature; stable path via own `tpt-simd-vector` crate
-- [x] 22 crates = spec's 21 + new `tpt-simd-vector` (stable backend types)
+- [x] 22 crates = spec's 21 + new `tpt-simd-vector` (stable backend types); the workspace has since grown to 28 `tpt-simd-*` crates (including blas, reduce, math, rng, sparse and the unpublished `testutil`) plus the `tpt-simd` umbrella
 - [x] `no_std` + `alloc` (`std` optional), MSRV = stable-2
 - [x] Targets in v0.1: x86_64 (SSE/AVX/AVX2/AVX-512), ARM64 (NEON/SVE), RISC-V RVV, scalar fallback
 - [x] GitHub + GitHub Actions; tpt-kinetix and tpt-cadence are existing separate repos
@@ -45,7 +45,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 
 ### Workspace
 - [x] Root `Cargo.toml` workspace with `[workspace.package]` (version, edition, license, authors, repository, rust-version)
-- [x] Scaffold all 22 crate dirs with `Cargo.toml` + `src/lib.rs` (`#![no_std]`, `extern crate alloc`)
+- [x] Scaffold the original 22 crate dirs with `Cargo.toml` + `src/lib.rs` (`#![no_std]`, `extern crate alloc`)
   - [x] tpt-simd-core
   - [x] tpt-simd-vector
   - [x] tpt-simd-complex
@@ -396,9 +396,9 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates, currently no SIMD; hand-written scalar loops, e.g. `DMatrix * DMatrix` in `tpt-math-linalg-dense` is a naive strided triple loop). New f32/f64 kernel crates sit on `tpt-simd-vector`/`core`; tpt-math adopts them behind an optional `simd` feature with the scalar path kept as the reference. Skip FFT (`tpt-math-signal-fft` wraps rustfft, already SIMD).
 
 ### Prerequisites / decisions
-- [ ] Clone tpt-math and add baseline criterion benches first (gemm 64/256/1024, dot/norm, LU solve, CG on a Poisson matrix, Monte Carlo 10^7 samples); confirm gains justify the work and how much LLVM already autovectorises
-- [ ] Decide dispatch for library consumers: ADR 0001 is compile-time `cfg(target_feature)`, so users without `-C target-cpu=native` silently get the slow path. Choose runtime dispatch (`is_x86_feature_detected!`, needs `std`) behind a feature, or document required build flags; write ADR 0003 — drafted as ADR 0003 (proposed; needs sign-off, not implemented)
-- [ ] Decide float-determinism policy for reordered reductions and polynomial math (ADR 0001 requires bit-identical; relax to documented ULP/tolerance for `tpt-simd-math` and SIMD reductions); check tpt-math tests and formal-verification consumers for exact-value dependence — tiers drafted in ADR 0003 (proposed)
+- [x] Clone tpt-math and add baseline criterion benches first (gemm 64/256/1024, dot/norm, LU solve, CG on a Poisson matrix, Monte Carlo 10^7 samples); confirm gains justify the work and how much LLVM already autovectorises — done for gemm/dot/norm/LU solve (docs/benchmarks.md); gemm 4–57x, dot 3–4x, norm 5x. Not yet: CG on Poisson, Monte Carlo 10^7
+- [x] Decide dispatch for library consumers: ADR 0001 is compile-time `cfg(target_feature)`, so users without `-C target-cpu=native` silently get the slow path. Choose runtime dispatch (`is_x86_feature_detected!`, needs `std`) behind a feature, or document required build flags; write ADR 0003 — ADR 0003 accepted; `runtime-dispatch` implemented for blas (umbrella forwards it)
+- [ ] Decide float-determinism policy for reordered reductions and polynomial math (ADR 0001 requires bit-identical; relax to documented ULP/tolerance for `tpt-simd-math` and SIMD reductions); check tpt-math tests and formal-verification consumers for exact-value dependence — tiers accepted in ADR 0003; still to do: check tpt-math tests for exact-value dependence
 - [ ] Add new crates to the workspace; keep `no_std`, MIT/Apache-only deps
 
 ### tpt-simd-blas (highest value)

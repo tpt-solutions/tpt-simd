@@ -9,8 +9,8 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 readme = "README.md"
-keywords.workspace = true
-categories.workspace = true
+keywords = ["simd", "proptest", "testing", "test-utils"]
+categories = ["development-tools::testing"]
 
 [dependencies]
 proptest.workspace = true

@@ -1,11 +1,11 @@
 # Contributing to tpt-simd
 
-Thanks for your interest in contributing!
+Thanks for your interest in tpt-simd!
 
-## Licensing of contributions
+## Licensing of contributions and suggestions
 
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in this project by you, as defined in the Apache-2.0 license,
+Unless you explicitly state otherwise, any code or text intentionally submitted
+to this project by you (for example in an issue), as defined in the Apache-2.0 license,
 shall be dual licensed under `MIT OR Apache-2.0`, without any additional terms
 or conditions.
 
@@ -27,9 +27,14 @@ See [todo.md](todo.md) for the full checklist.
 
 ## Workflow
 
-1. Open an issue for non-trivial changes before starting.
-2. Branch from `master` and keep PRs focused.
-3. Run `cargo fmt`, `cargo clippy -- -D warnings` and `cargo test` before pushing.
+tpt-simd accepts **issues only**. Pull requests are not accepted and will be
+closed unmerged.
+
+- Report bugs, request features and propose changes by opening an issue.
+- Include a minimal reproduction, the target CPU / feature set
+  (`-C target-cpu=...`, `std` / `scalar-only` / `nightly`) and your Rust version.
+- For accuracy or performance reports, include the input, the observed and
+  expected results (or benchmark numbers) and how you measured them.
 
 ## Conduct
 

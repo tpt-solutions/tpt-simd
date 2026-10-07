@@ -200,3 +200,25 @@ on f32 rows of 12+ entries when `x` fits in L2 (isolated gather loops were slowe
 than scalar loads, see Phase 3-6 above). Not adopted: f32-only, AVX2-only,
 needs `unsafe`, within noise. Pitfall: a `[[T; 8]; 4]` accumulator spilled to
 memory (10x slower); flat `[T; 32]` fixed it.
+
+## tpt-math baseline vs tpt-simd (Phase 10 prerequisite)
+
+Standalone bench crate (kept outside both repos) comparing tpt-math
+`tpt-math-linalg-dense` 0.1.0 (generic `Scalar`, `from_fn` + strided triple loop,
+`DMatrix * DMatrix` consumes its operands so the bench clones them: O(n^2),
+negligible) against `tpt-simd-blas` / on the same f64 data. Plain build vs
+`-C target-cpu=native`; machine noisy.
+
+| Op (f64) | tpt-math | tpt-simd plain | speedup | tpt-simd native | speedup |
+|---|---|---|---|---|---|
+| gemm 64 | 144 µs | 39.6 µs | 3.6x | 17.3 µs | 9.8x |
+| gemm 256 | 12.2 ms | 2.73 ms | 4.5x | 0.87 ms | 18x |
+| gemm 512 | 327 ms | 20.1 ms | 16x | 6.2 ms | 57x |
+| dot 1024 / 65536 | 451 ns / 36.7 µs | 115 ns / 12.3 µs | 3.9x / 3.0x | 103 ns / 9.0 µs | 4.4x / 3.4x |
+| norm 1024 / 65536 | 502 ns / 33.6 µs | 107 ns / 6.7 µs | 4.7x / 5.0x | 88 ns / 6.4 µs | 4.8x / 5.6x |
+| LU `solve` 64 / 256 | 117 µs / 4.57 ms | not yet wired (no tpt-simd LU) | | | |
+
+Adoption notes: `DMatrix`/`DVector` keep their `Vec` private and expose no
+slice accessor, so tpt-math needs `as_slice()`/`as_mut_slice()` before it can
+call the kernels. LU/Cholesky/QR need a blocked/`axpy`-based inner loop in
+tpt-simd (or tpt-math calling `axpy`/`gemm` from its own factorisations).

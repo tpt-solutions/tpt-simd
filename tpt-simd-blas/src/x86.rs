@@ -1,12 +1,41 @@
-//! AVX2 + FMA gemm microkernels (compiled only with both target features).
+//! AVX2 + FMA gemm microkernels.
+//!
+//! Compiled when AVX2+FMA are enabled at compile time, or when the
+//! `runtime-dispatch` feature is on (then [`available`] detects them once and
+//! caches the answer).
 
 use core::arch::x86_64::*;
+
+/// `true` if the AVX2+FMA kernels may be called.
+#[inline(always)]
+pub(crate) fn available() -> bool {
+    #[cfg(all(target_feature = "avx2", target_feature = "fma"))]
+    {
+        true
+    }
+    #[cfg(not(all(target_feature = "avx2", target_feature = "fma")))]
+    {
+        use core::sync::atomic::{AtomicU8, Ordering};
+        // 0 = unknown, 1 = no, 2 = yes
+        static STATE: AtomicU8 = AtomicU8::new(0);
+        match STATE.load(Ordering::Relaxed) {
+            2 => true,
+            1 => false,
+            _ => {
+                let yes =
+                    std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma");
+                STATE.store(if yes { 2 } else { 1 }, Ordering::Relaxed);
+                yes
+            }
+        }
+    }
+}
 
 /// `out[j*16 + i] = sum_p a[p*16 + i] * b[p*4 + j]` for a 16x4 tile.
 ///
 /// # Safety
 /// `a` must be valid for `16*kc` reads, `b` for `4*kc` reads, `out` for 64
-/// writes. AVX2 and FMA must be available (guaranteed by the module's cfg).
+/// writes. AVX2 and FMA must be available (see [`available`]).
 #[target_feature(enable = "avx2,fma")]
 pub(crate) unsafe fn kernel_f32(kc: usize, a: *const f32, b: *const f32, out: *mut f32) {
     let mut c00 = _mm256_setzero_ps();
@@ -55,7 +84,7 @@ pub(crate) unsafe fn kernel_f32(kc: usize, a: *const f32, b: *const f32, out: *m
 ///
 /// # Safety
 /// `a` must be valid for `8*kc` reads, `b` for `4*kc` reads, `out` for 32
-/// writes. AVX2 and FMA must be available (guaranteed by the module's cfg).
+/// writes. AVX2 and FMA must be available (see [`available`]).
 #[target_feature(enable = "avx2,fma")]
 pub(crate) unsafe fn kernel_f64(kc: usize, a: *const f64, b: *const f64, out: *mut f64) {
     let mut c00 = _mm256_setzero_pd();

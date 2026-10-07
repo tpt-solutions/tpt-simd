@@ -213,20 +213,20 @@ macro_rules! blas_impl {
                 #[cfg(all(
                     not(feature = "scalar-only"),
                     target_arch = "x86_64",
-                    target_feature = "avx2",
-                    target_feature = "fma"
+                    any(
+                        all(target_feature = "avx2", target_feature = "fma"),
+                        feature = "runtime-dispatch"
+                    )
                 ))]
                 {
-                    // SAFETY: lengths asserted above; `out` has MR*NR elements;
-                    // AVX2+FMA are enabled at compile time by the cfg.
-                    unsafe { $kernel(kc, a.as_ptr(), b.as_ptr(), out.as_mut_ptr()) }
+                    if crate::x86::available() {
+                        // SAFETY: lengths asserted above; `out` has MR*NR
+                        // elements; AVX2+FMA are enabled at compile time or
+                        // were detected at runtime by `available()`.
+                        unsafe { $kernel(kc, a.as_ptr(), b.as_ptr(), out.as_mut_ptr()) };
+                        return;
+                    }
                 }
-                #[cfg(not(all(
-                    not(feature = "scalar-only"),
-                    target_arch = "x86_64",
-                    target_feature = "avx2",
-                    target_feature = "fma"
-                )))]
                 {
                     let mut acc = [[0.0 as $t; MR]; NR];
                     for p in 0..kc {

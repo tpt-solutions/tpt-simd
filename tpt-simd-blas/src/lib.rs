@@ -88,15 +88,17 @@
     not(all(
         not(feature = "scalar-only"),
         target_arch = "x86_64",
-        target_feature = "avx2",
-        target_feature = "fma"
+        any(
+            all(target_feature = "avx2", target_feature = "fma"),
+            feature = "runtime-dispatch"
+        )
     )),
     forbid(unsafe_code)
 )]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
-#[cfg(test)]
+#[cfg(any(test, feature = "runtime-dispatch"))]
 extern crate std;
 
 mod check;
@@ -105,8 +107,10 @@ mod imp;
 #[cfg(all(
     not(feature = "scalar-only"),
     target_arch = "x86_64",
-    target_feature = "avx2",
-    target_feature = "fma"
+    any(
+        all(target_feature = "avx2", target_feature = "fma"),
+        feature = "runtime-dispatch"
+    )
 ))]
 mod x86;
 

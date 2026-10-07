@@ -1,6 +1,6 @@
 # ADR 0003: Runtime dispatch for kernel crates and float-determinism tiers
 
-Status: **proposed** (needs maintainer sign-off; amends ADR 0001 for the Phase 10 numeric crates only)
+Status: **accepted** (amends ADR 0001 for the Phase 10 numeric crates only). `runtime-dispatch` is implemented in `tpt-simd-blas` and forwarded by the umbrella crate; see Implementation status.
 
 ## Context
 
@@ -38,13 +38,16 @@ polynomial approximations; they already document tolerances.
    * *Tier 1 (bit-exact vs scalar reference, cross-target)*: all Phase 1-6 crates.
    * *Tier 2 (documented ulp/relative tolerance, may differ across targets or
      dispatch path)*: `blas`, `reduce` (except `min/max/arg*`, which are exact),
-     `math`, `sparse`. Results are still deterministic for a fixed build and CPU;
-     with `runtime-dispatch` they can differ between CPUs (FMA vs non-FMA).
+     `math`, `sparse`. Results are deterministic for a fixed build *and* CPU class.
+     With `runtime-dispatch` the same binary can give slightly different results
+     on different machines (FMA vs non-FMA rounding), so do not compare these
+     outputs bit-for-bit across machines.
    * *Tier 3 (statistical)*: `rng` outputs are bit-reproducible for a seed, but
      normal/uniform-float transforms use approximations with documented error.
-5. tpt-math adopts the kernels behind its own optional `simd` feature, with the
-   scalar path kept as the reference and used by tests that need exact values.
-   Formal-verification consumers must stay on the scalar path (Tier 1 only).
+5. tpt-math adopts the kernels behind its own optional `simd` feature, which is
+   **off by default** (binding rule), with the scalar path kept as the reference
+   and used by tests that need exact values. Formal-verification consumers must
+   stay on the scalar path (Tier 1 only).
 
 ## Consequences
 
@@ -60,3 +63,17 @@ polynomial approximations; they already document tolerances.
 * Document build flags only: rejected as the sole answer (silent 3-30x slowdowns).
 * `multiversion`/`pulp` crates: a dependency, and licences/maintenance to vet;
   revisit if hand-rolled dispatch grows.
+
+## Implementation status
+
+* `tpt-simd-blas`: `runtime-dispatch` feature done. `x86::available()` returns
+  `true` under static AVX2+FMA, else detects once via `is_x86_feature_detected!`
+  and caches in an `AtomicU8`; checked once per microkernel call (thousands of
+  flops), and `scalar-only` still forces the portable path. Tests pass with the
+  feature, with `scalar-only`, and with native flags.
+  Measured gemm f32 256, plain build (no target flags): 2.06 ms -> 1.12 ms
+  (about 1.8x); fully native build is 0.83 ms (the rest of the gemm code also
+  benefits from AVX2 codegen).
+* Umbrella `tpt-simd` forwards `runtime-dispatch`.
+* `reduce`, `math`, `sparse`, `rng` use portable code only (no intrinsics), so
+  they have nothing to dispatch yet; they gain from `-C target-cpu`/LLVM only.

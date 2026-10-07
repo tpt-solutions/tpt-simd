@@ -8,14 +8,16 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 readme = "README.md"
-keywords.workspace = true
-categories.workspace = true
+keywords = ["simd", "dsp", "codec", "fft", "no_std"]
+categories = ["algorithms", "no-std", "multimedia", "mathematics"]
 
 [features]
 default = []
 std = ["tpt-simd-core/std"]
 nightly = ["tpt-simd-core/nightly"]
 scalar-only = ["tpt-simd-core/scalar-only"]
+# Detect AVX2+FMA at runtime in kernel crates that have intrinsics paths (ADR 0003).
+runtime-dispatch = ["std", "tpt-simd-blas/runtime-dispatch"]
 
 [dependencies]
 tpt-simd-core.workspace = true

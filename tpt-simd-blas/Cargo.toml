@@ -8,14 +8,16 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 readme = "README.md"
-keywords.workspace = true
-categories.workspace = true
+keywords = ["simd", "blas", "gemm", "linear-algebra", "matrix"]
+categories = ["algorithms", "mathematics", "science", "no-std"]
 
 [features]
 default = ["alloc"]
 # `gemm_*`/`gemv_*` convenience entry points that allocate their own packing buffers.
 alloc = []
 std = ["alloc", "tpt-simd-core/std"]
+# Detect AVX2+FMA once at runtime (x86_64) instead of requiring `-C target-cpu`; see ADR 0003.
+runtime-dispatch = ["std"]
 nightly = ["tpt-simd-core/nightly"]
 scalar-only = ["tpt-simd-core/scalar-only"]
 
