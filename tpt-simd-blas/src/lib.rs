@@ -16,11 +16,57 @@
 //! | `gemv_*` | `y = alpha * A x + beta * y` |
 //! | `gemv_t_*` | `y = alpha * A^T x + beta * y` |
 //! | `gemm_*` | `C = alpha * A B + beta * C` |
+//! | `*_c32` / `*_c64` | complex variants of the level 1-3 routines (see below) |
 //! | `getrf_*` | `P A = L U` (blocked, partial pivoting) |
 //! | `getrs_*` | solve `A X = B` from the `getrf` factors |
 //! | `trsm_*` | `B = alpha * op(A)^-1 B`, `A` triangular (left side) |
 //! | `potrf_*` | `A = L L^T` (blocked Cholesky, lower) |
 //! | `potrs_*` | solve `A X = B` from the `potrf` factor |
+//!
+//! ## Complex kernels (`*_c32`, `*_c64`)
+//!
+//! Complex `axpy`, `scal`, `dotu`, `dotc`, `nrm2`, `asum`, `gemv` (plain,
+//! `_t` transpose, `_h` conjugate transpose) and `gemm` for `f32`/`f64`.
+//! Scalars (`alpha`, `beta`) are `[re, im]` and complex results are returned
+//! as `[re, im]`.
+//!
+//! **Layout.** Two equivalent families exist:
+//!
+//! * **Split planes** (`axpy_c32(alpha, xr, xi, yr, yi)`, ...): real and
+//!   imaginary parts live in separate slices. A complex matrix is a pair of
+//!   column-major planes `ar`/`ai` sharing one leading dimension (in
+//!   elements). This is the native, fastest layout: `gemm` becomes four real
+//!   packed `gemm` calls and level 1/2 code vectorises without shuffles.
+//! * **Interleaved** (`axpy_il_c32(alpha, x, y)`, ...): `&[[T; 2]]`, i.e.
+//!   `re, im, re, im, ...` in memory, the layout of a `#[repr(C)]` complex
+//!   struct or C `_Complex`. Level 1/2 run in place with no conversion
+//!   (portable auto-vectorised loops, no extra AVX2 code); `gemm_il_*`
+//!   converts to split planes, multiplies and converts back (`O(mk + kn + mn)`
+//!   copies and allocations versus `O(mnk)` flops; needs `alloc`).
+//!   [`deinterleave_c32`]/[`interleave_c32`] convert explicitly.
+//!
+//! `tpt_math_linalg_complex::Complex<T>` is a plain `struct { re, im }`
+//! **without `#[repr(C)]`**, so its layout is unspecified and casting its
+//! slices to `&[[T; 2]]` is not sound; callers must copy element-wise into
+//! `[T; 2]` or into planes (one pass, which `unsafe`-free tpt-math pays
+//! anyway). Its storage is a column-major `Vec<Complex<T>>` with
+//! `lda = nrows`, which matches the interleaved entry points after that copy.
+//!
+//! **`gemm` method.** `C = alpha A B + beta C` is evaluated as `C = beta C`,
+//! then `Cr += Ar Br - Ai Bi`, `Ci += Ar Bi + Ai Br` with four real `gemm`
+//! calls (the "4M" method): no temporary for `alpha == 1`, otherwise one
+//! `2 k n` scaled copy of `B`. The 3M (Karatsuba) method saves a quarter of
+//! the flops but its imaginary part only has a norm-wise error bound and
+//! loses accuracy under cancellation, so it is deliberately not used. Errors
+//! are the usual `~ k eps` relative to `sum |a||b|`; tiny real or imaginary
+//! parts of cancelling results carry absolute, not relative, error.
+//!
+//! BLAS special cases carry over, with complex `alpha`/`beta` compared against
+//! exactly `0` and `1`. `scal` has no real-`alpha` shortcut. `nrm2` does no
+//! scaling; `asum` is `sum |re| + |im|` (BLAS `scasum`), not `sum |z|`.
+//! SIMD: complex `gemm` inherits the AVX2+FMA microkernel (compile-time or
+//! `runtime-dispatch`); complex level 1/2 are portable auto-vectorised code
+//! like the real ones.
 //!
 //! ## Accumulation order and tolerance (ADR 0001 relaxation)
 //!
@@ -160,6 +206,10 @@ extern crate std;
 
 mod check;
 #[macro_use]
+mod complex;
+#[macro_use]
+mod complex_api;
+#[macro_use]
 mod imp;
 #[macro_use]
 mod lapack;
@@ -201,6 +251,9 @@ blas_impl!(
     sqrt = libm::sqrt,
     kernel = crate::x86::kernel_f64
 );
+
+complex_impl!(csingle, f32, real = single, w = 8, sqrt = libm::sqrtf);
+complex_impl!(cdouble, f64, real = double, w = 4, sqrt = libm::sqrt);
 
 lapack_impl!(
     fsingle,
@@ -338,6 +391,65 @@ public_api!(
     gemm_workspace_len_f64
 );
 
+complex_api!(
+    csingle,
+    f32,
+    "`f32`",
+    axpy_c32,
+    scal_c32,
+    dotu_c32,
+    dotc_c32,
+    nrm2_c32,
+    asum_c32,
+    gemv_c32,
+    gemv_t_c32,
+    gemv_h_c32,
+    gemm_c32,
+    gemm_with_workspace_c32,
+    gemm_workspace_len_c32,
+    axpy_il_c32,
+    scal_il_c32,
+    dotu_il_c32,
+    dotc_il_c32,
+    nrm2_il_c32,
+    asum_il_c32,
+    gemv_il_c32,
+    gemv_t_il_c32,
+    gemv_h_il_c32,
+    gemm_il_c32,
+    deinterleave_c32,
+    interleave_c32
+);
+complex_api!(
+    cdouble,
+    f64,
+    "`f64`",
+    axpy_c64,
+    scal_c64,
+    dotu_c64,
+    dotc_c64,
+    nrm2_c64,
+    asum_c64,
+    gemv_c64,
+    gemv_t_c64,
+    gemv_h_c64,
+    gemm_c64,
+    gemm_with_workspace_c64,
+    gemm_workspace_len_c64,
+    axpy_il_c64,
+    scal_il_c64,
+    dotu_il_c64,
+    dotc_il_c64,
+    nrm2_il_c64,
+    asum_il_c64,
+    gemv_il_c64,
+    gemv_t_il_c64,
+    gemv_h_il_c64,
+    gemm_il_c64,
+    deinterleave_c64,
+    interleave_c64
+);
+
 /// Naive left-to-right scalar implementations used as the test oracle and
 /// benchmark baseline (the "naive triple loop" a plain matrix library uses).
 ///
@@ -379,6 +491,14 @@ pub mod reference {
             }
         };
     }
+    complex_ref_api!(
+        csingle, f32, axpy_c32, scal_c32, dotu_c32, dotc_c32, nrm2_c32, asum_c32, gemv_c32,
+        gemv_t_c32, gemv_h_c32, gemm_c32
+    );
+    complex_ref_api!(
+        cdouble, f64, axpy_c64, scal_c64, dotu_c64, dotc_c64, nrm2_c64, asum_c64, gemv_c64,
+        gemv_t_c64, gemv_h_c64, gemm_c64
+    );
     macro_rules! lwrap {
         ($f:ident, $t:ident, $getrf:ident, $getrs:ident, $trsm:ident, $potrf:ident, $potrs:ident) => {
             #[doc = concat!("Naive unblocked LU with partial pivoting (`", stringify!($t), "`); same conventions as the fast `getrf`.")]
@@ -421,5 +541,7 @@ pub mod reference {
 
 #[cfg(all(test, feature = "alloc"))]
 mod tests;
+#[cfg(all(test, feature = "alloc"))]
+mod tests_complex;
 #[cfg(all(test, feature = "alloc"))]
 mod tests_lapack;

@@ -51,6 +51,87 @@ fn bench(c: &mut Criterion) {
             black_box((&or, &oi));
         })
     });
+    // Iterator/zip loops: no bounds checks, so LLVM auto-vectorises them.
+    // `zip_unfused` is the fair "auto-vectorised scalar" baseline (not
+    // bit-identical to tpt: mul+sub rounds twice); `zip_fma` uses the same
+    // fused rule as tpt (bit-identical) and also auto-vectorises under
+    // `-C target-cpu=native`.
+    g.bench_function("scalar_zip_unfused", |b| {
+        let (mut or, mut oi) = (vec![0.0f32; N], vec![0.0f32; N]);
+        b.iter(|| {
+            let (ar, ai, br, bi) = (
+                black_box(&ar),
+                black_box(&ai),
+                black_box(&br),
+                black_box(&bi),
+            );
+            for ((((o_r, o_i), (&x, &y)), &u), &v) in or
+                .iter_mut()
+                .zip(oi.iter_mut())
+                .zip(ar.iter().zip(ai))
+                .zip(br)
+                .zip(bi)
+            {
+                *o_r = x * u - y * v;
+                *o_i = x * v + y * u;
+            }
+            black_box((&or, &oi));
+        })
+    });
+    g.bench_function("scalar_zip_fma", |b| {
+        let (mut or, mut oi) = (vec![0.0f32; N], vec![0.0f32; N]);
+        b.iter(|| {
+            let (ar, ai, br, bi) = (
+                black_box(&ar),
+                black_box(&ai),
+                black_box(&br),
+                black_box(&bi),
+            );
+            for ((((o_r, o_i), (&x, &y)), &u), &v) in or
+                .iter_mut()
+                .zip(oi.iter_mut())
+                .zip(ar.iter().zip(ai))
+                .zip(br)
+                .zip(bi)
+            {
+                *o_r = x.mul_add(u, -(y * v));
+                *o_i = x.mul_add(v, y * u);
+            }
+            black_box((&or, &oi));
+        })
+    });
+    // tpt over whole slices (chunks, no per-vector `black_box`).
+    g.bench_function("tpt_complex_mul_f32_chunks", |b| {
+        let (mut or, mut oi) = (vec![0.0f32; N], vec![0.0f32; N]);
+        b.iter(|| {
+            let (ar, ai, br, bi) = (
+                black_box(&ar),
+                black_box(&ai),
+                black_box(&br),
+                black_box(&bi),
+            );
+            for ((((ca, cb), cc), cd), (co, ci)) in ar
+                .chunks_exact(8)
+                .zip(ai.chunks_exact(8))
+                .zip(br.chunks_exact(8))
+                .zip(bi.chunks_exact(8))
+                .zip(or.chunks_exact_mut(8).zip(oi.chunks_exact_mut(8)))
+            {
+                let x = ComplexSimd::new(
+                    tpt_simd_core::Simd::from_slice(ca),
+                    tpt_simd_core::Simd::from_slice(cb),
+                );
+                let y = ComplexSimd::new(
+                    tpt_simd_core::Simd::from_slice(cc),
+                    tpt_simd_core::Simd::from_slice(cd),
+                );
+                let r = complex_mul_f32(x, y);
+                r.real.copy_to_slice(co);
+                r.imag.copy_to_slice(ci);
+            }
+            black_box((&or, &oi));
+        })
+    });
     let run =
         |b: &mut criterion::Bencher,
          f: fn(ComplexSimd<f32, 8>, ComplexSimd<f32, 8>) -> ComplexSimd<f32, 8>| {

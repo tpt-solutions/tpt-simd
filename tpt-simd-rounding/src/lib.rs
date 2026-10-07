@@ -77,6 +77,7 @@ fn ceil_lane(x: f32) -> f32 {
 }
 
 #[inline(always)]
+#[allow(dead_code)] // unused when the AVX path is compiled in
 fn round_away_lane(x: f32) -> f32 {
     let t = trunc_lane(x);
     // `x - t` is exact for |x| < 2^23; for larger |x|, t == x and the
@@ -118,6 +119,86 @@ fn round_avx<const MODE: i32>(a: Simd<f32, 8>) -> Simd<f32, 8> {
     Simd::from_array(out)
 }
 
+/// Round half away from zero: `trunc(x + copysign(0.49999997, x))`, where
+/// `0.49999997` is the largest `f32` below `0.5`. Using that constant (not
+/// `0.5`) keeps `0.49999997 -> 0` exact; for `|x| >= 2^23` the add either is
+/// exact or rounds back to the same integer, so the result is unchanged.
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx"
+))]
+#[inline]
+fn round_away_avx(a: Simd<f32, 8>) -> Simd<f32, 8> {
+    use core::arch::x86_64::*;
+    let src = a.to_array();
+    let mut out = [0.0f32; 8];
+    // SAFETY: only compiled when `avx` is enabled at compile time; the
+    // pointers come from `[f32; 8]` arrays (32 bytes), accessed unaligned.
+    unsafe {
+        let v = _mm256_loadu_ps(src.as_ptr());
+        let sign = _mm256_and_ps(v, _mm256_set1_ps(-0.0));
+        let half = _mm256_or_ps(_mm256_set1_ps(f32::from_bits(0x3EFF_FFFF)), sign);
+        // _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC
+        _mm256_storeu_ps(
+            out.as_mut_ptr(),
+            _mm256_round_ps::<0x0B>(_mm256_add_ps(v, half)),
+        );
+    }
+    Simd::from_array(out)
+}
+
+/// `as i32` conversion of every lane (truncate toward zero, saturate, NaN
+/// becomes 0) using `vcvttps2dq` plus a fix-up for the two cases it handles
+/// differently (it returns `i32::MIN` for NaN and for positive overflow).
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[inline]
+fn to_i32_sat_avx(a: Simd<f32, 8>) -> Simd<i32, 8> {
+    use core::arch::x86_64::*;
+    let src = a.to_array();
+    let mut out = [0i32; 8];
+    // SAFETY: only compiled when `avx2` is enabled at compile time; the
+    // pointers come from 32-byte arrays and are accessed unaligned.
+    unsafe {
+        let v = _mm256_loadu_ps(src.as_ptr());
+        let t = _mm256_cvttps_epi32(v);
+        // v >= 2^31: 0x8000_0000 ^ 0xFFFF_FFFF = i32::MAX.
+        let over = _mm256_cmp_ps::<_CMP_GE_OQ>(v, _mm256_set1_ps(2_147_483_648.0));
+        let t = _mm256_xor_si256(t, _mm256_castps_si256(over));
+        // NaN -> 0.
+        let ord = _mm256_cmp_ps::<_CMP_ORD_Q>(v, v);
+        _mm256_storeu_si256(
+            out.as_mut_ptr().cast(),
+            _mm256_and_si256(t, _mm256_castps_si256(ord)),
+        );
+    }
+    Simd::from_array(out)
+}
+
+#[inline(always)]
+fn to_i32_sat(a: Simd<f32, 8>) -> Simd<i32, 8> {
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ))]
+    {
+        to_i32_sat_avx(a)
+    }
+    #[cfg(not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    )))]
+    {
+        a.map(|x| x as i32)
+    }
+}
+
 /// True when the `vroundps` fast path is compiled in.
 pub const ROUNDING_USES_INTRINSICS: bool = cfg!(all(
     not(feature = "scalar-only"),
@@ -142,7 +223,22 @@ pub const ROUNDING_USES_INTRINSICS: bool = cfg!(all(
 /// ```
 #[inline]
 pub fn round_f32(a: Simd<f32, 8>) -> Simd<f32, 8> {
-    a.map(round_away_lane)
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx"
+    ))]
+    {
+        round_away_avx(a)
+    }
+    #[cfg(not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx"
+    )))]
+    {
+        a.map(round_away_lane)
+    }
 }
 
 /// Round each lane toward negative infinity.
@@ -284,7 +380,7 @@ pub fn round_ties_even_f32(a: Simd<f32, 8>) -> Simd<f32, 8> {
 /// ```
 #[inline]
 pub fn round_to_nearest_even_i32(a: Simd<f32, 8>) -> Simd<i32, 8> {
-    round_ties_even_f32(a).map(|x| x as i32)
+    to_i32_sat(round_ties_even_f32(a))
 }
 
 /// Convert `floor(x + bias)` to `i32` for each lane.
@@ -306,7 +402,7 @@ pub fn round_to_nearest_even_i32(a: Simd<f32, 8>) -> Simd<i32, 8> {
 /// ```
 #[inline]
 pub fn round_with_bias_i32(a: Simd<f32, 8>, bias: f32) -> Simd<i32, 8> {
-    floor_f32(a + Simd::splat(bias)).map(|x| x as i32)
+    to_i32_sat(floor_f32(a + Simd::splat(bias)))
 }
 
 #[cfg(test)]

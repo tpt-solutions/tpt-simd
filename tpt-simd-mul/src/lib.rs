@@ -137,8 +137,68 @@ pub fn mul_widen_i32(a: Simd<i32, 4>, b: Simd<i32, 4>) -> Simd<i64, 4> {
 /// ```
 #[inline]
 pub fn mul_add_sub_f32(a: Simd<f32, 8>, b: Simd<f32, 8>, c: Simd<f32, 8>) -> Simd<f32, 8> {
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        target_feature = "fma"
+    ))]
+    {
+        mul_add_sub_f32_avx2(a, b, c)
+    }
+    #[cfg(not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        target_feature = "fma"
+    )))]
+    {
+        mul_add_sub_f32_portable(a, b, c)
+    }
+}
+
+/// Portable reference for [`mul_add_sub_f32`] (one software `fmaf` per lane
+/// without hardware FMA).
+#[inline]
+#[allow(dead_code)] // unused in non-test AVX2+FMA builds
+fn mul_add_sub_f32_portable(a: Simd<f32, 8>, b: Simd<f32, 8>, c: Simd<f32, 8>) -> Simd<f32, 8> {
     let sign = Simd::from_fn(|i| if i % 2 == 0 { 1.0 } else { -1.0 });
     a.mul_add(b, c * sign)
+}
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2",
+    target_feature = "fma"
+))]
+#[inline]
+fn mul_add_sub_f32_avx2(a: Simd<f32, 8>, b: Simd<f32, 8>, c: Simd<f32, 8>) -> Simd<f32, 8> {
+    use core::arch::x86_64::*;
+    let (a, b, c) = (a.to_array(), b.to_array(), c.to_array());
+    let mut out = [0.0f32; 8];
+    // SAFETY: this block is only compiled when `avx2` and `fma` are enabled
+    // at compile time, so the intrinsics are available. All pointers come
+    // from `[f32; 8]` arrays (32 bytes) and the loads/stores are unaligned.
+    unsafe {
+        // Negating `c` on odd lanes (xor of the sign bit) is exact, and
+        // `fma(a, b, -c)` equals `a*b - c` with a single rounding, matching
+        // the portable `mul_add(a, b, c * -1.0)`.
+        let flip = _mm256_castsi256_ps(_mm256_setr_epi32(
+            0,
+            i32::MIN,
+            0,
+            i32::MIN,
+            0,
+            i32::MIN,
+            0,
+            i32::MIN,
+        ));
+        let cv = _mm256_xor_ps(_mm256_loadu_ps(c.as_ptr()), flip);
+        let r = _mm256_fmadd_ps(_mm256_loadu_ps(a.as_ptr()), _mm256_loadu_ps(b.as_ptr()), cv);
+        _mm256_storeu_ps(out.as_mut_ptr(), r);
+    }
+    Simd::from_array(out)
 }
 
 /// True when the intrinsic fast path is compiled in.
@@ -346,9 +406,11 @@ mod tests {
         fn mul_add_sub_matches_scalar(v in prop::collection::vec(f32_with_specials(), 24)) {
             let g = |k: usize| -> [f32; 8] { v[k * 8..k * 8 + 8].try_into().unwrap() };
             let r = mul_add_sub_f32(Simd::from_array(g(0)), Simd::from_array(g(1)), Simd::from_array(g(2)));
+            let p = mul_add_sub_f32_portable(Simd::from_array(g(0)), Simd::from_array(g(1)), Simd::from_array(g(2)));
             for l in 0..8 {
                 let c = if l % 2 == 0 { g(2)[l] } else { -g(2)[l] };
                 prop_assert!(same(r[l], g(0)[l].mul_add(g(1)[l], c)));
+                prop_assert!(same(p[l], g(0)[l].mul_add(g(1)[l], c)));
             }
         }
     }

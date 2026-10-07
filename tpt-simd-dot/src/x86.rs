@@ -48,9 +48,10 @@ pub(crate) unsafe fn dot_i16(a: &[i16], b: &[i16]) -> i32 {
     for l in lanes {
         sum = sum.wrapping_add(l);
     }
-    while i < n {
-        sum = sum.wrapping_add(a[i] as i32 * b[i] as i32);
-        i += 1;
+    // Tail (< 16 elements): zipped slices so the loop carries no per-element
+    // bounds check on `b`.
+    for (&x, &y) in a[i..].iter().zip(&b[i..n]) {
+        sum = sum.wrapping_add(x as i32 * y as i32);
     }
     sum
 }

@@ -2,6 +2,10 @@
 
 Thanks for your interest in tpt-simd!
 
+> **Issues only.** tpt-simd accepts issues, not pull requests. Pull requests
+> will be closed unmerged. Please [open an issue](../../issues) to report a bug,
+> request a feature or propose a change. See [Workflow](#workflow) for what to include.
+
 ## Licensing of contributions and suggestions
 
 Unless you explicitly state otherwise, any code or text intentionally submitted

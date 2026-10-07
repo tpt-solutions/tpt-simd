@@ -4,8 +4,12 @@
 //! [`tpt_simd_permute`].
 //!
 //! # Numeric policy
-//! * `mat4x4_mul_f32` uses fused multiply-add per lane, so results can differ
-//!   from the unfused scalar reference by rounding error.
+//! * `mat4x4_mul_f32` uses *unfused* multiply and add in the same order as
+//!   [`mat4x4_mul_scalar_f32`], so it is bit-identical to the scalar reference
+//!   (and between the SSE2 and portable paths). It deliberately avoids fused
+//!   multiply-add: without hardware FMA a fused lane op is a software `fmaf`
+//!   call per lane, which made the previous fused version ~11x slower than
+//!   scalar.
 //! * `mat8x8_mul_i16` accumulates in `i64` (8 products of up to 2^30 can exceed `i32`) and
 //!   **saturates** the result to `i16`.
 //! * `mat3x3_inverse_f32` returns `None` when the determinant is not finite
@@ -44,14 +48,65 @@ pub fn mat4x4_mul_scalar_f32(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4
 /// assert_eq!(tpt_simd_matrix::mat4x4_mul_f32(m, i), m);
 /// ```
 pub fn mat4x4_mul_f32(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "sse2"
+    ))]
+    {
+        mat4x4_mul_sse2(a, b)
+    }
+    #[cfg(not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "sse2"
+    )))]
+    {
+        mat4x4_mul_portable(a, b)
+    }
+}
+
+/// Portable lane-loop `mat4x4_mul_f32` (unfused; the reference for the SSE2 path).
+#[allow(dead_code)] // unused in non-test x86_64+sse2 builds
+fn mat4x4_mul_portable(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
     let rows = b.map(Simd::<f32, 4>::from_array);
     let mut out = [[0.0f32; 4]; 4];
     for i in 0..4 {
         let mut acc = Simd::<f32, 4>::splat(0.0);
         for k in 0..4 {
-            acc = Simd::splat(a[i][k]).mul_add(rows[k], acc);
+            acc += Simd::splat(a[i][k]) * rows[k];
         }
         out[i] = acc.to_array();
+    }
+    out
+}
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "sse2"
+))]
+fn mat4x4_mul_sse2(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
+    use core::arch::x86_64::*;
+    let mut out = [[0.0f32; 4]; 4];
+    // SAFETY: this block is only compiled when `sse2` is enabled at compile
+    // time. Every pointer is derived from a `[f32; 4]` row (16 bytes) and all
+    // loads/stores are unaligned.
+    unsafe {
+        let rows = [
+            _mm_loadu_ps(b[0].as_ptr()),
+            _mm_loadu_ps(b[1].as_ptr()),
+            _mm_loadu_ps(b[2].as_ptr()),
+            _mm_loadu_ps(b[3].as_ptr()),
+        ];
+        for i in 0..4 {
+            // acc = ((0 + a0*r0) + a1*r1) + ... : same order as the scalar reference.
+            let mut acc = _mm_setzero_ps();
+            for k in 0..4 {
+                acc = _mm_add_ps(acc, _mm_mul_ps(_mm_set1_ps(a[i][k]), rows[k]));
+            }
+            _mm_storeu_ps(out[i].as_mut_ptr(), acc);
+        }
     }
     out
 }
@@ -166,7 +221,18 @@ mod tests {
             b in proptest::array::uniform4(proptest::array::uniform4(-100.0f32..100.0)),
         ) {
             let (x, y) = (mat4x4_mul_f32(a, b), mat4x4_mul_scalar_f32(a, b));
-            for i in 0..4 { for j in 0..4 { prop_assert!((x[i][j] - y[i][j]).abs() <= 1e-2); } }
+            for i in 0..4 { for j in 0..4 { prop_assert_eq!(x[i][j].to_bits(), y[i][j].to_bits()); } }
+        }
+
+        #[test]
+        fn mul4_paths_agree(
+            a in proptest::array::uniform4(proptest::array::uniform4(-1e6f32..1e6)),
+            b in proptest::array::uniform4(proptest::array::uniform4(-1e6f32..1e6)),
+        ) {
+            let p = mat4x4_mul_portable(a, b);
+            prop_assert_eq!(p, mat4x4_mul_scalar_f32(a, b));
+            #[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "sse2"))]
+            prop_assert_eq!(p, mat4x4_mul_sse2(a, b));
         }
 
         #[test]

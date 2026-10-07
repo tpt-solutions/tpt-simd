@@ -1,6 +1,6 @@
 # tpt-simd-blas
 
-BLAS-style `f32`/`f64` kernels: level-1 routines, column-major `gemv`, and a packed, register- and cache-blocked `gemm`.
+BLAS-style `f32`/`f64` and complex (`c32`/`c64`) kernels: level-1 routines, column-major `gemv`, and a packed, register- and cache-blocked `gemm`.
 
 ## Overview
 
@@ -76,13 +76,42 @@ Every function exists as `<op>_f32` and `<op>_f64`.
 | `gemm_with_workspace_*(..., c, ldc, workspace)` | Same as `gemm_*` but packs into a caller-provided buffer |
 | `gemm_workspace_len_*(m, n, k)` | Number of elements the workspace needs (0 if any dimension is 0) |
 
-The `reference` module provides naive left-to-right scalar versions (`axpy_*`, `dot_*`, `nrm2_*`, `asum_*`, `gemv_*`, `gemv_t_*`, `gemm_*`) with the same semantics. They are the test oracle and benchmark baseline.
+The `reference` module provides naive left-to-right scalar versions (`axpy_*`, `dot_*`, `nrm2_*`, `asum_*`, `gemv_*`, `gemv_t_*`, `gemm_*`, plus the split-plane complex `*_c32`/`*_c64` set) with the same semantics. They are the test oracle and benchmark baseline.
 
 BLAS special cases:
 
 - `beta == 0` **overwrites** the output; existing NaN/inf in `y`/`C` are not propagated. `beta == 1` leaves it untouched.
 - `alpha == 0` skips reading the inputs (`gemv`/`gemm` reduce to `beta * y` / `beta * C`), so NaN/inf in `A`, `B`, `x` are not propagated in that case.
 - `k == 0` in `gemm` gives `C = beta * C`. Zero dimensions are valid and never read the operands.
+
+## Complex kernels (`*_c32`, `*_c64`)
+
+Complex `axpy`, `scal` (complex `alpha`), `dotu`, `dotc` (first argument conjugated), `nrm2`, `asum` (`sum |re| + |im|`, BLAS `scasum`), `gemv` / `gemv_t` / `gemv_h` (plain, transpose, conjugate transpose) and `gemm`, in `f32` (`_c32`) and `f64` (`_c64`). Scalars and complex results are `[re, im]`.
+
+**Layout: both are supported, and the split-plane one is the fast one.**
+
+| Family | Data | Notes |
+|---|---|---|
+| `<op>_c32` / `<op>_c64` (split) | separate `re` and `im` slices; a matrix is two column-major planes sharing one `lda` | native layout; `gemm` = four real packed `gemm` calls, so it gets the AVX2+FMA microkernel |
+| `<op>_il_c32` / `<op>_il_c64` (interleaved) | `&[[T; 2]]` = `re, im, re, im, ...` (layout of a `#[repr(C)]` complex struct / C `_Complex`) | level 1 and `gemv` run in place, no conversion (portable auto-vectorised); `gemm_il_*` converts to planes and back (needs `alloc`) |
+
+`deinterleave_c32` / `interleave_c32` (and `_c64`) convert explicitly.
+
+```rust
+use tpt_simd_blas::{dotc_c32, gemm_c32};
+
+// conj(i) * 1 = -i
+assert_eq!(dotc_c32(&[0.0], &[1.0], &[1.0], &[0.0]), [0.0, -1.0]);
+
+// C = A B for 1x1 complex matrices: (1+2i)(3+4i) = -5+10i.
+let (mut cr, mut ci) = ([0.0f32], [0.0f32]);
+gemm_c32(1, 1, 1, [1.0, 0.0], &[1.0], &[2.0], 1, &[3.0], &[4.0], 1, [0.0, 0.0], &mut cr, &mut ci, 1);
+assert_eq!((cr[0], ci[0]), (-5.0, 10.0));
+```
+
+**Fit with `tpt-math-linalg-complex`.** Its `Complex<T>` is a plain `struct { re, im }` *without* `#[repr(C)]`, stored as a column-major `Vec<Complex<T>>` (`lda = nrows`). Its layout is therefore unspecified and slices of it cannot soundly be cast to `&[[T; 2]]` (tpt-math also forbids `unsafe`). Callers have to copy once, either into planes or into `[T; 2]` pairs, which is `O(n)` for vectors and `O(mn)` for matrices (cheap next to `O(mnk)` gemm, but comparable to the work of a level-1 call, so for a single `dotc` or `axpy` on freshly converted data the conversion dominates; keep data in split or interleaved form across calls). The interleaved storage order matches column-major `ComplexDMatrix` after that copy.
+
+**`gemm` method.** `C = beta*C`, then `Cr += Ar*Br - Ai*Bi` and `Ci += Ar*Bi + Ai*Br` as four real `gemm` calls (4M). No temporary when `alpha == 1`; otherwise one `2*k*n` scaled copy of `B` (workspace: `gemm_workspace_len_c32/c64`, covers any `alpha`). The 3M (Karatsuba) method is not used: it saves 25% of flops but its imaginary part only has a norm-wise error bound. Special cases follow the real routines with complex `alpha`/`beta` compared against exactly `0`/`1` (`beta == 0` overwrites, `alpha == 0` skips the inputs). `nrm2` does no overflow scaling.
 
 ## Feature flags
 
@@ -105,7 +134,7 @@ BLAS special cases:
 
 ## Performance
 
-Benchmarks live in `benches/blas.rs` (gemm, gemv and dot against the naive `reference` loops, reported as flop/s); run them with `cargo bench -p tpt-simd-blas`, adding `RUSTFLAGS="-C target-cpu=native"` to enable the AVX2+FMA kernel. See [docs/benchmarks.md](../docs/benchmarks.md) for recorded results.
+Benchmarks live in `benches/blas.rs` (gemm, gemv and dot against the naive `reference` loops, reported as flop/s) and `benches/complex.rs` (complex gemm, gemv and level 1, split and interleaved); run them with `cargo bench -p tpt-simd-blas`, adding `RUSTFLAGS="-C target-cpu=native"` to enable the AVX2+FMA kernel. See [docs/benchmarks.md](../docs/benchmarks.md) for recorded results.
 
 ## Related crates
 

@@ -31,6 +31,25 @@ fn bench(c: &mut Criterion) {
         b.iter(|| transpose_8x8_i16(black_box(&mut m)))
     });
 
+    // Throughput: many independent blocks (the DCT use case), no serial
+    // dependency between iterations.
+    let mut blocks: Vec<[[i16; 8]; 8]> = (0..256).map(|_| m).collect();
+    g.throughput(Throughput::Elements(64 * 256));
+    g.bench_function("transpose_8x8_i16_x256/scalar", |b| {
+        b.iter(|| {
+            for blk in black_box(&mut blocks).iter_mut() {
+                scalar_t8(blk);
+            }
+        })
+    });
+    g.bench_function("transpose_8x8_i16_x256/simd", |b| {
+        b.iter(|| {
+            for blk in black_box(&mut blocks).iter_mut() {
+                transpose_8x8_i16(blk);
+            }
+        })
+    });
+
     let mut f: [[f32; 4]; 4] = std::array::from_fn(|r| std::array::from_fn(|c| (r * 4 + c) as f32));
     g.throughput(Throughput::Elements(16));
     g.bench_function("transpose_4x4_f32/scalar", |b| {

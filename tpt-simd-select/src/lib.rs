@@ -28,6 +28,49 @@ use tpt_simd_core::Simd;
 /// ```
 #[inline]
 pub fn select_i32(v: Simd<i32, 8>, indices: Simd<i32, 8>) -> Simd<i32, 8> {
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ))]
+    {
+        let (v, idx) = (v.to_array(), indices.to_array());
+        let mut out = [0i32; 8];
+        // SAFETY: this block is only compiled when `avx2` is enabled at
+        // compile time. All pointers come from `[i32; 8]` arrays (32 bytes)
+        // and the loads/stores are unaligned. `vpermd` uses only the low 3
+        // bits of each index, exactly the `& 7` of the portable path.
+        unsafe {
+            use core::arch::x86_64::*;
+            let r = _mm256_permutevar8x32_epi32(
+                _mm256_loadu_si256(v.as_ptr().cast()),
+                _mm256_loadu_si256(idx.as_ptr().cast()),
+            );
+            _mm256_storeu_si256(out.as_mut_ptr().cast(), r);
+        }
+        Simd::from_array(out)
+    }
+    #[cfg(not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    )))]
+    {
+        select_i32_portable(v, indices)
+    }
+}
+
+#[inline]
+#[cfg_attr(
+    all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        not(test)
+    ),
+    allow(dead_code)
+)]
+fn select_i32_portable(v: Simd<i32, 8>, indices: Simd<i32, 8>) -> Simd<i32, 8> {
     let (v, idx) = (v.to_array(), indices.to_array());
     Simd::from_array(core::array::from_fn(|i| v[(idx[i] & 7) as usize]))
 }
@@ -43,6 +86,49 @@ pub fn select_i32(v: Simd<i32, 8>, indices: Simd<i32, 8>) -> Simd<i32, 8> {
 /// ```
 #[inline]
 pub fn select_lanes_f32(v: Simd<f32, 8>, indices: Simd<i32, 8>) -> Simd<f32, 8> {
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ))]
+    {
+        let (v, idx) = (v.to_array(), indices.to_array());
+        let mut out = [0.0f32; 8];
+        // SAFETY: this block is only compiled when `avx2` is enabled at
+        // compile time. All pointers come from 32-byte arrays and the
+        // loads/stores are unaligned. `vpermps` uses only the low 3 bits of
+        // each index, exactly the `& 7` of the portable path.
+        unsafe {
+            use core::arch::x86_64::*;
+            let r = _mm256_permutevar8x32_ps(
+                _mm256_loadu_ps(v.as_ptr()),
+                _mm256_loadu_si256(idx.as_ptr().cast()),
+            );
+            _mm256_storeu_ps(out.as_mut_ptr(), r);
+        }
+        Simd::from_array(out)
+    }
+    #[cfg(not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    )))]
+    {
+        select_lanes_f32_portable(v, indices)
+    }
+}
+
+#[inline]
+#[cfg_attr(
+    all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        not(test)
+    ),
+    allow(dead_code)
+)]
+fn select_lanes_f32_portable(v: Simd<f32, 8>, indices: Simd<i32, 8>) -> Simd<f32, 8> {
     let (v, idx) = (v.to_array(), indices.to_array());
     Simd::from_array(core::array::from_fn(|i| v[(idx[i] & 7) as usize]))
 }
@@ -86,6 +172,19 @@ mod tests {
         fn select_matches_scalar(v in any::<[i32; 8]>(), idx in any::<[i32; 8]>()) {
             let out = select_i32(Simd::from_array(v), Simd::from_array(idx)).to_array();
             for i in 0..8 { prop_assert_eq!(out[i], v[(idx[i] & 7) as usize]); }
+            let p = select_i32_portable(Simd::from_array(v), Simd::from_array(idx)).to_array();
+            prop_assert_eq!(out, p);
+        }
+
+        #[test]
+        fn select_f32_matches_scalar(v in any::<[u32; 8]>(), idx in any::<[i32; 8]>()) {
+            let vf = v.map(f32::from_bits);
+            let out = select_lanes_f32(Simd::from_array(vf), Simd::from_array(idx)).to_array();
+            let p = select_lanes_f32_portable(Simd::from_array(vf), Simd::from_array(idx)).to_array();
+            for i in 0..8 {
+                prop_assert_eq!(out[i].to_bits(), v[(idx[i] & 7) as usize]);
+                prop_assert_eq!(p[i].to_bits(), v[(idx[i] & 7) as usize]);
+            }
         }
 
         #[test]

@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Feature flags `alloc` (default), `std`, `runtime-dispatch`, `nightly` and `scalar-only`.
 - `#![no_std]`; `unsafe` confined to the AVX2+FMA kernels and forbidden when they are not compiled.
 - Unit and property tests (`src/tests.rs`) and Criterion benchmarks (`benches/blas.rs`).
+- Complex `f32`/`f64` kernels (`*_c32`, `*_c64`): `axpy`, `scal`, `dotu`, `dotc`, `nrm2`, `asum`, `gemv`/`gemv_t`/`gemv_h` and `gemm` (+ `gemm_with_workspace_*`, `gemm_workspace_len_*`) on split re/im planes, with `[re, im]` scalars. `gemm` is four real packed `gemm` calls (4M), so it uses the AVX2+FMA microkernel; 3M is deliberately not used.
+- Interleaved (`&[[T; 2]]`) entry points `*_il_c32`/`*_il_c64` for level 1, `gemv` and `gemm` (the latter converts to planes), and `deinterleave_*`/`interleave_*` adapters. `tpt-math-linalg-complex`'s `Complex<T>` is not `repr(C)`, so callers must copy into these layouts.
+- Split-plane complex naive versions in `reference`; tests (`src/tests_complex.rs`, incl. proptest) and `benches/complex.rs`.
 
 ### Notes
 

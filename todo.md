@@ -18,13 +18,15 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 
 ## Per-crate "definition of done" (apply to every crate)
 
+Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, clippy `-D warnings`, `cargo doc`, tests (incl. `scalar-only`), criterion benches for every non-core/vector crate (aligned, mul, select, matrix added; some show slowdowns being fixed, see docs/benchmarks.md), `missing_docs`, `# Safety` and no_std (thumbv7em, wasm32) pass workspace-wide. Per-crate "Crate-done checklist" items stay open (asm audit done x86-only, see docs/asm-audit.md; aligned/mul/select/matrix/blas not audited); non-host SIMD (aarch64, RISC-V, AVX-512) is unverified.
+
 - [ ] Scalar reference implementation
 - [ ] SIMD implementation(s) for each target in scope
 - [ ] Unit tests vs scalar reference (incl. NaN/inf/overflow/underflow/empty/tail lengths)
 - [ ] proptest property tests (SIMD == scalar)
 - [ ] Doc comment on every public item (perf notes, example, `# Safety` on unsafe fns)
 - [ ] criterion benchmark vs scalar (and vs manual intrinsics / `wide` where relevant)
-- [ ] `cargo-show-asm` check of hot functions
+- [ ] `cargo-show-asm` check of hot functions — done for 14 crates on x86_64 (AVX2/SSE2), see docs/asm-audit.md; aligned/mul/select/matrix/blas and non-x86 targets not audited
 - [ ] `no_std` build passes; clippy + rustfmt clean; `cargo doc` clean
 - [ ] Dual-license headers/metadata (`license = "MIT OR Apache-2.0"`)
 
@@ -118,7 +120,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [x] Arithmetic/bitwise/comparison ops, splat, from_array/to_array, load/store (aligned + unaligned)
 - [ ] `core::arch` fast paths: SSE2/AVX2 (x86_64), NEON (aarch64) — decided per-crate instead (fixed, mul, dot have AVX2 paths); none in vector; no NEON anywhere
 - [x] Scalar fallback for all other targets
-- [ ] Verify codegen: array backend auto-vectorizes; fast paths beat it — `mul_add`/`round`/`floor` are per-lane libm calls without the `std` feature; with `std` they use std intrinsics (5x on portable complex mul; see docs/benchmarks.md)
+- [ ] Verify codegen: array backend auto-vectorizes; fast paths beat it — `mul_add`/`round`/`floor` are per-lane libm calls without the `std` feature; with `std` they use std intrinsics (5x on portable complex mul; see docs/benchmarks.md); `Simd::mul_add` never lowers to vector FMA even under `target-cpu=native` (libm/libc `fmaf` per lane), so crates need `core::arch` FMA paths (done in mul; matrix uses unfused mul+add); a fix in vector needs `unsafe`, which conflicts with `forbid(unsafe_code)` (ADR note needed)
 - [x] Layout/ABI tests (size, align, lane order)
 - [ ] Tests mirroring `core::simd` behavior so the two backends are interchangeable
 - [ ] Vector-crate-done checklist
@@ -130,7 +132,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [x] FMA (`fmadd/fmsub`) and `addsub` fast path on x86; NEON equivalent
 - [x] Interleaved ↔ split (SoA/AoS) conversions
 - [x] f64 variant (stretch)
-- [ ] Hit target: ≥3× complex multiply speedup vs scalar — 3.3× vs naive scalar, only 1.6× vs auto-vectorised; see docs/benchmarks.md
+- [ ] Hit target: ≥3× complex multiply speedup vs scalar — 3.3–4.5× only vs a non-vectorised baseline; parity (~1.0–1.1×) with an auto-vectorised zip loop (load/store bound), so not reachable; value is fused-FMA semantics + portable API; see docs/benchmarks.md (Phase 4 performance-target review)
 - [ ] Crate-done checklist
 
 ### tpt-simd-fixed (i32 first)
@@ -157,14 +159,14 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [x] `horizontal_max_i16`, `horizontal_min_f32`, `horizontal_product_f32`
 - [x] Add missing min/max/sum variants for symmetry (decide scope) (min/max for i16/i32/f32, u8/i8 sums, generic `reduce_*`)
 - [x] NaN handling policy documented for min/max
-- [ ] Hit target: ≥4–8× vs scalar — NOT met (0.7–2.6×; LLVM already vectorises); see docs/benchmarks.md
+- [ ] Hit target: ≥4–8× vs scalar — NOT reachable: a single-register reduction is ~1 ns and LLVM already emits the optimal shuffle tree; 1.5–2.6× only vs the strict-order scalar f32 loop, parity for int sum/max; see docs/benchmarks.md
 - [ ] Crate-done checklist
 
 ### tpt-simd-dot
 - [x] `dot_product_i16`, `dot_product_f32`, `dot_product_complex_f32`, `dot_product_saturating_i16`
 - [x] Handle arbitrary lengths / tails; length-mismatch policy
 - [x] Accumulation order/precision documented (f32 reassociation)
-- [ ] Hit target: ≥8× vs scalar (256 × i16) — NOT met (1.55× native AVX2 `vpmaddwd`); f32 dot 5.7–12.5×
+- [ ] Hit target: ≥8× vs scalar (256 × i16) — NOT reachable: 1.4–1.6× over the auto-vectorised scalar loop (both use `vpmaddwd`; L1 load-bound, extra accumulators gave no gain); f32 dot 5.7–12.5× vs strict serial loop
 - [x] Verify FLAC LPC example (Appendix B.3) compiles and passes
 - [ ] Crate-done checklist
 
@@ -198,7 +200,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [x] General permutation helper (`permutevar8x32` equivalent)
 - [x] Length-mismatch and tail handling
 - [ ] Verify Appendix B.4 example
-- [ ] Hit target: ≥5× 8×8 transpose — NOT met (2.3×); see docs/benchmarks.md
+- [x] Hit target: ≥5× 8×8 transpose — met on AVX2 (7.0× over scalar on independent blocks, 4.6× SSE2; 2.9× for a lone serial block); see docs/benchmarks.md
 - [ ] Crate-done checklist
 
 ### tpt-simd-gather
@@ -252,8 +254,8 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [ ] Crate-done checklist
 
 ### Phase 4 exit
-- [ ] `cargo-show-asm` audit recorded for hot functions in all Phase 1–4 crates
-- [ ] Fallback to explicit intrinsics where LLVM codegen is poor
+- [x] `cargo-show-asm` audit recorded for hot functions in all Phase 1–4 crates — x86_64 only (complex, fixed, horizontal, dot, butterfly, saturate, permute, gather, scatter, mul, rounding, shift, vector, core); aligned, NEON/wasm/RVV/AVX-512 not inspected; see docs/asm-audit.md
+- [ ] Fallback to explicit intrinsics where LLVM codegen is poor — done for `round_f32`/`round_to_nearest_even_i32`/`round_with_bias_i32` (169/64/66 → 11–13 instrs, verified over all 2^32 f32 patterns) and the dot i16 tail; open: no-std per-lane libm for `mul_add`/`sqrt`/`floor` etc. (needs `unsafe` in forbid-unsafe vector crate; ADR note), float `Simd::min/max` always libm per lane, saturating f32→i32 cast scalar, `shift_with_rounding_var_i32` scalar, `Fixed<i16>` mul via 64-bit lanes, `mul_add_sub_f32` not one `vfmaddsub`
 
 ---
 
@@ -396,7 +398,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates, currently no SIMD; hand-written scalar loops, e.g. `DMatrix * DMatrix` in `tpt-math-linalg-dense` is a naive strided triple loop). New f32/f64 kernel crates sit on `tpt-simd-vector`/`core`; tpt-math adopts them behind an optional `simd` feature with the scalar path kept as the reference. Skip FFT (`tpt-math-signal-fft` wraps rustfft, already SIMD).
 
 ### Prerequisites / decisions
-- [x] Clone tpt-math and add baseline criterion benches first (gemm 64/256/1024, dot/norm, LU solve, CG on a Poisson matrix, Monte Carlo 10^7 samples); confirm gains justify the work and how much LLVM already autovectorises — done for gemm/dot/norm/LU solve (docs/benchmarks.md); gemm 4–57x, dot 3–4x, norm 5x. LU solve/inverse and stats mean/variance also benched. Not yet: CG on Poisson, Monte Carlo 10^7
+- [x] Clone tpt-math and add baseline criterion benches first (gemm 64/256/1024, dot/norm, LU solve, CG on a Poisson matrix, Monte Carlo 10^7 samples); confirm gains justify the work and how much LLVM already autovectorises — done for gemm/dot/norm/LU solve (docs/benchmarks.md); gemm 4–57x, dot 3–4x, norm 5x. LU solve/inverse and stats mean/variance also benched; CG on Poisson (4096/16384 unknowns: 4.3–4.8 / 32–37 ms) and Monte Carlo 10^7 (`integrate` 10.05 ms, `estimate_mean` 30.1 ms) baselines added
 - [x] Decide dispatch for library consumers: ADR 0001 is compile-time `cfg(target_feature)`, so users without `-C target-cpu=native` silently get the slow path. Choose runtime dispatch (`is_x86_feature_detected!`, needs `std`) behind a feature, or document required build flags; write ADR 0003 — ADR 0003 accepted; `runtime-dispatch` implemented for blas (umbrella forwards it)
 - [x] Decide float-determinism policy for reordered reductions and polynomial math (ADR 0001 requires bit-identical; relax to documented ULP/tolerance for `tpt-simd-math` and SIMD reductions); check tpt-math tests and formal-verification consumers for exact-value dependence — tiers accepted in ADR 0003; tpt-math suites (71) pass with simd on and off, so no exact-value dependence found
 - [ ] Add new crates to the workspace; keep `no_std`, MIT/Apache-only deps
@@ -405,28 +407,28 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] f32/f64 `axpy`, `scal`, `dot`, `nrm2`, `asum`
 - [x] `gemv` (column-major, matches tpt-math storage)
 - [x] Packed, register-blocked `gemm` microkernel (e.g. 8x4 f32 / 4x4 f64, FMA) with cache blocking
-- [ ] Complex variants via split re/im (`ComplexSimd`)
+- [x] Complex variants via split re/im — free functions `_c32`/`_c64` on split planes and interleaved `[[T; 2]]`: axpy, scal, dotu/dotc, nrm2, asum, gemv (N/T/H), gemm (4 real gemm calls; 3M deliberately not used); no `ComplexSimd` type. cgemm 256: 6–20x vs naive (20–42 GFLOP/s); cgemv N 30x, H 1.9x; dotc 1.3x, axpy parity; no complex getrf/potrf/trsm yet
 - [x] Portable reference + AVX2/FMA path; NEON later
 - [x] LAPACK-style `getrf`/`getrs`/`trsm`/`potrf`/`potrs` (f32/f64, blocked on gemm) — LU only 1.2–2x vs naive reference (panel factor/row swaps dominate), Cholesky 2–14.5x; see docs/benchmarks.md
 - [ ] Tests vs scalar reference (tails, NaN/inf, non-multiple sizes), proptest, criterion bench, `cargo-show-asm` — tests and criterion benches exist (incl. lapack); show-asm not done
 - [x] Target: gemm >= 3x scalar f32 on AVX2 — 5.5–32x vs naive strided loop (28–43 GFLOP/s), see docs/benchmarks.md
-- [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd` — DONE for DMatrix mul/mat-vec/dot/norm via `simd`/`simd-runtime` features (uncommitted in tpt-math); `DMatrix::solve`/`inverse` now use blas LU via `simd`/`simd-runtime` (solve 4.6–14x, inverse 2.8–16x); NOT yet: QR, tpt-math-linalg-complex; Cholesky kernel exists but wiring into tpt-math not confirmed
+- [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd` — DONE for DMatrix mul/mat-vec/dot/norm via `simd`/`simd-runtime` features (uncommitted in tpt-math); `DMatrix::solve`/`inverse` now use blas LU via `simd`/`simd-runtime` (solve 4.6–14x, inverse 2.8–16x); NOT wired: `tpt-math-linalg-dense` has no Cholesky/QR (only LU), so wiring `potrf`/`potrs` needs new public API; `tpt-math-linalg-complex` (has its own Cholesky/QR) is now unblocked by the blas complex kernels but not wired: its `Vec<Complex<T>>` (non-`repr(C)`, tpt-math forbids `unsafe`) needs an O(n)/O(mn) copy into planes, and blas has no complex getrf/potrf/trsm
 
 ### tpt-simd-math
 - [x] Vector `exp`, `ln`, `sin`, `cos`, `tanh`, `erf` (polynomial approximations, documented max ULP error) — f32 only; max ULP 0.8–3.4 (docs in crate)
 - [x] Accuracy tests against `libm` over full range, special values (NaN/inf/subnormal)
-- [ ] Wire into `tpt-math-stats`, `tpt-math-prob-dist`, `tpt-math-prob-monte-carlo`, `tpt-math-prob-sampler`, autodiff — not done (`tpt-math-stats` `simd` feature uses tpt-simd-reduce for mean/variance only, not these math fns)
+- [ ] Wire into `tpt-math-stats`, `tpt-math-prob-dist`, `tpt-math-prob-monte-carlo`, `tpt-math-prob-sampler`, autodiff — blocked: `tpt-simd-math` is f32 only and tpt-math is all f64, so wiring needs f64 transforms or an API change (`tpt-math-stats` `simd` feature uses tpt-simd-reduce for mean/variance only, not these math fns)
 
 ### tpt-simd-rng
 - [x] Lane-parallel xoshiro / Philox generators (independent streams per lane, reproducible seeding)
 - [x] Vectorised uniform -> normal (Box-Muller or ziggurat) — Box-Muller, 5-7.5x vs libm scalar
 - [x] Statistical quality checks (e.g. PractRand/TestU01-style smoke tests) — chi-square/moment/bit-balance smoke tests (not PractRand)
-- [ ] Wire into `tpt-math-prob-sampler` and `tpt-math-prob-monte-carlo` — not done: both are generic over an `Rng` trait, so vectorising needs an API change, not just a feature flag
+- [ ] Wire into `tpt-math-prob-sampler` and `tpt-math-prob-monte-carlo` — not done: both are generic over an `Rng` trait, so vectorising needs an API change, not just a feature flag (bulk `fill_u64`/`fill_f64` on `Rng`, batch `Distribution::sample_into`, f64 transforms; lane streams not bit-identical to `SplitMix64`; ceiling only a few x at ~1 ns/sample)
 
 ### tpt-simd-sparse
 - [x] CSR/CSC SpMV using `tpt-simd-gather` — implemented with multi-accumulator loads (gather measured, not adopted; ~1.2–2x, memory bound)
 - [x] Fused vector updates for CG / BiCGSTAB — ~1.5x vs 3 passes (cache-resident)
-- [ ] Wire into `tpt-math-linalg-sparse`
+- [x] Wire into `tpt-math-linalg-sparse` — `simd` feature routes `conjugate_gradient`/`bicgstab` to tpt-simd-sparse (2D Poisson f64: CG 2.1–2.5x, BiCGSTAB 2.0–2.3x; f32/f64 only); standalone `CsrMatrix::matvec` deliberately not routed (0.83–0.9x, per-call view validation, tpt-math forbids `unsafe`); iteration count near `tol` may differ by one
 
 ### tpt-simd-reduce
 - [x] Pairwise / compensated sum, mean, variance, covariance over slices — done in tpt-simd-reduce
@@ -440,7 +442,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 
 ### Phase 10 exit
 - [ ] End-to-end tpt-math benches with and without `simd` show target speedups
-- [ ] tpt-math test suite passes with `simd` on and off (within documented tolerances)
+- [x] tpt-math test suite passes with `simd` on and off (within documented tolerances) — 691 tests off / 692 on, 0 failures
 - [ ] `no_std` builds pass in both repos
 
 ### Repo housekeeping found while scoping

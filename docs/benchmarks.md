@@ -291,3 +291,228 @@ was replaced by 1024-element stack chunks). Worth enabling only if mean/variance
 up in a profile. The Monte Carlo and sampler crates are generic over an `Rng` trait,
 so vectorising them (tpt-simd-rng, tpt-simd-math) needs an API change, not just a
 feature flag, and is not done.
+
+# Phase 4 performance-target review (horizontal, dot, permute, complex)
+
+Native (`-C target-cpu=native`), criterion `--warm-up-time 0.5 --measurement-time 1`,
+noisy machine (ratios indicative). `cargo-show-asm` is not installed; hot paths
+were checked by writing the intrinsic version by hand and timing it instead.
+
+| Crate / op | Before | After | Verdict |
+|---|---|---|---|
+| permute: `transpose_8x8_i16`, 256 independent blocks | SSE2 network 2.7 ns/block vs scalar 12.2 ns (4.6x) | **AVX2 network 1.74 ns/block (7.0x)** | target >=5x met |
+| permute: `transpose_8x8_i16`, one block in a serial in-place loop | 5.1 ns vs 11.9 ns (2.3x) | 4.2 ns vs 12.1 ns (2.9x) | latency-bound (store -> load forwarding per iteration) |
+| complex: `complex_mul_f32`, 1024 elements, zip loops | auto-vectorised unfused 92.9 ns, auto-vectorised fused (`mul_add`) 79.1 ns, tpt 81.7 ns | unchanged | parity (1.14x / 0.97x) |
+| dot: `dot_product_i16` 256 / 4096 | scalar 7.4 / 90 ns, tpt 4.7 / 64 ns (1.6x / 1.4x) | unchanged (4 accumulators tried: no gain, reverted) | load-bound; LLVM emits `vpmaddwd` for the scalar loop too |
+| horizontal: `horizontal_sum_f32` x1024 | scalar 1.03 µs, tpt 0.68 µs | hand-written AVX intrinsics: 0.68 µs (identical) | LLVM already emits the optimal shuffle chain |
+
+Changes: AVX2 `transpose_8x8_i16` (two rows per `__m256i`: 4+4 `vpunpck`, 4
+`vpermq`, 12 shuffles instead of 24; compile-time `cfg(target_feature = "avx2")`,
+SSE2 path kept, bit-identical, existing unit and proptest tests pass). New
+benches: `transpose_8x8_i16_x256/{scalar,simd}` (throughput form) and the
+`scalar_zip_*` / `tpt_complex_mul_f32_chunks` complex rows.
+
+Why the other three targets are not reachable:
+
+* **complex**: the earlier "1.6x vs auto-vectorised" came from a harness that
+  `black_box`ed every 8-lane slice (about 4 ns of fixed overhead per vector). The
+  indexed `scalar` loop (1.6 µs) is not vectorised either, because the `Vec` length
+  checks block it. A real zip loop is auto-vectorised and runs at the same speed
+  as tpt (4 loads, 2 stores and 4 FP ops per 8 complex numbers; load/store bound).
+  The 3x target holds only against a baseline LLVM cannot vectorise (3.3-4.5x vs
+  `scalar_noautovec`, ~20x vs the indexed loop in a tight slice loop).
+* **dot i16**: 256 x i16 is 32 loads of 32 B, about 16 cycles on two load ports, so
+  4.7 ns is near the L1 ceiling, and LLVM turns the wrapping scalar loop into
+  `vpmaddwd` as well. 8x over auto-vectorised code is not physically available.
+* **horizontal**: a single-register reduction is 3 shuffles + 3 adds (about 1 ns).
+  The scalar baseline is a strict-order serial add chain (hence 1.5-2.6x on
+  `f32`), or is itself vectorised (integer sums/max: parity). Intrinsics do not help.
+
+### Phase 10 wiring pass 2: sparse solvers, new baselines, skipped items
+
+Same machine and harness as above (criterion, plain build, no target flags, noisy;
+ranges are two runs). Matrix: 2D Poisson 5-point stencil, f64.
+
+`tpt-math-linalg-sparse` gained an off-by-default `simd` feature: `f32`/`f64`
+`conjugate_gradient` and `bicgstab` run on `tpt-simd-sparse` (`spmv_csr`,
+`cg_update`, `xpay`, `bicgstab_p_update`, `axpy_sqnorm`; buffers allocated once,
+the CSR view validated once per solve, `col_idx` narrowed to `u32` at construction).
+The scalar loops cloned `DVector`s several times per iteration, which is where part
+of the win comes from.
+
+| op (f64 Poisson) | feature off | `simd` | speedup |
+|---|---|---|---|
+| CG, 4096 unknowns | 4.3-4.8 ms | 1.99 ms | 2.1-2.4x |
+| CG, 16384 unknowns | 32-37 ms | 15.2 ms | 2.1-2.5x |
+| BiCGSTAB, 16384 unknowns | 41-45 ms | 20.2 ms | 2.0-2.3x |
+| `CsrMatrix::matvec` 4096 / 65536 (not routed) | 13.4-13.9 / 222-231 µs | 14.9 / 268 µs | 0.9x / 0.83x |
+
+Standalone `matvec` was tried and **not** adopted: `CsrView::try_new` re-validates
+O(nnz) indices on every call (`unsafe_code = "forbid"` in tpt-math rules out
+`new_unchecked`) and a fresh output `Vec` is allocated, so it was 7-17% slower than
+the scalar loop. Only the solvers (one validation per solve) use the kernels.
+Tolerance: reductions reassociate and the residual test uses `sqrt(r.r)`, so iterates
+agree to rounding and the iteration count near `tol` can differ by one. Tests
+(`poisson_solvers_and_matvec_f64_f32`, non-convergence cases) run with the feature on
+and off. Whole tpt-math workspace: fmt, clippy `-D warnings`, 691 tests off / 692 on
+(`tpt-math-linalg-dense/simd-runtime`, `tpt-math-linalg-sparse/simd`,
+`tpt-math-stats/simd`), zero failures.
+
+New baseline benches (previously missing; scalar only, no `simd` path):
+
+| bench | time |
+|---|---|
+| Monte Carlo `integrate(x^2)`, 10^7 samples, SplitMix64 | 10.05 ms (~1.0 ns/sample) |
+| Monte Carlo `estimate_mean(Standard)`, 10^7 samples (80 MB buffer) | 30.1 ms |
+| CG Poisson 4096 / 16384 | see table above |
+
+Not wired, with reasons:
+
+* **Cholesky / QR in `tpt-math-linalg-dense`**: `DMatrix<f64>` has no Cholesky or QR
+  (only LU `solve`/`inverse`). There is no scalar reference to keep, so wiring
+  `potrf`/`potrs` would mean adding new public API; not done. The only Cholesky and
+  QR in tpt-math are in `tpt-math-linalg-complex` (Hermitian, `Vec<Vec<Complex<f64>>>`,
+  Householder QR for the eigen solver).
+* **`tpt-math-linalg-complex`**: `tpt-simd-blas` had no complex kernels when this pass was done, so it was
+  skipped. They have since been added (see "tpt-simd-blas complex kernels" below);
+  wiring is still open (needs a copy from `Vec<Complex<T>>` into planes).
+* **`tpt-math-stats` / `tpt-math-prob-dist` with `tpt-simd-math`**: `tpt-simd-math` is
+  f32 only; every function in both crates is f64 (no f32 anywhere), so nothing can be
+  wired without an API change. Nothing measured.
+* **Monte Carlo / sampler vectorisation (`tpt-simd-rng`)**: needs an API change. At
+  minimum: (1) a bulk method on `Rng` (e.g. `fill_u64` / `fill_f64(&mut [f64])`, default
+  impl looping `next_u64`) so a lane-parallel generator can fill buffers; (2) a batch
+  method on `Distribution` (`sample_into(&self, rng, &mut [T])`) so `integrate` /
+  `estimate_mean` stop calling `sample` once per draw; (3) f64 transforms, since
+  `tpt-simd-math` is f32 only (an f32 path changes accuracy and results); (4) accept that
+  lane-parallel streams are not bit-identical to `SplitMix64` for a given seed, i.e.
+  reproducibility changes (ADR 0003 tier 3). At ~1 ns/sample the scalar generator is
+  already cheap, so the ceiling is a few x at best.
+
+## Benchmarks for aligned, mul, select, matrix
+
+Native (`-C target-cpu=native`), criterion `--warm-up-time 0.5 --measurement-time 1`,
+median-ish of one run on a loaded machine (treat as ±15%, more for the sub-microsecond
+rows). 4096 elements per iteration unless noted. "scalar_idx" is an indexed loop,
+"scalar_iter" a zip/iterator loop that LLVM auto-vectorises. Reproduce with
+`cargo bench -p <crate> --bench <crate-name>`.
+
+| bench | scalar | simd | verdict |
+|---|---|---|---|
+| mul: `mul_hi_i16` | 4.5 us idx / 230 ns iter | 162 ns | 1.4x vs auto-vectorised, 28x vs indexed |
+| mul: `mul_widen_i16` | 642 ns iter | 653 ns | parity |
+| mul: `mul_lo_i32` | 716 ns iter | 716 ns | parity |
+| mul: `mul_add_sub_f32` | 8.7 us idx | 21.5 us | **2.5x slower** (see below) |
+| mul: `complex_mul_f32` (split layout) | 14.4 us idx, 13.9 us idx+fma | 6.5 us | 2.2x faster |
+| mul: `complex_mul_f32_portable` | | 20.5 us | 1.4x slower than scalar (reference only) |
+| select: `select_i32` (8 lanes, 512 vectors) | 2.4 us | 5.4 us | **2.2x slower** |
+| select: `select_lanes_f32` | 5.9 us | 4.6 us | 1.3x faster |
+| select: `select_from_slice_i32` (checked / try, 256-entry table) | 6.1 us | 8.0 / 6.6 us | slower / parity |
+| matrix: `mat4x4_mul_f32` x256 | 5.1 us (unfused) | 56 us | **11x slower** |
+| matrix: `mat8x8_mul_i16` x256 | 52 us | 53 us | parity |
+| matrix: `mat4x4_transpose_f32` x256 | 557 ns | 352 ns | 1.6x faster |
+| matrix: `mat8x8_transpose_i16` x256 | 4.9 us | 1.4 us | 3.5x faster |
+| matrix: `mat3x3_inverse_f32` x256 | n/a (scalar only) | 5.1 us | ~20 ns per matrix |
+| aligned: `copy_scale` scalar iter | 75 ns | n/a | auto-vectorised baseline wins |
+| aligned: `copy_scale` unaligned `from_slice`/`copy_to_slice` | | 2.2-2.5 us | |
+| aligned: `copy_scale` `load_aligned`/`store_aligned` | | 590-620 ns | |
+| aligned: `copy_scale` `try_load_aligned` | | 465-485 ns | |
+| aligned: alloc zeroed / filled 4096 f32 | Vec 500-600 ns / 580-1000 ns | 510-1400 ns / 510-710 ns | within noise of `Vec` |
+| aligned: alloc `from_slice` 4096 f32 | Vec 710-775 ns | 817-830 ns | ~10-15% slower |
+| aligned: alloc zeroed 8 f32 | Vec 63-65 ns | 70-72 ns | ~10% slower (aligned allocator path) |
+
+Notes (honest reading):
+
+* **aligned**: the wrapper cost is small, but the large gap between the unchecked
+  `from_slice` loop (2.2 us) and the checked `load_aligned` loop (0.6 us) is not a
+  hardware aligned-vs-unaligned effect (modern x86 treats them the same on aligned data;
+  the two paths run the same `Simd::from_slice` underneath). It is a codegen/inlining
+  difference between the loops, so do not read it as "alignment makes loads 4x faster".
+  The auto-vectorised scalar loop is far faster than either explicit loop here (75 ns).
+  `AlignedBuf` allocation is the same order as `Vec`; the benefit is the alignment
+  guarantee, not speed. Alloc rows are noisy (the allocator dominates).
+* **mul**: wins only where intrinsics/special lowering exist (`mul_hi_i16`,
+  `complex_mul_f32`). `mul_add_sub_f32` is slower than scalar: it builds its sign vector
+  with `Simd::from_fn` and uses `Simd::mul_add` every call, which does not lower to a
+  clean vector sequence. Candidate for an optimisation pass (hoist the sign constant,
+  use an `fmaddsub` intrinsic).
+* **select**: `select_i32` goes through `to_array`/`from_fn` scalar indexing, so it is
+  slower than a plain scalar loop; a `vpermd`-based path would be the real fix.
+* **matrix**: `mat4x4_mul_f32` is 11x slower than the scalar reference (219 ns vs 20 ns
+  per matrix): the `Simd::splat(..).mul_add(..)` chain is evidently not lowering to
+  vector FMA. 8x8 i16 multiply (i64 accumulation) is parity. Transposes win.
+
+### tpt-simd-blas complex kernels (split re/im, `benches/complex.rs`)
+
+Native (`-C target-cpu=native`), criterion on a noisy shared machine (gemm re-run with
+`--measurement-time 3`; ratios indicative). Baseline is `reference::*_c32/c64`: naive
+split-plane loops (strided triple loop for gemm). GFLOP/s counts 8 flops per complex
+multiply-add.
+
+| bench | naive | tpt (split) | speedup | GFLOP/s (tpt) |
+|---|---|---|---|---|
+| cgemm c32 64 | 234-334 µs | 64 µs | ~3.7-5x | 32 |
+| cgemm c32 256 | 38-69 ms | 3.2-3.9 ms | ~10-20x | 34-42 |
+| cgemm c64 64 | 480-600 µs | 131-140 µs | ~3.7-4.3x | 16 |
+| cgemm c64 256 | 42-52 ms | 6.7 ms (alpha != 1: 8.1 ms) | ~6x | 20 |
+| cgemv c32 1024, N | 14.6 ms | 0.48 ms | ~30x | 17 |
+| cgemv c32 1024, H (conj-transpose) | 1.95 ms | 1.05 ms | 1.9x | 8 |
+| dotc c32 4096 | 5.0 µs | 3.8 µs | 1.3x | 8.6 |
+| nrm2 / asum c32 4096 | 9.8 / 6.1 µs | 3.1 / 1.1 µs | 3.1x / 5.4x | |
+| axpy c32 4096 | 1.51 µs | 1.46 µs | 1.0x (already vectorised) | |
+
+Interleaved (`&[[T; 2]]`) entry points on the same machine: `gemm_il` c32 256 4.0 ms vs
+3.2-3.9 ms split (the plane conversion plus allocations cost ~3-25% at n=64..256, shrinking
+as `O(mk + kn + mn)` against `O(mnk)`); `gemv_il` N 1.0 ms vs 0.48 ms split (2x slower,
+so keep matrices split for hot gemv); `dotc_il` 2.3 µs vs 3.8 µs split (interleaved is
+faster here: each element is read once); `axpy_il` 3.5 µs vs 1.46 µs split.
+
+Notes: complex gemm is four real packed gemms (4M) and so inherits the real kernel's
+throughput (28-43 / 15-20 GFLOP/s real f32 / f64 in the table above). Complex level 1/2
+are portable auto-vectorised code (no new intrinsics); `dotu`/`dotc` carry four
+accumulators and are close to memory-bound at 4096 elements. Conversion from tpt-math's
+non-`repr(C)` `Complex<T>` is a separate caller-side pass and is not included above.
+No `cargo-show-asm` audit of the complex kernels has been done. 3M was not implemented
+(norm-wise-only error bound on the imaginary part).
+
+## After: mul, select, matrix fast paths
+
+Root cause of the slow rows above: `Simd::mul_add` is a per-lane `libm::fmaf` call
+without the `std` feature (and a libc `fmaf` call without hardware FMA), and the
+select kernels used scalar `to_array`/`from_fn` indexing. Fixes (same bench harness,
+`--warm-up-time 0.5 --measurement-time 1`, one run, treat as +-15%; the machine was
+less loaded than for the "before" run, so compare the ratio to the scalar row, not the
+absolute time):
+
+| bench | scalar | simd, default build | simd, `target-cpu=native` |
+|---|---|---|---|
+| matrix: `mat4x4_mul_f32` x256 | 2.8 us / 2.5 us native | 1.7 us (1.6x faster) | 1.26 us (2.0x faster) |
+| mul: `mul_add_sub_f32` | 4.5 us / 3.5 us native | 5.3 us (needs FMA; software `fmaf`) | 0.44 us (7.9x faster) |
+| mul: `complex_mul_f32` | 6.5 us idx | 12.8 us (no FMA: portable path) | 2.1 us (3x faster) |
+| mul: `complex_mul_f32_portable` | | 12.8 us | 11.7 us (reference only, software `fmaf`) |
+| select: `select_i32` | 2.6 us | 0.91 us (2.9x faster) | 0.35 us (7.6x faster) |
+| select: `select_lanes_f32` | 2.5 us | 0.92 us | 0.23 us (10.8x faster) |
+| select: `select_from_slice_i32` checked / try | 2.5 us | 1.14 / 1.01 us | 1.35 / 1.24 us (~2x faster) |
+
+What changed:
+
+* `mat4x4_mul_f32` is now unfused mul+add in the scalar reference's order, so it is
+  **bit-identical** to `mat4x4_mul_scalar_f32` (the proptest now asserts bits, not a
+  tolerance) and vectorises on baseline SSE2 (explicit `_mm_mul_ps`/`_mm_add_ps` with a
+  broadcast, plus the portable lane-loop as reference). Numeric policy in the crate docs
+  was updated: it used to say "fused, differs from scalar by rounding".
+* `mul_add_sub_f32` has an AVX2+FMA path (sign-flip of odd lanes of `c`, one
+  `vfmadd`), bit-identical to the portable fused rule. Without hardware FMA it is still a
+  software `fmaf` per lane (no vector sequence can be correctly fused); that is unchanged
+  and the doc says so.
+* `select_i32` / `select_lanes_f32` use `vpermd` / `vpermps` on AVX2 (hardware uses
+  exactly the low 3 index bits, matching `& 7`); portable path kept and compared in tests.
+  The default-build numbers are likewise a different run (the earlier run was on a
+  loaded machine); trust the native column for the AVX2 effect.
+  earlier noisy run, so trust the native column.
+* `select_from_slice_i32` is unchanged (it is `tpt-simd-gather`); the earlier "slightly
+  slower" reading was load noise, it is about 2x faster than the scalar table lookup.
+* Remaining: `complex_mul_f32` and `mul_add_sub_f32` without hardware FMA stay at
+  software-`fmaf` speed by design (bit-identical results on every target). A root-cause
+  fix for everything built on `Simd::mul_add` (tpt-simd-vector choosing a hardware FMA
+  where `target_feature = "fma"` is on) would speed up all other crates' portable paths.
