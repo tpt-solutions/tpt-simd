@@ -91,7 +91,7 @@
 //!   `Err(NotPositiveDefiniteError { index })` and stops (the rest of `A` is
 //!   unspecified). `potrs(n, nrhs, a, lda, b, ldb)` solves with that factor.
 //!
-//! The blocked algorithms (right-looking, panel width 32) update the trailing
+//! The blocked algorithms (right-looking, LU panel width 16, Cholesky 32) update the trailing
 //! matrix with the packed `gemm` kernel, so they use the AVX2+FMA
 //! microkernel automatically (compile-time or `runtime-dispatch`). `trsm`
 //! uses 64-wide diagonal blocks solved with `axpy`/`dot` and updates the rest
@@ -99,7 +99,7 @@
 //! are unblocked `axpy` column updates.
 //!
 //! **Tolerance.** Like `gemm`, the updates are reassociated, so factors differ
-//! from the naive [`reference`] versions (plain left-to-right sums) by
+//! from the naive [`mod@reference`] versions (plain left-to-right sums) by
 //! rounding. The usual backward-error bounds hold: for `getrf` with partial
 //! pivoting `|P A - L U| <= c n eps |L||U|` (growth-factor dependent), for
 //! `potrf` `|A - L L^T| <= c n eps |L||L^T|`. Pivot choices can differ from
@@ -207,7 +207,8 @@ lapack_impl!(
     f32,
     blas = single,
     sqrt = libm::sqrtf,
-    nb = 32,
+    nb = 16,
+    cb = 32,
     tb = 64
 );
 lapack_impl!(
@@ -215,7 +216,8 @@ lapack_impl!(
     f64,
     blas = double,
     sqrt = libm::sqrt,
-    nb = 32,
+    nb = 16,
+    cb = 32,
     tb = 64
 );
 lapack_api!(

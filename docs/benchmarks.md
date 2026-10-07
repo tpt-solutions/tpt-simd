@@ -244,3 +244,50 @@ tpt-math workspace: fmt, clippy `-D warnings` and all 71 test suites pass with
 the feature off and on, so no test depends on bit-exact scalar sums. Enabling the
 feature adds `T: 'static` to those operations; `tpt-math-linalg-sparse`
 `conjugate_gradient`/`bicgstab` needed `+ 'static` (added unconditionally).
+
+### LU / Cholesky kernels and `solve` / `inverse` in tpt-math
+
+`tpt-simd-blas` now has `getrf`/`getrs`/`trsm`/`potrf`/`potrs` (f32 and f64,
+LAPACK-style, blocked on top of gemm). Kernel benchmarks, f64, plain build with
+`runtime-dispatch`, vs the crate's naive reference:
+
+| n | LU factor+solve naive -> tpt | Cholesky naive -> tpt |
+|---|---|---|
+| 64 | 25.1 -> 20.6 µs (1.2x) | 23.2 -> 11.1 µs (2.1x) |
+| 256 | 1.21 -> 0.76 ms (1.6x) | 2.01 -> 0.31 ms (6.4x) |
+| 512 | 12.3 -> 6.2 ms (2.0x) | 28.2 -> 1.94 ms (14.5x) |
+
+LU is only 1.2-2x over a decent naive column-oriented reference (panel factor and
+row swaps dominate; room to improve). Cholesky is a clear win.
+
+Through tpt-math (`DMatrix<f64>::solve` / `inverse`, which used a `Vec<Vec<f64>>`
+LU), plain build, tpt-math's own API:
+
+| op | feature off | `simd` | `simd-runtime` |
+|---|---|---|---|
+| `solve` 64 | 248 µs | 22 µs (11x) | 17.8 µs (14x) |
+| `solve` 256 | 4.13 ms | 0.90 ms (4.6x) | 0.56 ms (7.4x) |
+| `inverse` 64 | 199 µs | 71 µs (2.8x) | 66.8 µs (3.0x) |
+| `inverse` 256 | 35.9 ms | 3.18 ms (11x) | 2.21 ms (16x) |
+
+The singularity rule is unchanged (non-finite pivot or |pivot| < 1e-12 =>
+`Err(Singular)`), checked on the diagonal of U after `getrf`. All 71 tpt-math
+suites pass with the features off and on.
+
+### tpt-math-stats with the `simd` feature (mean / variance)
+
+`tpt-math-stats` gained an off-by-default `simd` feature that uses
+`tpt-simd-reduce::sum_compensated_f64` for `mean` and (chunked, no sample-sized
+temporary) `variance`. Plain build, 1M and 1k samples around 1e6:
+
+| op | feature off | `simd` | speedup |
+|---|---|---|---|
+| mean 1024 / 1M | 1.29 µs / 1.68 ms | 1.11 µs / 1.31 ms | 1.16x / 1.29x |
+| variance 1024 / 1M | 3.79 µs / 4.01 ms | 3.08 µs / 3.46 ms | 1.23x / 1.16x |
+
+Modest: these loops are largely memory-bound at 1M elements (a first version that
+allocated a deviations buffer was *slower* than scalar at 1M, 5.8 vs 3.9 ms, so it
+was replaced by 1024-element stack chunks). Worth enabling only if mean/variance show
+up in a profile. The Monte Carlo and sampler crates are generic over an `Rng` trait,
+so vectorising them (tpt-simd-rng, tpt-simd-math) needs an API change, not just a
+feature flag, and is not done.

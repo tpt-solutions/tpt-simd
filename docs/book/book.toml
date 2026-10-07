@@ -1,0 +1,9 @@
+[book]
+title = "tpt-simd"
+description = "Portable, zero-cost SIMD abstractions for Rust DSP and codec development."
+authors = ["TPT Solutions"]
+language = "en"
+
+[output.html]
+default-theme = "dark"
+issue-server = false

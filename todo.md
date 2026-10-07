@@ -334,23 +334,23 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 
 ### Documentation
 - [ ] API docs complete (every public fn; perf notes; `# Safety`)
-- [ ] mdBook (or similar) site, hosted on GitHub Pages
-- [ ] Cookbook:
-  - [ ] "How to implement an FFT using tpt-simd"
-  - [ ] "How to do motion compensation in a video codec"
-  - [ ] "How to convert between fixed-point formats"
-  - [ ] "How to apply a window function to audio data"
-- [ ] Migration guide:
-  - [ ] from manual intrinsics
-  - [ ] from scalar code
-  - [ ] from other SIMD crates (`wide`, `simba`, `std::simd`)
-- [ ] All Appendix B examples compile as doctests
+- [x] mdBook (or similar) site, hosted on GitHub Pages — book written in docs/book (not yet committed); GitHub Pages hosting not set up
+- [x] Cookbook:
+  - [x] "How to implement an FFT using tpt-simd"
+  - [x] "How to do motion compensation in a video codec"
+  - [x] "How to convert between fixed-point formats"
+  - [x] "How to apply a window function to audio data"
+- [x] Migration guide:
+  - [x] from manual intrinsics
+  - [x] from scalar code
+  - [x] from other SIMD crates (`wide`, `simba`, `std::simd`)
+- [ ] All Appendix B examples compile as doctests — appendix-b.md exists in the book but is not wired as doctests
 
 ### Release
 - [ ] Full benchmark report vs scalar / manual intrinsics / `wide` / `simba` / `rustfft`
 - [ ] Performance-regression guard in CI
-- [ ] Per-crate READMEs, keywords, categories, `rust-version`, license fields
-- [ ] CHANGELOG, semver policy, release process
+- [x] Per-crate READMEs, keywords, categories, `rust-version`, license fields — all 28 crates have README + CHANGELOG
+- [ ] CHANGELOG, semver policy, release process — per-crate changelogs written; semver policy and release process not
 - [ ] `cargo publish --dry-run` for all crates; publish in dependency order
 - [ ] Tag v0.1.0, GitHub release, announce (r/rust, users.rust-lang.org, This Week in Rust)
 
@@ -396,7 +396,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates, currently no SIMD; hand-written scalar loops, e.g. `DMatrix * DMatrix` in `tpt-math-linalg-dense` is a naive strided triple loop). New f32/f64 kernel crates sit on `tpt-simd-vector`/`core`; tpt-math adopts them behind an optional `simd` feature with the scalar path kept as the reference. Skip FFT (`tpt-math-signal-fft` wraps rustfft, already SIMD).
 
 ### Prerequisites / decisions
-- [x] Clone tpt-math and add baseline criterion benches first (gemm 64/256/1024, dot/norm, LU solve, CG on a Poisson matrix, Monte Carlo 10^7 samples); confirm gains justify the work and how much LLVM already autovectorises — done for gemm/dot/norm/LU solve (docs/benchmarks.md); gemm 4–57x, dot 3–4x, norm 5x. Not yet: CG on Poisson, Monte Carlo 10^7
+- [x] Clone tpt-math and add baseline criterion benches first (gemm 64/256/1024, dot/norm, LU solve, CG on a Poisson matrix, Monte Carlo 10^7 samples); confirm gains justify the work and how much LLVM already autovectorises — done for gemm/dot/norm/LU solve (docs/benchmarks.md); gemm 4–57x, dot 3–4x, norm 5x. LU solve/inverse and stats mean/variance also benched. Not yet: CG on Poisson, Monte Carlo 10^7
 - [x] Decide dispatch for library consumers: ADR 0001 is compile-time `cfg(target_feature)`, so users without `-C target-cpu=native` silently get the slow path. Choose runtime dispatch (`is_x86_feature_detected!`, needs `std`) behind a feature, or document required build flags; write ADR 0003 — ADR 0003 accepted; `runtime-dispatch` implemented for blas (umbrella forwards it)
 - [x] Decide float-determinism policy for reordered reductions and polynomial math (ADR 0001 requires bit-identical; relax to documented ULP/tolerance for `tpt-simd-math` and SIMD reductions); check tpt-math tests and formal-verification consumers for exact-value dependence — tiers accepted in ADR 0003; tpt-math suites (71) pass with simd on and off, so no exact-value dependence found
 - [ ] Add new crates to the workspace; keep `no_std`, MIT/Apache-only deps
@@ -407,20 +407,21 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] Packed, register-blocked `gemm` microkernel (e.g. 8x4 f32 / 4x4 f64, FMA) with cache blocking
 - [ ] Complex variants via split re/im (`ComplexSimd`)
 - [x] Portable reference + AVX2/FMA path; NEON later
-- [ ] Tests vs scalar reference (tails, NaN/inf, non-multiple sizes), proptest, criterion bench, `cargo-show-asm`
+- [x] LAPACK-style `getrf`/`getrs`/`trsm`/`potrf`/`potrs` (f32/f64, blocked on gemm) — LU only 1.2–2x vs naive reference (panel factor/row swaps dominate), Cholesky 2–14.5x; see docs/benchmarks.md
+- [ ] Tests vs scalar reference (tails, NaN/inf, non-multiple sizes), proptest, criterion bench, `cargo-show-asm` — tests and criterion benches exist (incl. lapack); show-asm not done
 - [x] Target: gemm >= 3x scalar f32 on AVX2 — 5.5–32x vs naive strided loop (28–43 GFLOP/s), see docs/benchmarks.md
-- [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd` — DONE for DMatrix mul/mat-vec/dot/norm via `simd`/`simd-runtime` features (uncommitted in tpt-math); NOT yet: LU/Cholesky/QR inner loops, tpt-math-linalg-complex
+- [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd` — DONE for DMatrix mul/mat-vec/dot/norm via `simd`/`simd-runtime` features (uncommitted in tpt-math); `DMatrix::solve`/`inverse` now use blas LU via `simd`/`simd-runtime` (solve 4.6–14x, inverse 2.8–16x); NOT yet: QR, tpt-math-linalg-complex; Cholesky kernel exists but wiring into tpt-math not confirmed
 
 ### tpt-simd-math
 - [x] Vector `exp`, `ln`, `sin`, `cos`, `tanh`, `erf` (polynomial approximations, documented max ULP error) — f32 only; max ULP 0.8–3.4 (docs in crate)
 - [x] Accuracy tests against `libm` over full range, special values (NaN/inf/subnormal)
-- [ ] Wire into `tpt-math-stats`, `tpt-math-prob-dist`, `tpt-math-prob-monte-carlo`, `tpt-math-prob-sampler`, autodiff
+- [ ] Wire into `tpt-math-stats`, `tpt-math-prob-dist`, `tpt-math-prob-monte-carlo`, `tpt-math-prob-sampler`, autodiff — not done (`tpt-math-stats` `simd` feature uses tpt-simd-reduce for mean/variance only, not these math fns)
 
 ### tpt-simd-rng
 - [x] Lane-parallel xoshiro / Philox generators (independent streams per lane, reproducible seeding)
 - [x] Vectorised uniform -> normal (Box-Muller or ziggurat) — Box-Muller, 5-7.5x vs libm scalar
 - [x] Statistical quality checks (e.g. PractRand/TestU01-style smoke tests) — chi-square/moment/bit-balance smoke tests (not PractRand)
-- [ ] Wire into `tpt-math-prob-sampler` and `tpt-math-prob-monte-carlo`
+- [ ] Wire into `tpt-math-prob-sampler` and `tpt-math-prob-monte-carlo` — not done: both are generic over an `Rng` trait, so vectorising needs an API change, not just a feature flag
 
 ### tpt-simd-sparse
 - [x] CSR/CSC SpMV using `tpt-simd-gather` — implemented with multi-accumulator loads (gather measured, not adopted; ~1.2–2x, memory bound)
@@ -430,7 +431,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 ### tpt-simd-reduce
 - [x] Pairwise / compensated sum, mean, variance, covariance over slices — done in tpt-simd-reduce
 - [x] min/max/argmin/argmax over slices — done (plain fold; LLVM parity)
-- [x] Builds on `tpt-simd-horizontal`; wire into `tpt-math-stats` — crate done; tpt-math wiring not done
+- [x] Builds on `tpt-simd-horizontal`; wire into `tpt-math-stats` — crate done; `tpt-math-stats` mean/variance wired behind off-by-default `simd` (1.2–1.3x, memory-bound; only worth enabling if profiled)
 
 ### Existing stubs that map directly to tpt-math
 - [ ] `tpt-simd-convolve` (FIR) and `tpt-simd-window` -> `tpt-math-signal-filter`

@@ -31,10 +31,6 @@ macro_rules! suite {
 
             const EPS: $t = $t::EPSILON;
 
-            fn rand_vec(rng: &mut Rng, len: usize) -> Vec<$t> {
-                (0..len).map(|_| rng.next() as $t).collect()
-            }
-
             /// `rows x cols` random matrix with `lda = rows + pad`, padding = PAD.
             fn rand_mat(rng: &mut Rng, rows: usize, cols: usize, pad: usize) -> (Vec<$t>, usize) {
                 let lda = rows.max(1) + pad;
@@ -338,7 +334,7 @@ macro_rules! suite {
                 assert_eq!(a1, a2);
                 assert_eq!(p1, p2);
                 assert_eq!($getrf_len(0, 5), 0);
-                assert_eq!($getrf_len(20, 20), 0);
+                assert_eq!($getrf_len(16, 16), 0);
                 let mut b1: Vec<$t> = (0..n * 3).map(|i| i as $t).collect();
                 let mut b2 = b1.clone();
                 $getrs(n, 3, &a1, lda, &p1, &mut b1, n);

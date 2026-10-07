@@ -74,7 +74,7 @@ impl core::error::Error for NotPositiveDefiniteError {}
 macro_rules! lapack_impl {
     (
         $modname:ident, $t:ident, blas = $blas:ident, sqrt = $sqrt:path,
-        nb = $nb:expr, tb = $tb:expr
+        nb = $nb:expr, cb = $cb:expr, tb = $tb:expr
     ) => {
         pub(crate) mod $modname {
             //! Per-type factorisation kernels.
@@ -84,8 +84,10 @@ macro_rules! lapack_impl {
             };
             use crate::{Diag, NotPositiveDefiniteError, SingularError, Trans, Uplo};
 
-            /// Panel width of the blocked LU / Cholesky.
+            /// Panel width of the blocked LU.
             const NB: usize = $nb;
+            /// Panel width of the blocked Cholesky.
+            const CB: usize = $cb;
             /// Diagonal block size of the blocked triangular solve.
             const TB: usize = $tb;
 
@@ -512,7 +514,7 @@ macro_rules! lapack_impl {
             ) -> Result<(), NotPositiveDefiniteError> {
                 for c in 0..cols {
                     let d = a[c + c * lda];
-                    if !(d > 0.0) {
+                    if d <= 0.0 || d.is_nan() {
                         return Err(NotPositiveDefiniteError { index: base + c });
                     }
                     let l = $sqrt(d);
@@ -532,10 +534,10 @@ macro_rules! lapack_impl {
             }
 
             pub(crate) fn potrf_workspace_len(n: usize) -> usize {
-                if n <= NB {
+                if n <= CB {
                     return 0;
                 }
-                2 * NB * NB + gemm_workspace_len(n, NB, NB)
+                2 * CB * CB + gemm_workspace_len(n, CB, CB)
             }
 
             pub(crate) fn potrf_with_workspace(
@@ -551,16 +553,16 @@ macro_rules! lapack_impl {
                 check_ws("potrf", ws.len(), potrf_workspace_len(n));
                 let mut j = 0;
                 while j < n {
-                    let jb = NB.min(n - j);
+                    let jb = CB.min(n - j);
                     chol_panel(n - j, jb, &mut a[j + j * lda..], lda, j)?;
                     let s = j + jb;
                     if s < n {
-                        let (bt, rest) = ws.split_at_mut(NB * NB);
-                        let (tmp, gws) = rest.split_at_mut(NB * NB);
+                        let (bt, rest) = ws.split_at_mut(CB * CB);
+                        let (tmp, gws) = rest.split_at_mut(CB * CB);
                         let (left, right) = a.split_at_mut(s * lda);
                         let mut jj = s;
                         while jj < n {
-                            let w = NB.min(n - jj);
+                            let w = CB.min(n - jj);
                             for p in 0..jb {
                                 for c in 0..w {
                                     bt[p + c * jb] = left[jj + c + (j + p) * lda];
@@ -764,7 +766,7 @@ macro_rules! lapack_impl {
                         for p in 0..j {
                             d -= a[j + p * lda] * a[j + p * lda];
                         }
-                        if !(d > 0.0) {
+                        if d <= 0.0 || d.is_nan() {
                             return Err(NotPositiveDefiniteError { index: j });
                         }
                         let l = $sqrt(d);
