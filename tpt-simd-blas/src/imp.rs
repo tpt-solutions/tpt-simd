@@ -4,7 +4,8 @@ macro_rules! blas_impl {
     (
         $modname:ident, $t:ident, w = $w:expr, mr = $mr:expr, nr = $nr:expr,
         mc = $mc:expr, kc = $kc:expr, nc = $nc:expr, sqrt = $sqrt:path,
-        kernel = $kernel:path, kernel512 = $kernel512:path
+        kernel = $kernel:path, kernel512 = $kernel512:path,
+        l1_dot = $ld:path, l1_sq = $lq:path, l1_abs = $la:path
     ) => {
         pub(crate) mod $modname {
             //! Per-type implementation (see the crate docs).
@@ -56,9 +57,13 @@ macro_rules! blas_impl {
 
             pub(crate) fn dot(x: &[$t], y: &[$t]) -> $t {
                 assert_eq!(x.len(), y.len(), "dot: length mismatch ({} vs {})", x.len(), y.len());
-                let mut acc = [0.0 as $t; W];
-                let xc = x.chunks_exact(W);
-                let yc = y.chunks_exact(W);
+            #[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f"))]
+            // SAFETY: AVX-512F is enabled at compile time; the slices are equal length.
+            let (mut acc, done) = unsafe { $ld(x, y) };
+            #[cfg(not(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f")))]
+            let (mut acc, done) = ([0.0 as $t; W], 0usize);
+                let xc = x[done..].chunks_exact(W);
+                let yc = y[done..].chunks_exact(W);
                 let (xt, yt) = (xc.remainder(), yc.remainder());
                 for (a, b) in xc.zip(yc) {
                     for j in 0..W {
@@ -73,8 +78,12 @@ macro_rules! blas_impl {
             }
 
             pub(crate) fn nrm2(x: &[$t]) -> $t {
-                let mut acc = [0.0 as $t; W];
-                let xc = x.chunks_exact(W);
+            #[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f"))]
+            // SAFETY: AVX-512F is enabled at compile time; the slices are equal length.
+            let (mut acc, done) = unsafe { $lq(x, x) };
+            #[cfg(not(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f")))]
+            let (mut acc, done) = ([0.0 as $t; W], 0usize);
+                let xc = x[done..].chunks_exact(W);
                 let xt = xc.remainder();
                 for a in xc {
                     for j in 0..W {
@@ -89,8 +98,12 @@ macro_rules! blas_impl {
             }
 
             pub(crate) fn asum(x: &[$t]) -> $t {
-                let mut acc = [0.0 as $t; W];
-                let xc = x.chunks_exact(W);
+            #[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f"))]
+            // SAFETY: AVX-512F is enabled at compile time; the slices are equal length.
+            let (mut acc, done) = unsafe { $la(x, x) };
+            #[cfg(not(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f")))]
+            let (mut acc, done) = ([0.0 as $t; W], 0usize);
+                let xc = x[done..].chunks_exact(W);
                 let xt = xc.remainder();
                 for a in xc {
                     for j in 0..W {

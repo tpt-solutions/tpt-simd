@@ -235,3 +235,97 @@ pub(crate) unsafe fn kernel_f64_512(kc: usize, a: *const f64, b: *const f64, out
         _mm512_storeu_pd(out.add(56), c31);
     }
 }
+
+/// AVX-512F level-1 block kernel for `f32`. `OP` selects the per-element
+/// product: 0 = `x*y`, 1 = `x*x` (nrm2), 2 = `|x|` (asum). Returns the 32 lane
+/// accumulators (lane `j` sums element `32*i + j` over the blocks `i`) and the
+/// number of elements consumed (a multiple of 32). Multiply and add are separate
+/// roundings, matching the portable `acc[j] += a[j] * b[j]`.
+///
+/// # Safety
+/// AVX-512F must be enabled at compile time; `y.len() == x.len()` (for `OP != 0`
+/// `y` is not read and may be `x`).
+#[cfg(target_feature = "avx512f")]
+#[target_feature(enable = "avx512f")]
+pub(crate) unsafe fn l1_f32<const OP: u8>(x: &[f32], y: &[f32]) -> ([f32; 32], usize) {
+    let blocks = x.len() / 32;
+    let (px, py) = (x.as_ptr(), y.as_ptr());
+    let mut lo = _mm512_setzero_ps();
+    let mut hi = _mm512_setzero_ps();
+    for i in 0..blocks {
+        // SAFETY: 32*i + 32 <= 32*blocks <= len for both slices.
+        unsafe {
+            let x0 = _mm512_loadu_ps(px.add(32 * i));
+            let x1 = _mm512_loadu_ps(px.add(32 * i + 16));
+            let (p0, p1) = match OP {
+                0 => {
+                    let y0 = _mm512_loadu_ps(py.add(32 * i));
+                    let y1 = _mm512_loadu_ps(py.add(32 * i + 16));
+                    (_mm512_mul_ps(x0, y0), _mm512_mul_ps(x1, y1))
+                }
+                1 => (_mm512_mul_ps(x0, x0), _mm512_mul_ps(x1, x1)),
+                _ => {
+                    let sign = _mm512_set1_epi32(i32::MIN);
+                    let abs = |v: __m512| {
+                        _mm512_castsi512_ps(_mm512_andnot_si512(sign, _mm512_castps_si512(v)))
+                    };
+                    (abs(x0), abs(x1))
+                }
+            };
+            lo = _mm512_add_ps(lo, p0);
+            hi = _mm512_add_ps(hi, p1);
+        }
+    }
+    let mut out = [0.0f32; 32];
+    // SAFETY: `out` is 128 bytes; each store writes 16 floats.
+    unsafe {
+        _mm512_storeu_ps(out.as_mut_ptr(), lo);
+        _mm512_storeu_ps(out.as_mut_ptr().add(16), hi);
+    }
+    (out, blocks * 32)
+}
+
+/// AVX-512F level-1 block kernel for `f64`; see [`l1_f32`]. 16 lane
+/// accumulators, two 8-lane registers.
+///
+/// # Safety
+/// As for [`l1_f32`].
+#[cfg(target_feature = "avx512f")]
+#[target_feature(enable = "avx512f")]
+pub(crate) unsafe fn l1_f64<const OP: u8>(x: &[f64], y: &[f64]) -> ([f64; 16], usize) {
+    let blocks = x.len() / 16;
+    let (px, py) = (x.as_ptr(), y.as_ptr());
+    let mut lo = _mm512_setzero_pd();
+    let mut hi = _mm512_setzero_pd();
+    for i in 0..blocks {
+        // SAFETY: 16*i + 16 <= 16*blocks <= len for both slices.
+        unsafe {
+            let x0 = _mm512_loadu_pd(px.add(16 * i));
+            let x1 = _mm512_loadu_pd(px.add(16 * i + 8));
+            let (p0, p1) = match OP {
+                0 => {
+                    let y0 = _mm512_loadu_pd(py.add(16 * i));
+                    let y1 = _mm512_loadu_pd(py.add(16 * i + 8));
+                    (_mm512_mul_pd(x0, y0), _mm512_mul_pd(x1, y1))
+                }
+                1 => (_mm512_mul_pd(x0, x0), _mm512_mul_pd(x1, x1)),
+                _ => {
+                    let sign = _mm512_set1_epi64(i64::MIN);
+                    let abs = |v: __m512d| {
+                        _mm512_castsi512_pd(_mm512_andnot_si512(sign, _mm512_castpd_si512(v)))
+                    };
+                    (abs(x0), abs(x1))
+                }
+            };
+            lo = _mm512_add_pd(lo, p0);
+            hi = _mm512_add_pd(hi, p1);
+        }
+    }
+    let mut out = [0.0f64; 16];
+    // SAFETY: `out` is 128 bytes; each store writes 8 doubles.
+    unsafe {
+        _mm512_storeu_pd(out.as_mut_ptr(), lo);
+        _mm512_storeu_pd(out.as_mut_ptr().add(8), hi);
+    }
+    (out, blocks * 16)
+}

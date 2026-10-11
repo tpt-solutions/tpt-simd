@@ -84,10 +84,51 @@ fn fma_s(a: f32, b: f32, c: f32) -> f32 {
     }
 }
 
+/// AVX-512F `dst[i] = fma(src[i], k, dst[i])` for the leading whole 16-lane
+/// blocks. Returns how many elements were processed. Each lane is independent
+/// and FMA rounds once, so the result equals the 8-lane and scalar paths.
+///
+/// # Safety
+/// AVX-512F and FMA must be enabled at compile time; `src.len() == dst.len()`.
+#[cfg(all(
+    target_arch = "x86_64",
+    target_feature = "avx512f",
+    target_feature = "fma"
+))]
+#[target_feature(enable = "avx512f,fma")]
+unsafe fn axpy_512(dst: &mut [f32], src: &[f32], k: f32) -> usize {
+    use core::arch::x86_64::*;
+    let n = dst.len() / 16 * 16;
+    let kv = _mm512_set1_ps(k);
+    for i in (0..n).step_by(16) {
+        // SAFETY: i + 16 <= n <= len for both slices.
+        unsafe {
+            let s = _mm512_loadu_ps(src.as_ptr().add(i));
+            let d = _mm512_loadu_ps(dst.as_ptr().add(i));
+            _mm512_storeu_ps(dst.as_mut_ptr().add(i), _mm512_fmadd_ps(s, kv, d));
+        }
+    }
+    n
+}
+
 /// `dst[i] = fma(src[i], k, dst[i])` for all `i` (equal lengths).
 #[inline]
 fn axpy(dst: &mut [f32], src: &[f32], k: f32) {
     debug_assert_eq!(dst.len(), src.len());
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx512f",
+        target_feature = "fma"
+    ))]
+    // SAFETY: AVX-512F and FMA are enabled at compile time; lengths are equal.
+    let start = unsafe { axpy_512(dst, src, k) };
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "avx512f",
+        target_feature = "fma"
+    )))]
+    let start = 0;
+    let (dst, src) = (&mut dst[start..], &src[start..]);
     let kv = F32x8::splat(k);
     let mut d = dst.chunks_exact_mut(8);
     let mut s = src.chunks_exact(8);
@@ -395,6 +436,14 @@ pub fn fir_filter_i16(input: &[i16], coefficients: &[i16], output: &mut [i16]) {
     let head = taps.saturating_sub(1).min(input.len());
     fir_scalar_range(input, coefficients, output, 0..head);
     let mut n = head;
+    // AVX-512F interior: eight outputs per step in i64 lanes. Advances `n`
+    // past every full block; the 4-lane loop below handles what is left.
+    #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+    {
+        // SAFETY: AVX-512F is enabled at compile time; `n >= taps - 1` holds
+        // because `n` starts at `head`, so every tap read is in range.
+        n = unsafe { fir_interior_512(input, coefficients, output, n) };
+    }
     // Interior: vectorise across 4 outputs; every tap read is in range.
     while n + 4 <= input.len() && taps > 0 {
         let mut acc = I64x4::zero();
@@ -407,6 +456,48 @@ pub fn fir_filter_i16(input: &[i16], coefficients: &[i16], output: &mut [i16]) {
         n += 4;
     }
     fir_scalar_range(input, coefficients, output, n..input.len());
+}
+
+/// AVX-512F interior of [`fir_filter_i16`]: eight outputs per iteration in
+/// `i64` lanes, with the same rounding and saturation as `q15_round_sat`.
+/// Returns the first output index not written.
+///
+/// # Safety
+/// AVX-512F must be enabled at compile time, and `n >= coefficients.len() - 1`
+/// (when there are taps) so that `input[n - k]` is in bounds for every tap.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+#[target_feature(enable = "avx512f")]
+unsafe fn fir_interior_512(
+    input: &[i16],
+    coefficients: &[i16],
+    output: &mut [i16],
+    mut n: usize,
+) -> usize {
+    use core::arch::x86_64::*;
+    let round = _mm512_set1_epi64(1 << 14);
+    let lo = _mm512_set1_epi64(i64::from(i16::MIN));
+    let hi = _mm512_set1_epi64(i64::from(i16::MAX));
+    while n + 8 <= input.len() {
+        let mut acc = _mm512_setzero_si512();
+        for (k, &c) in coefficients.iter().enumerate() {
+            // SAFETY: `n - k >= 0` and `n + 8 <= input.len()`, so the 8 i16
+            // read at `input[n - k..]` are in bounds. `vpmuldq` multiplies the
+            // low signed 32 bits of each lane, which hold the sign-extended
+            // i16 values, so each product is exact in 64 bits.
+            unsafe {
+                let x = _mm512_cvtepi16_epi64(_mm_loadu_si128(input.as_ptr().add(n - k).cast()));
+                acc = _mm512_add_epi64(acc, _mm512_mul_epi32(x, _mm512_set1_epi64(i64::from(c))));
+            }
+        }
+        let r = _mm512_srai_epi64::<15>(_mm512_add_epi64(acc, round));
+        let r = _mm512_min_epi64(_mm512_max_epi64(r, lo), hi);
+        // SAFETY: writes 8 i16 (16 bytes) at `output[n..n + 8]`, in bounds.
+        unsafe {
+            _mm_storeu_si128(output.as_mut_ptr().add(n).cast(), _mm512_cvtepi64_epi16(r));
+        }
+        n += 8;
+    }
+    n
 }
 
 fn fir_scalar_range(
@@ -534,6 +625,35 @@ mod tests {
         let mut o = [0i16; 2];
         fir_filter_i16(&[i16::MAX, i16::MAX], &[i16::MIN, i16::MIN], &mut o);
         assert_eq!(o, [-32767, i16::MIN]);
+    }
+
+    #[test]
+    fn fir_long_extremes_match_scalar() {
+        // Long inputs so the 8-lane and 4-lane interiors run; extreme values
+        // so the rounding and saturation clamps are hit on both sides.
+        let x: Vec<i16> = (0..301)
+            .map(|i| match i % 4 {
+                0 => i16::MIN,
+                1 => i16::MAX,
+                2 => (i as i16).wrapping_mul(977),
+                _ => -(i as i16),
+            })
+            .collect();
+        for taps in [0usize, 1, 2, 7, 8, 9, 16, 17] {
+            let c: Vec<i16> = (0..taps)
+                .map(|k| {
+                    if k % 2 == 0 {
+                        i16::MIN
+                    } else {
+                        i16::MAX - k as i16
+                    }
+                })
+                .collect();
+            let (mut a, mut b) = (vec![0i16; x.len()], vec![0i16; x.len()]);
+            fir_filter_i16(&x, &c, &mut a);
+            fir_filter_scalar_i16(&x, &c, &mut b);
+            assert_eq!(a, b, "taps={taps}");
+        }
     }
 
     #[test]

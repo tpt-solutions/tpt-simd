@@ -420,3 +420,177 @@ proptest! {
         prop_assert!((d - r::dot_f64(&x, &x)).abs() <= 1e-12 * (x.len() + 2) as f64);
     }
 }
+
+// Level-1 accumulation order (imp.rs): W lane accumulators, `acc[j] += p(j)`
+// over whole W-blocks, a halving-tree reduction, then the scalar tail added
+// left to right. These references follow that order exactly.
+fn reduce_ref32(mut acc: [f32; 32]) -> f32 {
+    let mut w = 32;
+    while w > 1 {
+        w /= 2;
+        for i in 0..w {
+            acc[i] += acc[i + w];
+        }
+    }
+    acc[0]
+}
+
+fn reduce_ref64(mut acc: [f64; 16]) -> f64 {
+    let mut w = 16;
+    while w > 1 {
+        w /= 2;
+        for i in 0..w {
+            acc[i] += acc[i + w];
+        }
+    }
+    acc[0]
+}
+
+fn level1_ref32(x: &[f32], y: &[f32], op: u8) -> f32 {
+    let n = x.len() / 32 * 32;
+    let mut acc = [0.0f32; 32];
+    for i in (0..n).step_by(32) {
+        for j in 0..32 {
+            let p = match op {
+                0 => x[i + j] * y[i + j],
+                1 => x[i + j] * x[i + j],
+                _ => x[i + j].abs(),
+            };
+            acc[j] += p;
+        }
+    }
+    let mut tail = 0.0f32;
+    for i in n..x.len() {
+        tail += match op {
+            0 => x[i] * y[i],
+            1 => x[i] * x[i],
+            _ => x[i].abs(),
+        };
+    }
+    reduce_ref32(acc) + tail
+}
+
+fn level1_ref64(x: &[f64], y: &[f64], op: u8) -> f64 {
+    let n = x.len() / 16 * 16;
+    let mut acc = [0.0f64; 16];
+    for i in (0..n).step_by(16) {
+        for j in 0..16 {
+            let p = match op {
+                0 => x[i + j] * y[i + j],
+                1 => x[i + j] * x[i + j],
+                _ => x[i + j].abs(),
+            };
+            acc[j] += p;
+        }
+    }
+    let mut tail = 0.0f64;
+    for i in n..x.len() {
+        tail += match op {
+            0 => x[i] * y[i],
+            1 => x[i] * x[i],
+            _ => x[i].abs(),
+        };
+    }
+    reduce_ref64(acc) + tail
+}
+
+#[test]
+fn level1_matches_documented_order_bit_exact() {
+    for n in 0..=130usize {
+        let x32: Vec<f32> = (0..n)
+            .map(|i| (i as f32 * 0.37 - 5.0) * 1e3 + 0.1)
+            .collect();
+        let y32: Vec<f32> = (0..n).map(|i| 1.0 / (i as f32 + 1.0) - 0.2).collect();
+        assert_eq!(
+            dot_f32(&x32, &y32).to_bits(),
+            level1_ref32(&x32, &y32, 0).to_bits(),
+            "dot n={n}"
+        );
+        assert_eq!(
+            nrm2_f32(&x32).to_bits(),
+            level1_ref32(&x32, &x32, 1).sqrt().to_bits(),
+            "nrm2 n={n}"
+        );
+        assert_eq!(
+            asum_f32(&x32).to_bits(),
+            level1_ref32(&x32, &x32, 2).to_bits(),
+            "asum n={n}"
+        );
+
+        let x64: Vec<f64> = (0..n)
+            .map(|i| (i as f64 * 0.37 - 5.0) * 1e3 + 0.1)
+            .collect();
+        let y64: Vec<f64> = (0..n).map(|i| 1.0 / (i as f64 + 1.0) - 0.2).collect();
+        assert_eq!(
+            dot_f64(&x64, &y64).to_bits(),
+            level1_ref64(&x64, &y64, 0).to_bits(),
+            "dot64 n={n}"
+        );
+        assert_eq!(
+            nrm2_f64(&x64).to_bits(),
+            level1_ref64(&x64, &x64, 1).sqrt().to_bits(),
+            "nrm2_64 n={n}"
+        );
+        assert_eq!(
+            asum_f64(&x64).to_bits(),
+            level1_ref64(&x64, &x64, 2).to_bits(),
+            "asum64 n={n}"
+        );
+    }
+}
+
+#[test]
+fn axpy_scal_bit_exact_elementwise() {
+    // Elementwise: each output is one product and one sum (or one product), so
+    // the reference is the per-element expression itself.
+    for n in 0..=130usize {
+        for &alpha in &[2.5f32, -0.75, 1.0e-3] {
+            let x: Vec<f32> = (0..n)
+                .map(|i| (i as f32 * 0.37 - 5.0) * 1e3 + 0.1)
+                .collect();
+            let y0: Vec<f32> = (0..n).map(|i| 1.0 / (i as f32 + 1.0) - 0.2).collect();
+            let mut y = y0.clone();
+            axpy_f32(alpha, &x, &mut y);
+            for i in 0..n {
+                assert_eq!(
+                    y[i].to_bits(),
+                    (y0[i] + alpha * x[i]).to_bits(),
+                    "axpy f32 n={n} i={i}"
+                );
+            }
+            let mut z = x.clone();
+            scal_f32(alpha, &mut z);
+            for i in 0..n {
+                assert_eq!(
+                    z[i].to_bits(),
+                    (x[i] * alpha).to_bits(),
+                    "scal f32 n={n} i={i}"
+                );
+            }
+
+            let alpha64 = alpha as f64;
+            let x64: Vec<f64> = (0..n)
+                .map(|i| (i as f64 * 0.37 - 5.0) * 1e3 + 0.1)
+                .collect();
+            let y64: Vec<f64> = (0..n).map(|i| 1.0 / (i as f64 + 1.0) - 0.2).collect();
+            let mut yy = y64.clone();
+            axpy_f64(alpha64, &x64, &mut yy);
+            for i in 0..n {
+                assert_eq!(
+                    yy[i].to_bits(),
+                    (y64[i] + alpha64 * x64[i]).to_bits(),
+                    "axpy f64 n={n} i={i}"
+                );
+            }
+            let mut zz = x64.clone();
+            scal_f64(alpha64, &mut zz);
+            for i in 0..n {
+                assert_eq!(
+                    zz[i].to_bits(),
+                    (x64[i] * alpha64).to_bits(),
+                    "scal f64 n={n} i={i}"
+                );
+            }
+        }
+    }
+}

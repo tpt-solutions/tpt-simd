@@ -748,3 +748,165 @@ are approximate.
 Read this as: i32 is about parity with AVX2, f32 is a modest gain. A
 single-accumulator AVX-512 version was measured too and was no better in the
 A/B (i32 221 ns, f32 301 ns in that run), so the four-counter version was kept.
+
+## AVX-512BW unpack_i8_to_i16 (tpt-simd-permute)
+
+`unpack_i8_to_i16` had no explicit SIMD path. It relied on LLVM's autovectorised
+loop, which was slower on the native AVX-512 build than on the AVX2 build of the
+same source (144 ns vs 91 ns, criterion, 1024 bytes). The native build now uses an
+explicit AVX-512BW kernel (`unpack_i8_to_i16_avx512bw`): one 32-byte load,
+`vpmovsxbw` to 32 `i16`, one 64-byte store per iteration, scalar tail.
+
+| Bench (1024 elements) | before (native) | after (native) |
+|---|---|---|
+| `unpack_i8_to_i16/lib` | 144 ns | 67 ns (2.1x; now faster than the AVX2 build's 91 ns) |
+
+Correctness: `unpack_all_lengths_and_extremes` (every length 0..=130, full i8
+range) and the existing proptest pass in the native, AVX2 and default builds.
+
+Checked and not changed: `interleave_stereo_i16` and `deinterleave_stereo_i16`
+are already faster on the native build than on AVX2 (254 vs 331 ns and 371 vs
+435 ns), so autovectorisation is adequate there.
+
+## AVX-512F convolve_1d_f32 (tpt-simd-convolve)
+
+`convolve_1d_f32` is one `axpy` pass per kernel tap. `axpy` now processes whole
+16-element blocks with `_mm512_fmadd_ps` when AVX-512F and FMA are enabled at
+compile time (`axpy_512` in `tpt-simd-convolve/src/lib.rs`), then the existing
+8-lane code handles the remainder. Each lane is independent and FMA rounds once,
+so results are unchanged. The proptest `conv1d_matches_scalar` checks equality
+with the scalar reference for input lengths up to 70, which covers the 16-lane
+and tail blocks, and passes in the native, AVX2 and default builds.
+
+A/B (criterion, `convolve_1d_f32/tpt`, same source):
+
+| Build | time |
+|---|---|
+| AVX2 + FMA | 35.2 us (range 32-39) |
+| AVX-512F + FMA (native) | 15.5 us (range 15-16) |
+
+Only the native build changed, so the 2.3x is the 16-lane path. The scalar reference
+(`convolve_1d_scalar_f32`, software `fmaf`) is about 570-730 us in these runs and
+is not a useful baseline for speed.
+
+## AVX-512F fir_filter_i16 (tpt-simd-convolve)
+
+The Q15 FIR interior now has an AVX-512F path (`fir_interior_512` in
+`tpt-simd-convolve/src/lib.rs`): eight outputs per iteration in `i64` lanes. Each
+tap sign-extends eight `i16` inputs (`vpmovsxwq`), multiplies by the coefficient
+(`vpmuldq`, exact in 64 bits), and accumulates (`vpaddq`). Rounding is
+`(acc + 2^14) >> 15` (`vpsraq`), then clamping to the i16 range, then narrowing.
+This is the same arithmetic as `q15_round_sat`. The 4-lane and scalar loops handle
+what is left, as before.
+
+Correctness: the existing `fir_matches_scalar` proptest (full-range `i16` inputs
+and taps, lengths to 59) and a new `fir_long_extremes_match_scalar` test (lengths
+to 300, tap counts 0, 1, 2, 7, 8, 9, 16, 17, extreme values that hit both clamps)
+compare against the scalar reference. They pass in the native, AVX2 and default
+builds.
+
+A/B (criterion, `fir_filter_i16/tpt`, same source):
+
+| Build | time |
+|---|---|
+| AVX2 + FMA | 51.7 us (range 50-54) |
+| AVX-512F (native) | 15.7 us (range 15-16) |
+
+The scalar reference is 164 us (AVX2 build) and 180 us (native build), so the
+native path is about 11x faster than scalar and the AVX2 path about 3x.
+
+## AVX-512F f32 sum (tpt-simd-reduce)
+
+`sum_f32` (and so `pairwise_sum_f32`, whose leaves call `sum`) now takes its
+full 32-element blocks from an AVX-512F kernel (`x86_512::f32_blocks` in
+`tpt-simd-reduce/src/lib.rs`) when AVX-512F is enabled at compile time. Two
+`__m512` registers hold the four 8-lane accumulators as `[a0|a1]` and `[a2|a3]`,
+so each block is two adds, in the documented order. The `sum` loop then adds the
+remaining 8-element vectors and the scalar tail as before, so results are
+bit-identical. The crate's `#![forbid(unsafe_code)]` is now conditional on the
+absence of this path, following ADR 0002 and the dot and blas crates.
+
+Correctness: the existing tests use a tolerance, so a new test
+`sum_f32_is_bit_identical_to_documented_order` compares `sum_f32` bit for bit with
+a reference written from the documented order, for every length 0..=200. It passes
+in the native, AVX2 and default builds.
+
+A/B in one native build (criterion, `sum/tpt` rows; the "no hook" row has the
+hook turned off in a temporary copy and the file restored afterwards):
+
+| Bench | native, no hook (portable) | native, AVX-512F hook |
+|---|---|---|
+| `f32_1024/sum/tpt` | 115 ns | 33.5 ns (3.4x) |
+| `f32_65536/sum/tpt` | 9.0 us | 3.55 us (2.5x) |
+
+For reference, the AVX2 build of the same source runs `f32_1024` in 127 ns, so
+the portable array-backed `Simd` code is slow in both builds. The gain above is
+the explicit kernel, not just the wider target. f64 `sum` has no hook yet.
+
+## AVX-512F f64 sum (tpt-simd-reduce)
+
+The f64 counterpart of the f32 hook (`x86_512::f64_blocks`). Each 16-element
+block takes two `__m512d` adds: `[a0|a1]` from elements 0..8 and `[a2|a3]` from
+elements 8..16, in the documented order. The `sum` loop, the tail and the
+results are unchanged, so the result is bit-identical. Checked by
+`sum_f64_is_bit_identical_to_documented_order` (lengths 0..=200) in the native,
+AVX2 and default builds.
+
+A/B (criterion, `other_1024/sum_f64/tpt`, same session):
+
+| Build | time |
+|---|---|
+| native, no hook (portable) | 107 ns |
+| native, AVX-512F hook | 60 ns (1.8x) |
+| AVX2 + FMA | 104 ns |
+
+The hook-off row was measured by turning the hook off in a temporary copy
+and restoring the file, checked byte for byte afterwards.
+
+## AVX-512F blas level-1: dot, nrm2, asum (tpt-simd-blas)
+
+The portable level-1 kernels accumulate into a 32-lane (f32) or 16-lane (f64)
+array, which LLVM autovectorises. On the native AVX-512 build that codegen was
+slower than on the AVX2 build for cache-resident data (dot 4096: 1.05 us native
+vs 0.88 us AVX2, nrm2 4096: 1.10 us vs 0.72 us; the same kind of regression as
+`unpack_i8_to_i16`).
+
+`l1_f32` / `l1_f64` (`tpt-simd-blas/src/x86.rs`) are AVX-512F block kernels for
+`x*y`, `x*x` and `|x|`. They use two 512-bit accumulators, with separate multiply
+and add (no FMA), and the same lane layout, reduction and scalar tail as the
+portable code. The results are bit-identical. The new test
+`level1_matches_documented_order_bit_exact` checks this for lengths 0..=130 in
+f32 and f64, and all three builds pass.
+
+A/B in one session (criterion, `level1_*/tpt`, AVX2+FMA build then native AVX-512F):
+
+| Bench | AVX2 + FMA | AVX-512F | speedup |
+|---|---|---|---|
+| `dot_f32` 4096 | 1.13 us | 225 ns | 5.0x |
+| `nrm2_f32` 4096 | 1.04 us | 193 ns | 5.4x |
+| `asum_f32` 4096 | 607 ns | 156 ns | 3.9x |
+| `dot_f32` 1M | 460 us | 295 us | 1.6x |
+| `nrm2_f32` 1M | 209 us | 110 us | 1.9x |
+| `asum_f32` 1M | 249 us | 113 us | 2.2x |
+
+The machine is noisy (the same benchmark moved by about 30% between runs), so
+treat these as approximate. The 1M rows are closer to memory-bound than the 4096
+rows, and they gain less.
+
+## blas axpy / scal: tried, not kept (tpt-simd-blas)
+
+An AVX-512F `axpy_f32` (`y += alpha*x`, 16 lanes) and `scal_f32` were written and
+checked bit-exact (test `axpy_scal_bit_exact_elementwise`, lengths 0..=130, all
+pass). They were then benchmarked in the same session against the autovectorised
+native loop (criterion, `level1_*/axpy_f32/tpt`, hook turned off in a temporary
+copy and restored byte for byte afterwards):
+
+| Size | autovectorised (native) | AVX-512F kernel |
+|---|---|---|
+| 4096 | 296 ns | 363 ns (slower) |
+| 1M | 408 us | 350 us (faster in this run; an earlier run gave 469 us) |
+
+The cache-resident case is slower and the memory-bound case is inside the noise,
+so the kernels were reverted. The autovectorised loop stays for `axpy` and `scal`.
+`scal` was not benchmarked on its own. The bit-exact test stays because it is
+still a valid check of the portable path.

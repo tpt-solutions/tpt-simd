@@ -332,3 +332,79 @@ proptest! {
         prop_assert_eq!(max_i32(&v), v.iter().copied().max());
     }
 }
+
+/// Reference for the documented `sum` order (crate docs, "Accumulation order"),
+/// written with the portable vector type only, so it does not depend on the
+/// AVX-512 hook.
+fn documented_sum_f32(xs: &[f32]) -> f32 {
+    use tpt_simd_core::Simd;
+    use tpt_simd_horizontal::reduce_sum;
+    let mut a = [Simd::<f32, 8>::splat(0.0); 4];
+    let mut xb = xs.chunks_exact(32);
+    for x in &mut xb {
+        for k in 0..4 {
+            a[k] += Simd::from_slice(&x[8 * k..]);
+        }
+    }
+    let mut xv = xb.remainder().chunks_exact(8);
+    for x in &mut xv {
+        a[0] += Simd::from_slice(x);
+    }
+    let mut r = reduce_sum((a[0] + a[1]) + (a[2] + a[3]));
+    for &x in xv.remainder() {
+        r += x;
+    }
+    r
+}
+
+#[test]
+fn sum_f32_is_bit_identical_to_documented_order() {
+    // Every length 0..=200 (full 32-element blocks, 8-element vectors and each
+    // scalar tail length), with values whose sums depend on the order.
+    for n in 0..=200usize {
+        let x: Vec<f32> = (0..n)
+            .map(|i| (i as f32 * 0.37 - 5.0) * 1e3 + 0.1)
+            .collect();
+        assert_eq!(
+            sum_f32(&x).to_bits(),
+            documented_sum_f32(&x).to_bits(),
+            "n={n}"
+        );
+    }
+}
+
+/// f64 reference for the documented `sum` order (N = 4, B = 16).
+fn documented_sum_f64(xs: &[f64]) -> f64 {
+    use tpt_simd_core::Simd;
+    use tpt_simd_horizontal::reduce_sum;
+    let mut a = [Simd::<f64, 4>::splat(0.0); 4];
+    let mut xb = xs.chunks_exact(16);
+    for x in &mut xb {
+        for k in 0..4 {
+            a[k] += Simd::from_slice(&x[4 * k..]);
+        }
+    }
+    let mut xv = xb.remainder().chunks_exact(4);
+    for x in &mut xv {
+        a[0] += Simd::from_slice(x);
+    }
+    let mut r = reduce_sum((a[0] + a[1]) + (a[2] + a[3]));
+    for &x in xv.remainder() {
+        r += x;
+    }
+    r
+}
+
+#[test]
+fn sum_f64_is_bit_identical_to_documented_order() {
+    for n in 0..=200usize {
+        let x: Vec<f64> = (0..n)
+            .map(|i| (i as f64 * 0.37 - 5.0) * 1e3 + 0.1)
+            .collect();
+        assert_eq!(
+            sum_f64(&x).to_bits(),
+            documented_sum_f64(&x).to_bits(),
+            "n={n}"
+        );
+    }
+}

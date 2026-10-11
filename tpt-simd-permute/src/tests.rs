@@ -181,3 +181,17 @@ proptest! {
         );
     }
 }
+
+#[test]
+fn unpack_all_lengths_and_extremes() {
+    // Every length 0..=130 (covers the 32-byte blocks and each tail length),
+    // with the full i8 range cycled through, so -128 and 127 both appear.
+    for n in 0..=130usize {
+        let d: Vec<i8> = (0..n).map(|i| (i as i32 * 37 - 128) as i8).collect();
+        let mut o = vec![0i16; n];
+        unpack_i8_to_i16(&d, &mut o);
+        for (a, b) in d.iter().zip(&o) {
+            assert_eq!(i16::from(*a), *b, "n={n}");
+        }
+    }
+}

@@ -86,7 +86,14 @@
 //! assert_eq!(sum_compensated_f32(&big), 1.0);
 //! ```
 #![no_std]
-#![forbid(unsafe_code)]
+#![cfg_attr(
+    not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx512f"
+    )),
+    forbid(unsafe_code)
+)]
 
 #[cfg(feature = "std")]
 extern crate std;
@@ -95,7 +102,7 @@ extern crate std;
 mod tests;
 
 macro_rules! float_kernels {
-    ($m:ident, $t:ident, $n:literal) => {
+    ($m:ident, $t:ident, $n:literal, $blocks:path) => {
         pub(crate) mod $m {
             use tpt_simd_core::Simd;
             use tpt_simd_horizontal::reduce_sum;
@@ -140,9 +147,28 @@ macro_rules! float_kernels {
             }
 
             /// Multi-accumulator sum (see the crate docs for the exact order).
+            ///
+            /// `$blocks` returns the accumulators after the leading full blocks
+            /// it handled (none on paths without a hook), and this loop adds
+            /// the rest in the documented order.
             #[inline]
             pub fn sum(xs: &[$t]) -> $t {
-                sum_map(xs, |v| v, |x| x)
+                let (mut a, done) = $blocks(xs);
+                let mut xb = xs[done..].chunks_exact(BLOCK);
+                for x in &mut xb {
+                    for k in 0..4 {
+                        a[k] += V::from_slice(&x[k * N..]);
+                    }
+                }
+                let mut xv = xb.remainder().chunks_exact(N);
+                for x in &mut xv {
+                    a[0] += V::from_slice(x);
+                }
+                let mut r = reduce_sum((a[0] + a[1]) + (a[2] + a[3]));
+                for &x in xv.remainder() {
+                    r += x;
+                }
+                r
             }
 
             /// Recursive pairwise sum: halves the slice until it has at most
@@ -382,8 +408,122 @@ macro_rules! float_kernels {
     };
 }
 
-float_kernels!(f32k, f32, 8);
-float_kernels!(f64k, f64, 4);
+float_kernels!(f32k, f32, 8, crate::f32_blocks);
+float_kernels!(f64k, f64, 4, crate::f64_blocks);
+
+/// Accumulators for the full 32-element blocks of `xs` (f32, AVX-512F), in the
+/// order documented at the top of this crate. Returns them with the number of
+/// elements consumed.
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx512f"
+))]
+fn f32_blocks(xs: &[f32]) -> ([tpt_simd_core::Simd<f32, 8>; 4], usize) {
+    // SAFETY: AVX-512F is enabled at compile time.
+    unsafe { x86_512::f32_blocks(xs) }
+}
+
+/// No hook on this build: nothing is consumed and the portable loop does all
+/// the blocks.
+#[cfg(not(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx512f"
+)))]
+fn f32_blocks(_xs: &[f32]) -> ([tpt_simd_core::Simd<f32, 8>; 4], usize) {
+    ([tpt_simd_core::Simd::splat(0.0); 4], 0)
+}
+
+/// Accumulators for the full 16-element blocks of `xs` (f64, AVX-512F); see
+/// [`f32_blocks`].
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx512f"
+))]
+fn f64_blocks(xs: &[f64]) -> ([tpt_simd_core::Simd<f64, 4>; 4], usize) {
+    // SAFETY: AVX-512F is enabled at compile time.
+    unsafe { x86_512::f64_blocks(xs) }
+}
+
+/// No f64 hook on this build: the portable loop does all the blocks.
+#[cfg(not(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx512f"
+)))]
+fn f64_blocks(_xs: &[f64]) -> ([tpt_simd_core::Simd<f64, 4>; 4], usize) {
+    ([tpt_simd_core::Simd::splat(0.0); 4], 0)
+}
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx512f"
+))]
+mod x86_512 {
+    //! AVX-512F f32 block sum. Two 512-bit registers hold the four 8-lane
+    //! accumulators as `[a0 | a1]` and `[a2 | a3]`, so each 32-element block is
+    //! two adds, in the same order as the portable loop.
+    use core::arch::x86_64::*;
+    use tpt_simd_core::Simd;
+
+    /// # Safety
+    /// AVX-512F must be enabled at compile time (guaranteed by the `cfg`).
+    #[target_feature(enable = "avx512f")]
+    pub(crate) unsafe fn f32_blocks(xs: &[f32]) -> ([Simd<f32, 8>; 4], usize) {
+        let blocks = xs.len() / 32;
+        let p = xs.as_ptr();
+        let mut lo = _mm512_setzero_ps();
+        let mut hi = _mm512_setzero_ps();
+        for i in 0..blocks {
+            // SAFETY: 32*i + 32 <= 32*blocks <= xs.len().
+            unsafe {
+                lo = _mm512_add_ps(lo, _mm512_loadu_ps(p.add(32 * i)));
+                hi = _mm512_add_ps(hi, _mm512_loadu_ps(p.add(32 * i + 16)));
+            }
+        }
+        let mut out = [0.0f32; 32];
+        // SAFETY: `out` is 128 bytes; each store writes 16 floats.
+        unsafe {
+            _mm512_storeu_ps(out.as_mut_ptr(), lo);
+            _mm512_storeu_ps(out.as_mut_ptr().add(16), hi);
+        }
+        let acc =
+            core::array::from_fn(|k| Simd::from_array(core::array::from_fn(|l| out[8 * k + l])));
+        (acc, blocks * 32)
+    }
+
+    /// f64 counterpart: 16-element blocks, 4-lane accumulators. `[a0|a1]` is
+    /// elements 0..8 of the block and `[a2|a3]` is elements 8..16.
+    ///
+    /// # Safety
+    /// AVX-512F must be enabled at compile time (guaranteed by the `cfg`).
+    #[target_feature(enable = "avx512f")]
+    pub(crate) unsafe fn f64_blocks(xs: &[f64]) -> ([Simd<f64, 4>; 4], usize) {
+        let blocks = xs.len() / 16;
+        let p = xs.as_ptr();
+        let mut lo = _mm512_setzero_pd();
+        let mut hi = _mm512_setzero_pd();
+        for i in 0..blocks {
+            // SAFETY: 16*i + 16 <= 16*blocks <= xs.len().
+            unsafe {
+                lo = _mm512_add_pd(lo, _mm512_loadu_pd(p.add(16 * i)));
+                hi = _mm512_add_pd(hi, _mm512_loadu_pd(p.add(16 * i + 8)));
+            }
+        }
+        let mut out = [0.0f64; 16];
+        // SAFETY: `out` is 128 bytes; each store writes 8 doubles.
+        unsafe {
+            _mm512_storeu_pd(out.as_mut_ptr(), lo);
+            _mm512_storeu_pd(out.as_mut_ptr().add(8), hi);
+        }
+        let acc =
+            core::array::from_fn(|k| Simd::from_array(core::array::from_fn(|l| out[4 * k + l])));
+        (acc, blocks * 16)
+    }
+}
 
 pub use f32k::{
     argmax as argmax_f32, argmin as argmin_f32, covariance as covariance_f32, max as max_f32,

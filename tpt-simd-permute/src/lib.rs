@@ -484,8 +484,56 @@ pub fn interleave_yuv420(y: &[u8], u: &[u8], v: &[u8], output: &mut [u8]) {
 #[inline]
 pub fn unpack_i8_to_i16(data: &[i8], output: &mut [i16]) {
     assert_eq!(data.len(), output.len(), "data and output length mismatch");
-    for (o, &x) in output.iter_mut().zip(data) {
-        *o = i16::from(x);
+    // Explicit AVX-512BW path: `vpmovsxbw` converts 32 bytes per instruction.
+    // Measured faster than LLVM's autovectorised loop on the native build,
+    // which is slower there than on the AVX2 build.
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx512bw"
+    ))]
+    {
+        // SAFETY: AVX-512BW is enabled at compile time; the lengths are equal.
+        unsafe { unpack_i8_to_i16_avx512bw(data, output) }
+    }
+    #[cfg(not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx512bw"
+    )))]
+    {
+        for (o, &x) in output.iter_mut().zip(data) {
+            *o = i16::from(x);
+        }
+    }
+}
+
+/// AVX-512BW body of [`unpack_i8_to_i16`]: 32 bytes in, 32 `i16` out per
+/// iteration, scalar tail for the remainder.
+///
+/// # Safety
+/// AVX-512BW must be enabled at compile time, and `data.len() == output.len()`.
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx512bw"
+))]
+#[target_feature(enable = "avx512bw")]
+unsafe fn unpack_i8_to_i16_avx512bw(data: &[i8], output: &mut [i16]) {
+    use core::arch::x86_64::*;
+    let n = data.len();
+    let blocks = n / 32;
+    for i in 0..blocks {
+        // SAFETY: 32*i + 32 <= 32*blocks <= n, so the 32-byte load and the
+        // 64-byte store (32 i16) stay in bounds of `data` and `output`.
+        unsafe {
+            let x = _mm256_loadu_si256(data.as_ptr().add(32 * i).cast());
+            let y = _mm512_cvtepi8_epi16(x);
+            _mm512_storeu_si512(output.as_mut_ptr().add(32 * i).cast(), y);
+        }
+    }
+    for k in 32 * blocks..n {
+        output[k] = i16::from(data[k]);
     }
 }
 

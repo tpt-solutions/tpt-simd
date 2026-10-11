@@ -250,7 +250,10 @@ blas_impl!(
     nc = 512,
     sqrt = libm::sqrtf,
     kernel = crate::x86::kernel_f32,
-    kernel512 = crate::x86::kernel_f32_512
+    kernel512 = crate::x86::kernel_f32_512,
+    l1_dot = crate::x86::l1_f32::<0>,
+    l1_sq = crate::x86::l1_f32::<1>,
+    l1_abs = crate::x86::l1_f32::<2>
 );
 blas_impl!(
     double,
@@ -263,7 +266,10 @@ blas_impl!(
     nc = 512,
     sqrt = libm::sqrt,
     kernel = crate::x86::kernel_f64,
-    kernel512 = crate::x86::kernel_f64_512
+    kernel512 = crate::x86::kernel_f64_512,
+    l1_dot = crate::x86::l1_f64::<0>,
+    l1_sq = crate::x86::l1_f64::<1>,
+    l1_abs = crate::x86::l1_f64::<2>
 );
 
 complex_impl!(csingle, f32, real = single, w = 8, sqrt = libm::sqrtf);
