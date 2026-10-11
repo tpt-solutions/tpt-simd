@@ -20,7 +20,7 @@ criterion = { version = "0.8", default-features = false }
 
 tpt-simd-vector = { path = "tpt-simd-vector", version = "0.1.0", default-features = false }
 tpt-simd-core = { path = "tpt-simd-core", version = "0.1.0", default-features = false }
-tpt-simd-testutil = { path = "tpt-simd-testutil", version = "0.1.0" }
+tpt-simd-testutil = { path = "tpt-simd-testutil" }  # unpublished (publish = false); path-only so dev-dep is stripped on publish
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
