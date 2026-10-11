@@ -1,0 +1,17 @@
+[package]
+name = "tpt-simd-sort"
+description = "Unstable sort, quickselect, argsort, partition and top-k over slices, with no runtime dependencies"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+keywords = ["sort", "select", "argsort", "top-k", "partition"]
+categories = ["algorithms", "no-std"]
+
+[dependencies]
+
+[lints]
+workspace = true

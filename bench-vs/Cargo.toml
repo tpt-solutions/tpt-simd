@@ -1,6 +1,6 @@
 [package]
 name = "bench-vs"
-description = "Unpublished head-to-head benchmarks of tpt-simd crates against third-party incumbents (Phase 12)"
+description = "Unpublished head-to-head benchmarks of tpt-simd crates against third-party incumbents, and absolute kernel timings (Phase 12)"
 version = "0.0.0"
 edition.workspace = true
 license.workspace = true
@@ -9,11 +9,29 @@ publish = false
 [dev-dependencies]
 tpt-simd-matrix = { path = "../tpt-simd-matrix", version = "0.1.0" }
 tpt-simd-blas = { path = "../tpt-simd-blas", version = "0.1.0" }
+tpt-simd-hash = { path = "../tpt-simd-hash", version = "0.1.0" }
+tpt-simd-text = { path = "../tpt-simd-text", version = "0.1.0" }
+tpt-simd-search = { path = "../tpt-simd-search", version = "0.1.0" }
+tpt-simd-sort = { path = "../tpt-simd-sort", version = "0.1.0" }
+tpt-simd-distance = { path = "../tpt-simd-distance", version = "0.1.0" }
+tpt-simd-bits = { path = "../tpt-simd-bits", version = "0.1.0" }
+tpt-simd-geom = { path = "../tpt-simd-geom", version = "0.1.0" }
+tpt-simd-dct = { path = "../tpt-simd-dct", version = "0.1.0" }
+tpt-simd-transpose = { path = "../tpt-simd-transpose", version = "0.1.0" }
+tpt-simd-ntt = { path = "../tpt-simd-ntt", version = "0.1.0" }
+tpt-simd-half = { path = "../tpt-simd-half", version = "0.1.0" }
+tpt-simd-pixel = { path = "../tpt-simd-pixel", version = "0.1.0" }
+tpt-simd-audio = { path = "../tpt-simd-audio", version = "0.1.0" }
 glam = "0.30"
 ultraviolet = "0.10"
 gemm = "0.19"
 matrixmultiply = "0.3"
 faer = "0.24"
+crc32fast = "1.5.2"
+simd-adler32 = "0.3.10"
+faster-hex = "1.0.0"
+simdutf8 = "0.1.5"
+memchr = "2.8.3"
 criterion = { workspace = true, features = ["cargo_bench_support"] }
 
 [[bench]]
@@ -26,4 +44,24 @@ harness = false
 
 [[bench]]
 name = "gemm_f64_vs"
+harness = false
+
+[[bench]]
+name = "hash_vs"
+harness = false
+
+[[bench]]
+name = "text_vs"
+harness = false
+
+[[bench]]
+name = "search_vs"
+harness = false
+
+[[bench]]
+name = "sort_vs"
+harness = false
+
+[[bench]]
+name = "kernels"
 harness = false

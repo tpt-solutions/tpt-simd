@@ -246,6 +246,331 @@ pub fn ray_aabb(
     }
 }
 
+/// Mutable structure-of-arrays view of 3D vectors, used as an output.
+#[derive(Debug)]
+pub struct Soa3Mut<'a> {
+    /// X coordinates.
+    pub x: &'a mut [f32],
+    /// Y coordinates.
+    pub y: &'a mut [f32],
+    /// Z coordinates.
+    pub z: &'a mut [f32],
+}
+
+impl<'a> Soa3Mut<'a> {
+    /// Creates a view. Panics if the three slices differ in length.
+    #[must_use]
+    pub fn new(x: &'a mut [f32], y: &'a mut [f32], z: &'a mut [f32]) -> Self {
+        check_out("Soa3Mut::new (x, y)", x.len(), y.len());
+        check_out("Soa3Mut::new (x, z)", x.len(), z.len());
+        Self { x, y, z }
+    }
+
+    /// Number of vectors in the view.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.x.len()
+    }
+
+    /// Returns `true` if the view holds no vectors.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.x.is_empty()
+    }
+}
+
+/// Borrowed structure-of-arrays view of quaternions `(x, y, z, w)`, with
+/// `w` the scalar part.
+#[derive(Clone, Copy, Debug)]
+pub struct QuatSoa<'a> {
+    /// `x` components (vector part, i).
+    pub x: &'a [f32],
+    /// `y` components (vector part, j).
+    pub y: &'a [f32],
+    /// `z` components (vector part, k).
+    pub z: &'a [f32],
+    /// `w` components (scalar part).
+    pub w: &'a [f32],
+}
+
+impl<'a> QuatSoa<'a> {
+    /// Creates a view. Panics if the four slices differ in length.
+    #[must_use]
+    pub fn new(x: &'a [f32], y: &'a [f32], z: &'a [f32], w: &'a [f32]) -> Self {
+        check_out("QuatSoa::new (y)", x.len(), y.len());
+        check_out("QuatSoa::new (z)", x.len(), z.len());
+        check_out("QuatSoa::new (w)", x.len(), w.len());
+        Self { x, y, z, w }
+    }
+
+    /// Number of quaternions in the view.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.x.len()
+    }
+
+    /// Returns `true` if the view holds no quaternions.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.x.is_empty()
+    }
+}
+
+/// Mutable structure-of-arrays view of quaternions, used as an output.
+#[derive(Debug)]
+pub struct QuatSoaMut<'a> {
+    /// `x` components.
+    pub x: &'a mut [f32],
+    /// `y` components.
+    pub y: &'a mut [f32],
+    /// `z` components.
+    pub z: &'a mut [f32],
+    /// `w` components.
+    pub w: &'a mut [f32],
+}
+
+impl<'a> QuatSoaMut<'a> {
+    /// Creates a view. Panics if the four slices differ in length.
+    #[must_use]
+    pub fn new(x: &'a mut [f32], y: &'a mut [f32], z: &'a mut [f32], w: &'a mut [f32]) -> Self {
+        check_out("QuatSoaMut::new (y)", x.len(), y.len());
+        check_out("QuatSoaMut::new (z)", x.len(), z.len());
+        check_out("QuatSoaMut::new (w)", x.len(), w.len());
+        Self { x, y, z, w }
+    }
+
+    /// Number of quaternions in the view.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.x.len()
+    }
+
+    /// Returns `true` if the view holds no quaternions.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.x.is_empty()
+    }
+}
+
+/// Batched Hamilton product `out[i] = a[i] * b[i]`.
+///
+/// With `q = (v, w)`, the product is `(a.w b.v + b.w a.v + a.v x b.v, a.w b.w - a.v . b.v)`.
+/// Composing rotations this way applies `b` first, then `a`.
+///
+/// # Panics
+///
+/// Panics if the lengths of `a`, `b` and `out` differ.
+pub fn quat_mul(a: QuatSoa<'_>, b: QuatSoa<'_>, out: &mut QuatSoaMut<'_>) {
+    check_out("quat_mul", a.len(), b.len());
+    check_out("quat_mul (out)", a.len(), out.len());
+    for i in 0..a.len() {
+        let (ax, ay, az, aw) = (a.x[i], a.y[i], a.z[i], a.w[i]);
+        let (bx, by, bz, bw) = (b.x[i], b.y[i], b.z[i], b.w[i]);
+        out.x[i] = aw * bx + ax * bw + ay * bz - az * by;
+        out.y[i] = aw * by - ax * bz + ay * bw + az * bx;
+        out.z[i] = aw * bz + ax * by - ay * bx + az * bw;
+        out.w[i] = aw * bw - ax * bx - ay * by - az * bz;
+    }
+}
+
+/// Rotates each vector `v[i]` by the unit quaternion `q[i]`.
+///
+/// Uses `v' = v + 2w (u x v) + 2 u x (u x v)` with `u = (q.x, q.y, q.z)`, which
+/// avoids building a matrix. `q` should be normalised.
+///
+/// # Panics
+///
+/// Panics if the lengths of `q`, `v` and `out` differ.
+pub fn quat_rotate(q: QuatSoa<'_>, v: Soa3<'_>, out: &mut Soa3Mut<'_>) {
+    check_out("quat_rotate", q.len(), v.len());
+    check_out("quat_rotate (out)", q.len(), out.len());
+    for i in 0..q.len() {
+        let (u, w) = ((q.x[i], q.y[i], q.z[i]), q.w[i]);
+        let p = (v.x[i], v.y[i], v.z[i]);
+        // t = u x p
+        let t = (
+            u.1 * p.2 - u.2 * p.1,
+            u.2 * p.0 - u.0 * p.2,
+            u.0 * p.1 - u.1 * p.0,
+        );
+        // s = u x t
+        let s = (
+            u.1 * t.2 - u.2 * t.1,
+            u.2 * t.0 - u.0 * t.2,
+            u.0 * t.1 - u.1 * t.0,
+        );
+        out.x[i] = p.0 + 2.0 * (w * t.0 + s.0);
+        out.y[i] = p.1 + 2.0 * (w * t.1 + s.1);
+        out.z[i] = p.2 + 2.0 * (w * t.2 + s.2);
+    }
+}
+
+/// Transforms points by a 4x4 matrix stored column-major (`m[col * 4 + row]`),
+/// with homogeneous division by `w`.
+///
+/// For affine matrices (last row `0 0 0 1`) the division is by 1. A point whose
+/// transformed `w` is zero yields infinities, as IEEE division does.
+///
+/// # Panics
+///
+/// Panics if `points` and `out` differ in length.
+pub fn mat4_transform_points(m: &[f32; 16], points: Soa3<'_>, out: &mut Soa3Mut<'_>) {
+    check_out("mat4_transform_points", points.len(), out.len());
+    for i in 0..points.len() {
+        let (x, y, z) = (points.x[i], points.y[i], points.z[i]);
+        let rx = m[0] * x + m[4] * y + m[8] * z + m[12];
+        let ry = m[1] * x + m[5] * y + m[9] * z + m[13];
+        let rz = m[2] * x + m[6] * y + m[10] * z + m[14];
+        let rw = m[3] * x + m[7] * y + m[11] * z + m[15];
+        out.x[i] = rx / rw;
+        out.y[i] = ry / rw;
+        out.z[i] = rz / rw;
+    }
+}
+
+#[cfg(test)]
+mod quat_mat_tests {
+    extern crate std;
+    use super::*;
+    use std::vec;
+
+    fn soa(v: &[[f32; 3]]) -> (vec::Vec<f32>, vec::Vec<f32>, vec::Vec<f32>) {
+        (
+            v.iter().map(|p| p[0]).collect(),
+            v.iter().map(|p| p[1]).collect(),
+            v.iter().map(|p| p[2]).collect(),
+        )
+    }
+
+    #[test]
+    fn quat_mul_identity_and_known_rotation_composition() {
+        let s = core::f32::consts::FRAC_1_SQRT_2;
+        // 90 degrees about z, twice, gives 180 degrees about z.
+        let q90 = ([0.0f32], [0.0f32], [s], [s]);
+        let ident = ([0.0f32], [0.0f32], [0.0f32], [1.0f32]);
+        let (mut x, mut y, mut z, mut w) = ([0.0f32], [0.0f32], [0.0f32], [0.0f32]);
+        let a = QuatSoa::new(&q90.0, &q90.1, &q90.2, &q90.3);
+        let b = QuatSoa::new(&ident.0, &ident.1, &ident.2, &ident.3);
+        quat_mul(a, b, &mut QuatSoaMut::new(&mut x, &mut y, &mut z, &mut w));
+        assert!(
+            (z[0] - s).abs() < 1e-6 && (w[0] - s).abs() < 1e-6,
+            "identity"
+        );
+
+        let (mut x2, mut y2, mut z2, mut w2) = ([0.0f32], [0.0f32], [0.0f32], [0.0f32]);
+        quat_mul(
+            a,
+            a,
+            &mut QuatSoaMut::new(&mut x2, &mut y2, &mut z2, &mut w2),
+        );
+        assert!(x2[0].abs() < 1e-6 && y2[0].abs() < 1e-6);
+        assert!(
+            (z2[0] - 1.0).abs() < 1e-6 && w2[0].abs() < 1e-6,
+            "180 about z"
+        );
+    }
+
+    #[test]
+    fn quat_rotate_quarter_turn_about_z() {
+        let s = core::f32::consts::FRAC_1_SQRT_2;
+        let q = ([0.0f32], [0.0f32], [s], [s]);
+        let (vx, vy, vz) = soa(&[[1.0, 0.0, 0.0]]);
+        let (mut ox, mut oy, mut oz) = ([0.0f32], [0.0f32], [0.0f32]);
+        quat_rotate(
+            QuatSoa::new(&q.0, &q.1, &q.2, &q.3),
+            Soa3::new(&vx, &vy, &vz),
+            &mut Soa3Mut::new(&mut ox, &mut oy, &mut oz),
+        );
+        assert!(ox[0].abs() < 1e-6 && (oy[0] - 1.0).abs() < 1e-6 && oz[0].abs() < 1e-6);
+    }
+
+    #[test]
+    fn quat_rotate_preserves_length() {
+        let (qx, qy, qz, qw) = (
+            vec![0.1f32, 0.5, -0.3],
+            vec![0.2f32, -0.5, 0.4],
+            vec![0.3f32, 0.1, 0.8],
+            vec![0.9f32, 0.6, 0.2],
+        );
+        // Normalise each quaternion.
+        let mut nq = [vec![0.0f32; 3], vec![0.0; 3], vec![0.0; 3], vec![0.0; 3]];
+        for i in 0..3 {
+            let n = libm::sqrtf(qx[i] * qx[i] + qy[i] * qy[i] + qz[i] * qz[i] + qw[i] * qw[i]);
+            nq[0][i] = qx[i] / n;
+            nq[1][i] = qy[i] / n;
+            nq[2][i] = qz[i] / n;
+            nq[3][i] = qw[i] / n;
+        }
+        let (vx, vy, vz) = (
+            vec![1.0f32, -2.0, 0.5],
+            vec![0.0f32, 3.0, 0.5],
+            vec![4.0f32, 1.0, -1.0],
+        );
+        let (mut ox, mut oy, mut oz) = (vec![0.0f32; 3], vec![0.0f32; 3], vec![0.0f32; 3]);
+        quat_rotate(
+            QuatSoa::new(&nq[0], &nq[1], &nq[2], &nq[3]),
+            Soa3::new(&vx, &vy, &vz),
+            &mut Soa3Mut::new(&mut ox, &mut oy, &mut oz),
+        );
+        for i in 0..3 {
+            let before = vx[i] * vx[i] + vy[i] * vy[i] + vz[i] * vz[i];
+            let after = ox[i] * ox[i] + oy[i] * oy[i] + oz[i] * oz[i];
+            assert!((before - after).abs() < 1e-4, "i={i}");
+        }
+    }
+
+    #[test]
+    fn mat4_translation_and_scale() {
+        // Column-major: scale by 2 in x, translate by (5, 0, 0).
+        let m = [
+            2.0, 0.0, 0.0, 0.0, //
+            0.0, 1.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, 0.0, //
+            5.0, 0.0, 0.0, 1.0,
+        ];
+        let (px, py, pz) = soa(&[[1.0, 2.0, 3.0]]);
+        let (mut ox, mut oy, mut oz) = ([0.0f32], [0.0f32], [0.0f32]);
+        mat4_transform_points(
+            &m,
+            Soa3::new(&px, &py, &pz),
+            &mut Soa3Mut::new(&mut ox, &mut oy, &mut oz),
+        );
+        assert_eq!((ox[0], oy[0], oz[0]), (7.0, 2.0, 3.0));
+    }
+
+    #[test]
+    fn mat4_perspective_divides_by_w() {
+        // w = z, so the point (1, 1, 2) maps to (1/2, 1/2, 1).
+        let m = [
+            1.0, 0.0, 0.0, 0.0, //
+            0.0, 1.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, 1.0, //
+            0.0, 0.0, 0.0, 0.0,
+        ];
+        let (px, py, pz) = soa(&[[1.0, 1.0, 2.0]]);
+        let (mut ox, mut oy, mut oz) = ([0.0f32], [0.0f32], [0.0f32]);
+        mat4_transform_points(
+            &m,
+            Soa3::new(&px, &py, &pz),
+            &mut Soa3Mut::new(&mut ox, &mut oy, &mut oz),
+        );
+        assert!((ox[0] - 0.5).abs() < 1e-6 && (oy[0] - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    #[should_panic(expected = "quat_mul: lengths differ (2 vs 1)")]
+    fn quat_length_mismatch_panics() {
+        let a = ([0.0f32; 2], [0.0f32; 2], [0.0f32; 2], [1.0f32; 2]);
+        let b = ([0.0f32], [0.0f32], [0.0f32], [1.0f32]);
+        let (mut x, mut y, mut z, mut w) = ([0.0f32], [0.0f32], [0.0f32], [0.0f32]);
+        quat_mul(
+            QuatSoa::new(&a.0, &a.1, &a.2, &a.3),
+            QuatSoa::new(&b.0, &b.1, &b.2, &b.3),
+            &mut QuatSoaMut::new(&mut x, &mut y, &mut z, &mut w),
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;

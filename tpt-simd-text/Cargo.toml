@@ -1,6 +1,6 @@
 [package]
 name = "tpt-simd-text"
-description = "Text kernels: UTF-8 validation and hex (wrapped), UTF-8 <-> UTF-16 transcoding (built)"
+description = "Text kernels: UTF-8 validation, hex, and UTF-8 <-> UTF-16 transcoding, with no runtime dependencies by default"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,7 +11,16 @@ readme = "README.md"
 keywords = ["simd", "utf8", "utf16", "hex", "transcoding"]
 categories = ["encoding", "no-std"]
 
+[features]
+default = []
+# Use the simdutf8 SIMD validator for is_valid_utf8 (optional runtime dependency).
+simdutf8 = ["dep:simdutf8"]
+
 [dependencies]
+simdutf8 = { version = "0.1.5", default-features = false, optional = true }
+
+[dev-dependencies]
+# Differential-test oracles only.
 simdutf8 = { version = "0.1.5", default-features = false }
 faster-hex = { version = "1.0.0", default-features = false }
 

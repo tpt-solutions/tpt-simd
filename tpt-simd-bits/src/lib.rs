@@ -31,6 +31,10 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+extern crate alloc;
+
+use alloc::vec::Vec;
+
 #[cold]
 #[inline(never)]
 fn len_mismatch(func: &str, a: usize, b: usize) -> ! {
@@ -173,6 +177,105 @@ pub fn zigzag_decode_slice_u32(src: &[u32], dst: &mut [i32]) {
     }
 }
 
+/// Rank/select index over a bit-vector stored as `u64` words, bit `i` being
+/// bit `i % 64` of word `i / 64`.
+///
+/// Building costs one pass and one `u32` per word. `rank1` is O(1); `select1`
+/// is O(log words) plus an in-word scan.
+#[derive(Clone, Debug)]
+pub struct RankSelect<'a> {
+    words: &'a [u64],
+    len: usize,
+    /// `prefix[w]` is the number of set bits in words before `w`.
+    prefix: Vec<u32>,
+}
+
+impl<'a> RankSelect<'a> {
+    /// Indexes the first `len` bits of `words`. Panics if `len` exceeds
+    /// `words.len() * 64`.
+    #[must_use]
+    pub fn new(words: &'a [u64], len: usize) -> Self {
+        assert!(
+            len <= words.len() * 64,
+            "RankSelect::new: {len} bits do not fit in {} words",
+            words.len()
+        );
+        let mut prefix = Vec::with_capacity(words.len() + 1);
+        let mut total = 0u32;
+        prefix.push(0);
+        for w in 0..words.len() {
+            total += masked(words, len, w).count_ones();
+            prefix.push(total);
+        }
+        Self { words, len, prefix }
+    }
+
+    /// Number of indexed bits.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Returns `true` if no bits are indexed.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Total number of set bits among the indexed bits.
+    #[must_use]
+    pub fn count_ones(&self) -> usize {
+        self.prefix[self.words.len()] as usize
+    }
+
+    /// Number of set bits in positions `[0, pos)`. Panics if `pos > len()`.
+    #[must_use]
+    pub fn rank1(&self, pos: usize) -> usize {
+        assert!(
+            pos <= self.len,
+            "rank1: position {pos} past length {}",
+            self.len
+        );
+        let w = pos / 64;
+        let r = pos % 64;
+        let mut count = self.prefix[w] as usize;
+        if r != 0 {
+            count += (masked(self.words, self.len, w) & ((1u64 << r) - 1)).count_ones() as usize;
+        }
+        count
+    }
+
+    /// Position of the `k`-th set bit (0-based), or `None` if there are not
+    /// `k + 1` set bits.
+    #[must_use]
+    pub fn select1(&self, k: usize) -> Option<usize> {
+        if k >= self.count_ones() {
+            return None;
+        }
+        let k = k as u32;
+        // Largest w with prefix[w] <= k; that word holds the k-th bit.
+        let w = self.prefix.partition_point(|&p| p <= k) - 1;
+        let mut word = masked(self.words, self.len, w);
+        for _ in 0..(k - self.prefix[w]) {
+            word &= word - 1; // clear the lowest set bit
+        }
+        Some(w * 64 + word.trailing_zeros() as usize)
+    }
+}
+
+/// Word `w` with bits at or beyond `len` cleared.
+#[inline]
+fn masked(words: &[u64], len: usize, w: usize) -> u64 {
+    let base = w * 64;
+    if base + 64 <= len {
+        words[w]
+    } else if base >= len {
+        0
+    } else {
+        words[w] & ((1u64 << (len - base)) - 1)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -259,5 +362,65 @@ mod tests {
         let mut b = [u64::MAX, 2];
         prefix_sum_u64(&mut b);
         assert_eq!(b, [u64::MAX, 1]);
+    }
+}
+
+#[cfg(test)]
+mod rank_select_tests {
+    extern crate std;
+    use super::*;
+    use std::vec::Vec;
+
+    fn bit(words: &[u64], i: usize) -> bool {
+        (words[i / 64] >> (i % 64)) & 1 == 1
+    }
+
+    #[test]
+    fn rank_and_select_match_naive_for_partial_lengths() {
+        let mut x = 0x9E37_79B9_7F4A_7C15u64;
+        let words: Vec<u64> = (0..6)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                x
+            })
+            .collect();
+        for len in [0usize, 1, 63, 64, 65, 127, 128, 200, 384] {
+            let rs = RankSelect::new(&words, len);
+            let mut naive_rank = 0;
+            let mut ones = Vec::new();
+            for i in 0..len {
+                assert_eq!(rs.rank1(i), naive_rank, "len={len} rank at {i}");
+                if bit(&words, i) {
+                    naive_rank += 1;
+                    ones.push(i);
+                }
+            }
+            assert_eq!(rs.rank1(len), naive_rank, "len={len}");
+            assert_eq!(rs.count_ones(), ones.len(), "len={len}");
+            for (k, &pos) in ones.iter().enumerate() {
+                assert_eq!(rs.select1(k), Some(pos), "len={len} k={k}");
+            }
+            assert_eq!(rs.select1(ones.len()), None, "len={len}");
+        }
+    }
+
+    #[test]
+    fn empty_and_sparse_cases() {
+        let rs = RankSelect::new(&[], 0);
+        assert!(rs.is_empty());
+        assert_eq!(rs.rank1(0), 0);
+        assert_eq!(rs.select1(0), None);
+        let words = [0u64, 0, 1 << 63];
+        let rs = RankSelect::new(&words, 192);
+        assert_eq!(rs.select1(0), Some(191));
+        assert_eq!(rs.rank1(191), 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "do not fit in 1 words")]
+    fn length_beyond_words_panics() {
+        let _ = RankSelect::new(&[0u64], 65);
     }
 }

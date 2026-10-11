@@ -13,7 +13,7 @@ horizontal reductions, transposes, saturating arithmetic and more.
 
 ## Goals
 
-- 28 focused crates plus a `tpt-simd` umbrella, each solving one common SIMD problem
+- 40 focused crates plus a `tpt-simd` umbrella (and the unpublished `testutil`), each solving one common SIMD problem
 - `no_std` + `alloc` (`std` optional)
 - Targets: x86_64 (SSE/AVX/AVX2/AVX-512), ARM64 (NEON/SVE), RISC-V RVV, scalar fallback
 - Stable backend via `tpt-simd-vector`; `core::simd` behind the `nightly` feature
@@ -33,8 +33,32 @@ the dependency graph small.
 | Reductions | `horizontal`, `reduce`, `dot` |
 | Linear algebra | `matrix`, `blas`, `sparse` |
 | Random numbers | `rng` (xoshiro256++, Philox4x32-10) |
+| Transforms and signal | `dct` (DCT-II/III, MDCT), `ntt` (modular NTT), `audio` (mix, biquad, resampler), `window` |
+| Bits and integers | `bits` (popcount, bitset, delta, rank/select), `hash` (CRC-32, Adler-32, FNV-1a) |
+| Text and bytes | `text` (hex, UTF-8, UTF-16 transcoding), `search` (byte and substring search), `half` (f16/bf16) |
+| Geometry and images | `geom` (SoA distance, AABB, quaternions), `transpose`, `pixel` (RGB/HSV, histograms) |
+| Similarity and sorting | `distance` (dot, L2, cosine, Hamming, top-k), `sort` (sort, select_nth, argsort) |
 
 All crate names are prefixed `tpt-simd-`.
+
+### Which crate do I need?
+
+| Task | Crate |
+| --- | --- |
+| FIR filter, convolution | `convolve` (f32, i16) |
+| FFT butterflies, complex math | `complex`, `butterfly` |
+| Dot product, matrix multiply | `dot`, `blas` (f32/f64 gemm, gemv, LAPACK-style LU/Cholesky) |
+| Sum, mean, variance | `reduce` |
+| Sparse CG / BiCGSTAB | `sparse` |
+| Checksums | `hash` |
+| Hex or UTF-8 validation | `text` |
+| Substring or byte search | `search` |
+| Sort or top-k | `sort` |
+| Nearest-neighbour distances | `distance` |
+| Random numbers | `rng` |
+| Fixed-point arithmetic | `fixed` |
+
+`hash`, `sort`, `search`, `text` and `pixel` have no runtime dependencies by default; `audio` needs only `libm`. All of them build for `no_std` targets without features.
 
 ## Getting full performance
 

@@ -46,7 +46,7 @@ fn crc32_streaming_matches_one_shot_and_crc32fast() {
 fn adler32_matches_simd_adler32_over_lengths() {
     for n in (0..300).chain([5551, 5552, 5553, 11_104, 100_000]) {
         let data = sample(n, n as u32 + 7);
-        assert_eq!(adler32(&data), simd_adler32::adler32_slice(&data), "n={n}");
+        assert_eq!(adler32(&data), simd_adler(&data), "n={n}");
     }
 }
 
@@ -69,10 +69,12 @@ fn extreme_inputs_match() {
     for byte in [0x00u8, 0x7F, 0x80, 0xFF] {
         let data = vec![byte; 40_000];
         assert_eq!(crc32(&data), crc32fast::hash(&data), "byte={byte:#x}");
-        assert_eq!(
-            adler32(&data),
-            simd_adler32::adler32_slice(&data),
-            "byte={byte:#x}"
-        );
+        assert_eq!(adler32(&data), simd_adler(&data), "byte={byte:#x}");
     }
+}
+
+fn simd_adler(data: &[u8]) -> u32 {
+    let mut h = simd_adler32::Adler32::new();
+    h.write(data);
+    h.finish()
 }

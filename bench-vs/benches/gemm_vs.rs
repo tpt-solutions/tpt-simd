@@ -4,7 +4,9 @@ use std::hint::black_box;
 
 fn fill(n: usize, seed: u32) -> Vec<f32> {
     (0..n)
-        .map(|i| ((i as u32).wrapping_mul(2654435761).wrapping_add(seed) >> 8) as f32 / 16777216.0 - 0.5)
+        .map(|i| {
+            ((i as u32).wrapping_mul(2654435761).wrapping_add(seed) >> 8) as f32 / 16777216.0 - 0.5
+        })
         .collect()
 }
 
@@ -20,14 +22,37 @@ fn bench(c: &mut Criterion) {
         let mut cm = vec![0.0f32; n * n];
         g.bench_function("tpt", |bn| {
             bn.iter(|| {
-                tpt_simd_blas::gemm_f32(n, n, n, 1.0, black_box(&a), n, black_box(&b), n, 0.0, &mut cm, n)
+                tpt_simd_blas::gemm_f32(
+                    n,
+                    n,
+                    n,
+                    1.0,
+                    black_box(&a),
+                    n,
+                    black_box(&b),
+                    n,
+                    0.0,
+                    &mut cm,
+                    n,
+                )
             })
         });
         let mut ws = vec![0.0f32; tpt_simd_blas::gemm_workspace_len_f32(n, n, n)];
         g.bench_function("tpt_workspace", |bn| {
             bn.iter(|| {
                 tpt_simd_blas::gemm_with_workspace_f32(
-                    n, n, n, 1.0, black_box(&a), n, black_box(&b), n, 0.0, &mut cm, n, &mut ws,
+                    n,
+                    n,
+                    n,
+                    1.0,
+                    black_box(&a),
+                    n,
+                    black_box(&b),
+                    n,
+                    0.0,
+                    &mut cm,
+                    n,
+                    &mut ws,
                 )
             })
         });
@@ -35,20 +60,45 @@ fn bench(c: &mut Criterion) {
         g.bench_function("gemm", |bn| {
             bn.iter(|| unsafe {
                 gemm::gemm(
-                    n, n, n,
-                    cm.as_mut_ptr(), n as isize, 1, false,
-                    black_box(a.as_ptr()), n as isize, 1,
-                    black_box(b.as_ptr()), n as isize, 1,
-                    1.0f32, 0.0f32, false, false, false, gemm::Parallelism::None,
+                    n,
+                    n,
+                    n,
+                    cm.as_mut_ptr(),
+                    n as isize,
+                    1,
+                    false,
+                    black_box(a.as_ptr()),
+                    n as isize,
+                    1,
+                    black_box(b.as_ptr()),
+                    n as isize,
+                    1,
+                    1.0f32,
+                    0.0f32,
+                    false,
+                    false,
+                    false,
+                    gemm::Parallelism::None,
                 )
             })
         });
         g.bench_function("matrixmultiply", |bn| {
             bn.iter(|| unsafe {
                 matrixmultiply::sgemm(
-                    n, n, n, 1.0, black_box(a.as_ptr()), 1, n as isize,
-                    black_box(b.as_ptr()), 1, n as isize,
-                    0.0, cm.as_mut_ptr(), 1, n as isize,
+                    n,
+                    n,
+                    n,
+                    1.0,
+                    black_box(a.as_ptr()),
+                    1,
+                    n as isize,
+                    black_box(b.as_ptr()),
+                    1,
+                    n as isize,
+                    0.0,
+                    cm.as_mut_ptr(),
+                    1,
+                    n as isize,
                 )
             })
         });
@@ -58,7 +108,12 @@ fn bench(c: &mut Criterion) {
             bn.iter(|| {
                 let fc = faer::mat::MatMut::from_column_major_slice_mut(&mut cm, n, n);
                 faer::linalg::matmul::matmul(
-                    fc, faer::Accum::Replace, black_box(fa), black_box(fb), 1.0f32, faer::Par::Seq,
+                    fc,
+                    faer::Accum::Replace,
+                    black_box(fa),
+                    black_box(fb),
+                    1.0f32,
+                    faer::Par::Seq,
                 )
             })
         });

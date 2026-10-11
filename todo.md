@@ -470,7 +470,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 ### Runtime dispatch and correctness
 - [ ] Move runtime CPU dispatch into `tpt-simd-core` (shared helper, cached result) so every kernel crate with an intrinsics path can select it, not only `tpt-simd-blas` (ADR 0003 follow-up)
 - [ ] Add `cargo-hack --feature-powerset` (over `std`, `scalar-only`, `nightly`, `runtime-dispatch`) to CI to catch feature-combination breakage
-- [ ] Add a CI check that `cargo xtask no-std` target list matches the `no-std` job in ci.yml (avoid the two drifting apart)
+- [x] Add a CI check that `cargo xtask no-std` target list matches the `no-std` job in ci.yml (avoid the two drifting apart) — unit test `no_std_targets_match_ci_workflow` in `xtask/src/main.rs`, runs under `cargo test --workspace`
 - [ ] Remove the `scalar-only` and `nightly` no-op features or document them as reserved in one place (currently listed as features that do nothing)
 
 ### Release readiness
@@ -485,104 +485,127 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 ### Adoption
 - [ ] Add a scalar-to-tpt-simd porting table to the mdBook migration section (the migration pages exist; the table does not)
 - [ ] Add a `cargo generate` (or copyable) starter template for a codec or DSP crate that depends on tpt-simd with the recommended feature set
-- [ ] Add a "which crate do I need?" decision table to the README, mapping common tasks (FIR, FFT, dot, matmul, RNG) to crates
+- [x] Add a "which crate do I need?" decision table to the README, mapping common tasks (FIR, FFT, dot, matmul, RNG) to crates — also added the Phase 11 crates to the crate table and corrected the crate count (40 published + testutil)
 - [ ] Show `cargo xtask cpu` output in the getting-started book page so users can see which path their machine takes
 
 ---
 
 ## Phase 11 — New crate candidates
 
-Proposed additional crates. Strategy: **wrap** a suitable existing crate behind the tpt-simd API (consistent types, `no_std`, scalar fallback feature) rather than re-implement; **build** only where no MIT-compatible incumbent exists. Incumbent licences below are from memory: run `cargo deny` / check crates.io before adding any dependency (policy: MIT, BSD-2/3, ISC, Zlib, MIT-OR-Apache duals; no Apache-only, GPL). Apache-only incumbents (nalgebra, parry, simba, simsimd) are unusable, which is why tpt-math exists. Each new crate still follows the per-crate definition of done (top of file).
+Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and a doctest, and each passes clippy with `-D warnings` and the `thumbv7em-none-eabihf` no_std check. **No crate has an explicit SIMD path yet**; all rely on autovectorisation. Policy is in `docs/adr/0004-no-runtime-wrapping.md`: own implementation by default, no runtime dependencies. Incumbents are dev-dependency oracles only, or sit behind a default-off feature. The one exception is `tpt-simd-half`, which keeps `half` for f16/bf16 interop.
 
-### Licence check (crates.io API, 2026-10-12; checked against `deny.toml` allow-list)
+### Licence check (crates.io API, 2026-10-12, against the `deny.toml` allow-list)
 
-Licence field from the crates.io API. Only the fields are checked here; no crate's source or `cargo deny` run yet.
+- Allowed to use as oracles or features: all MIT, BSD-2/3, ISC, Zlib, and MIT-OR-Apache duals checked (e.g. `crc32fast`, `simd-adler32`, `simdutf8`, `faster-hex`, `memchr`, `rubato`, `biquad`, `fast_image_resize`, `yuv`, `libblur`, `half`).
+- **Do not use:** `stream-vbyte` (Copyfree Open Innovation License), `concrete-ntt` (BSD-3-Clause-Clear), `xxhash-rust` (BSL-1.0). Not on the allow-list; the maintainer has ruled them out.
+- **Excluded, Apache-2.0 only:** `nalgebra`, `nalgebra-sparse`, `simba`, `parry3d`, `simsimd`.
+- `cargo deny check licenses` passes for the workspace.
 
-- OK to wrap (allow-list or a dual with an allow-listed option): `bitpacking` (MIT), `roaring` (MIT OR Apache-2.0), `crc32fast`, `simdutf8`, `rustdct`, `rustfft`, `rubato`, `biquad`, `half`, `transpose`, `fast_image_resize`, `glam`, `macerator`, `aligned` (MIT OR Apache-2.0), `simd-adler32`, `base64-simd`, `hex-simd`, `faster-hex`, `pulp`, `aligned-vec`, `faer`, `gemm`, `matrixmultiply`, `fixed`, `az`, `num-complex`, `rand_xoshiro`, `rand_philox`, `libm`, `sleef`, `statrs`, `dasp_window`, `apodize`, `wide` (Zlib OR Apache OR MIT), `ultraviolet` (MIT OR Apache OR Zlib), `memchr` (Unlicense OR MIT, pick MIT), `yuv` (BSD-3-Clause OR Apache-2.0), `libblur` (Apache-2.0 OR BSD-3-Clause)
-- **Not allowed without a maintainer decision:** `stream-vbyte` 0.4.1 (Copyfree Open Innovation License 0.5, permissive but not on the allow-list), `concrete-ntt` (BSD-3-Clause-Clear, not on the allow-list), `xxhash-rust` (BSL-1.0, not on the allow-list)
-- **Confirmed Apache-2.0-only, excluded:** `nalgebra`, `nalgebra-sparse`, `simba`, `parry3d`, `simsimd`
+### Crates
 
-Adding BSD-3-Clause-Clear, BSL-1.0 or COSL-0.5 to `deny.toml` is the decision the maintainer needs to make; until then, `tpt-simd-ntt` must stay build-only and `stream-vbyte`, `xxhash-rust` are out.
-
-### Build (gap, no suitable incumbent)
 #### tpt-simd-distance
-- [x] L2, cosine and inner product for f32/i8/u8; Hamming on bit-vectors — scalar-order f32 kernels with 8 fixed accumulators (no explicit SIMD yet), exact i8/u8 with i64 results, `libm::sqrtf` for no_std; 6 unit tests + 5 doctests; thumbv7em/wasm32 no_std check passes
-- [x] Batched top-k — `top_k_l2_f32` over a row-major matrix: sorted buffer of k, no allocation, ties to lower index; checked against full sort. Builds on `l2_squared_f32` only (not on `tpt-simd-dot`/`reduce` yet)
-- [ ] Explicit SIMD paths + criterion bench vs naive loop (not done; kernels rely on autovectorisation so far)
-- [ ] Overlap: `simsimd` is Apache-only C bindings (unusable); build natively
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
-
-#### tpt-simd-geom
-- [x] SoA vec3 batched distance/dot, AABB overlap, ray-AABB slab test — `tpt-simd-geom` (`Soa3`/`BoxesSoa` views, 9 unit tests incl. brute-force ray sampling, 1 doctest; scalar loops, no SIMD path yet)
-- [ ] SoA quat and mat4 — not started; `tpt-math-geometry` / `tpt-math-spatial` not wired
-- [ ] Overlap: nalgebra/parry are Apache-only (unusable); `glam`/`ultraviolet` are fixed-size game maths, so wrap only if they fit
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
-
-#### tpt-simd-dct
-- [x] DCT/MDCT/wavelets, backs tpt-math signal work — separate crate `tpt-simd-dct` (decided): orthonormal DCT-II/III and MDCT/IMDCT as table-based O(N²) transforms with a sine window helper; TDAC overlap-add reconstruction and round-trip tests pass. Wavelets and an FFT-based path are not built
-- [ ] Overlap: `rustdct` (MIT/Apache, built on rustfft) covers plain DCT; build MDCT and small codec-sized transforms
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
-
-#### tpt-simd-ntt
-- [x] Montgomery/Barrett modular arithmetic, NTT (post-quantum, bigint multiply) — `tpt-simd-ntt`: `Montgomery` (odd q < 2^31), `Barrett` (u64 reduce, q >= 2), `NttPlan` in-place forward/inverse and cyclic convolution with Montgomery twiddles; checked against u64 `%`, Fermat, round trips up to n=1024, and naive convolution. Primality and primitive root are caller-supplied, not checked. Scalar only; no bigint multiply yet
-- [ ] Overlap: `concrete-ntt` is BSD-3-Clause-Clear (not on allow-list, check); Plonky3 field crates are heavy; build unless licence check passes
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
-
-#### tpt-simd-transpose
-- [x] Blocked transpose and strided copies — decided: separate crate `tpt-simd-transpose` (generic over `Copy`, 16×16 tiles): out-of-place transpose, in-place square transpose, strided 2D copy; 5 unit tests + 1 doctest. Fixed 4×4/8×8 tiles stay in `tpt-simd-permute`. No explicit SIMD yet
-- [ ] Overlap: `transpose` crate is scalar-blocked; build SIMD tiles
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
-
-#### tpt-simd-sort
-- [ ] Sorting networks, bitonic/merge for small blocks; partition, argsort, nth_element, top-k
-- [ ] Overlap: `std` ipnsort/driftsort is the baseline to beat; optional, only if benches show a win
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
-
-### Wrap + fill gaps (partial coverage)
-#### tpt-simd-half
-- [x] Wrap `half` 2.7.1 (MIT OR Apache-2.0) for f16/bf16 types and conversion. `core` has no stable f16/bf16, so the wrap is needed
-- [x] Build: length-checked f16/bf16 slice conversion, symmetric int8 quantisation, ggml-layout Q8_0 and Q4_0 block quantisation. f16/bf16 arithmetic kernels not built (conversions only). 8 unit tests + 1 doctest; no SIMD paths yet
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
+- [x] Inner product, squared L2, cosine (f32), exact i8/u8 variants, Hamming on `u64` bit-vectors; top-k (`top_k_l2_f32`)
+- [ ] Explicit SIMD paths (AVX2, NEON)
+- [ ] proptest vs scalar reference
+- [ ] Criterion bench vs naive loop, and asm audit
+- [ ] Build on `tpt-simd-dot` / `tpt-simd-reduce` (optional)
 
 #### tpt-simd-bits
-- [ ] Wrap candidates: `bitpacking`, `stream-vbyte`, `roaring` (verify licences) — not done (no licence check run yet)
-- [x] Build: popcount, bitset ops, delta/zigzag, prefix sum — `tpt-simd-bits` (scalar loops with wrapping arithmetic, 7 unit tests + 2 doctests; no SIMD paths yet). Rank/select still open
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
+- [x] Popcount, bitset and/or/xor/andnot, zigzag, delta encode/decode, prefix sums (u32, u64)
+- [x] `RankSelect`: O(1) `rank1`, `select1` by binary search, checked against a naive scan
+- [ ] Explicit SIMD paths for popcount and prefix sums
+- [ ] proptest, criterion bench, asm audit
+- [ ] Bitpacking / varint codecs (not started; the `bitpacking` and `roaring` candidates were not needed under ADR 0004)
+
+#### tpt-simd-geom
+- [x] SoA `distance_sq`, `distance`, `dot`, AABB overlap, ray–AABB slab test
+- [x] SoA quaternion `quat_mul` and `quat_rotate`; `mat4_transform_points` (column-major, homogeneous divide)
+- [ ] Explicit SIMD paths (4-wide SoA lanes)
+- [ ] proptest, criterion bench, asm audit
+- [ ] Wire into `tpt-math-geometry` / `tpt-math-spatial` (external repo)
+
+#### tpt-simd-dct
+- [x] Orthonormal DCT-II/III, MDCT/IMDCT with sine window; TDAC reconstruction tested
+- [ ] FFT-based path for large sizes (current cost is O(N²))
+- [ ] Wavelets
+- [ ] Explicit SIMD paths, proptest, criterion bench, asm audit
+
+#### tpt-simd-ntt
+- [x] Montgomery and Barrett reduction, in-place forward/inverse NTT, cyclic convolution
+- [ ] Explicit SIMD paths (vectorised butterflies)
+- [ ] Bigint multiply built on the NTT
+- [ ] proptest, criterion bench, asm audit
+- [ ] Optional: a primality check for the modulus (currently caller-supplied)
+
+#### tpt-simd-transpose
+- [x] Blocked out-of-place transpose, in-place square transpose, strided copy (generic over `Copy`)
+- [ ] Explicit SIMD tiles (the 4×4 and 8×8 register tiles are in `tpt-simd-permute`)
+- [ ] proptest, criterion bench, asm audit
+
+#### tpt-simd-sort
+- [x] Introsort with 3-way partition and heapsort fallback; `select_nth`, `top_k_smallest`, `argsort`, `partition`
+- [ ] Sorting networks / bitonic merge for small fixed blocks
+- [ ] Benchmark result: the first quick run had this roughly 5× slower than `std::sort_unstable` at 1M elements. Tune or drop it based on a validated full run; do not keep it unless it wins
+- [ ] proptest, asm audit
 
 #### tpt-simd-audio
-- [ ] Wrap candidates: `rubato` (resampling), `biquad` (verify licences)
-- [ ] Build: mix, interleave/deinterleave, peak/RMS, SIMD FIR/biquad batches (uses convolve/window/interpolate)
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
-
-#### tpt-simd-hash
-- [x] Wrap candidates: `crc32fast` 1.5.2 and `simd-adler32` 0.3.10 wrapped with streaming APIs (both MIT / MIT OR Apache-2.0; `cargo deny check licenses` passes). `xxhash-rust` not used (BSL-1.0, not on allow-list)
-- [x] Build only if missing: FNV-1a 64 and a polynomial rolling hash built here; ARM CRC path not built (the wrapped crate supplies its own CRC path)
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std) — tests and doctests pass, clippy clean, thumbv7em no_std check passes; proptest, bench and asm audit not done
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
-
-#### tpt-simd-text
-- [x] Wrap candidates: `simdutf8` 0.1.5 (validation) and `faster-hex` 1.0.0 (allocation-free hex) wrapped; `base64-simd` not wrapped yet (not checked for `no_std`)
-- [x] Build: UTF-8<->UTF-16 transcoding with surrogate checks and exact sizes; checked against `std`'s `encode_utf16`
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
-
-### Wrap only (well covered)
-#### tpt-simd-search
-- [x] Wrap `memchr` 2.8.3 (MIT option of "Unlicense OR MIT") for byte and substring search; built ASCII case-insensitive search and `count_lines` (both were missing). 5 unit tests (randomised against naive) + 1 doctest
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
+- [x] Mix, interleave/deinterleave, peak/RMS, FIR, RBJ biquad (low-pass, high-pass), windowed-sinc resampler
+- [ ] Oracles: add `biquad` and `rubato` as dev-dependencies and compare outputs (the resampler is currently checked by sine amplitude and zero-crossing spacing only)
+- [ ] Channel-batched biquad over interleaved frames
+- [ ] Explicit SIMD FIR / biquad batches (uses the `convolve` / `window` / `interpolate` crates where they fit)
+- [ ] proptest, criterion bench, asm audit
 
 #### tpt-simd-pixel
-- [ ] Wrap `fast_image_resize` (resize), `yuv`, `libblur` (verify licences); add RGB/HSV, premultiply alpha, u8<->f32, planar<->interleaved, histogram only where missing
-- [ ] Definition-of-done checklist (tests, proptest, bench, asm audit, no_std)
+- [x] RGB/RGBA conversion, planar/interleaved layout, u8↔unit f32, premultiply, RGB↔HSV, histogram
+- [ ] Optional oracles: `yuv` and `libblur` for colour/blur cross-checks (resizing and YUV are out of scope for this crate)
+- [ ] Explicit SIMD paths, proptest, criterion bench, asm audit
+
+#### tpt-simd-half
+- [x] Wraps `half` 2.7.1 for f16/bf16; length-checked slice conversions; int8 and ggml-layout Q8_0 / Q4_0 block quantisation
+- [ ] f16/bf16 arithmetic kernels (conversions only so far)
+- [ ] Maintainer decision: keep `half` as a required dependency, or make it an optional feature. `half` pulls in `zerocopy` through its dependency tree
+- [ ] Explicit SIMD conversion paths, proptest, criterion bench
+
+#### tpt-simd-hash
+- [x] Own CRC-32 (slicing-by-8, compile-time tables) and Adler-32 (deferred modulo); FNV-1a 64; rolling hash
+- [x] Differential tests against `crc32fast` and `simd-adler32` (dev-dependencies)
+- [ ] PCLMULQDQ CRC path (x86_64) and ARM CRC path
+- [ ] proptest, criterion bench (see the Phase 11 benchmark status below), asm audit
+
+#### tpt-simd-text
+- [x] Own hex encode/decode (validate-then-write); UTF-8 validation via `core`, with `simdutf8` behind a default-off feature; UTF-8↔UTF-16 transcoding
+- [x] Differential tests against `faster-hex` and `simdutf8`
+- [ ] Explicit SIMD hex and UTF-8 paths
+- [ ] proptest, criterion bench, asm audit
+
+#### tpt-simd-search
+- [x] Own byte search (SWAR), substring search, ASCII case-insensitive search, `count_lines`; `memchr` behind a default-off feature
+- [x] Differential tests against `memchr`
+- [ ] Substring search is worst-case O(n·m); decide whether to build a two-way or Teddy-style path, or document the `memchr` feature as the answer
+- [ ] Explicit SIMD paths, proptest, criterion bench, asm audit
+
+### Benchmarks (all 13 crates)
+
+- [x] Bench suites exist in `bench-vs/benches/`: `hash_vs`, `text_vs`, `search_vs`, `sort_vs` (head-to-head against incumbents) and `kernels` (absolute timings and scalar baselines for the rest). All compile.
+- [x] A first run in `--quick` mode completed. Its numbers are not valid yet: (1) quick mode has too few samples; (2) some output lines were interleaved; (3) the incumbent throughput is implausible (`crc32fast` reports about 65 GiB/s on one core), so the harness must be fixed before results are trusted.
+- [ ] Fix the harness so inputs cannot be reused across iterations, then rerun in full mode, one suite at a time
+- [ ] Record validated results in `docs/benchmarks.md`, including the crates where we are slower than the incumbent
+
+### Definition-of-done gaps (apply to every crate above)
+
+- [ ] proptest property tests (SIMD == scalar) for each crate
+- [ ] `cargo-show-asm` audit of hot functions
+- [ ] Explicit SIMD paths for x86_64 and aarch64 (none built yet)
 
 ---
 
 ## Phase 12 — Overlap review of existing crates
 
-Rule: existing tpt-simd crates are complete and stay as-is **unless** a MIT-compatible incumbent is both better (API/features/correctness) and faster in a criterion bench on our target set. Only then replace the crate body with a thin wrapper over the incumbent. Otherwise keep our implementation. Licences below from the crates.io API (2026-10-12); overlap judgements are provisional (APIs not diffed). Excluded as Apache-2.0-only: nalgebra, nalgebra-sparse, simba. Before wrapping, run `cargo deny` including transitive deps and confirm no_std/stable-Rust support.
+Rule: existing tpt-simd crates are complete and stay as-is **unless** a MIT-compatible incumbent is both better (API/features/correctness) and faster in a criterion bench on our target set. Only then may the crate body be replaced, and not with an unconditional runtime wrapper: ADR 0004 requires an own implementation, and the incumbent is kept as a dev-dependency oracle or behind a default-off feature. Otherwise keep our implementation. Licences below from the crates.io API (2026-10-12); overlap judgements are provisional (APIs not diffed). Excluded as Apache-2.0-only: nalgebra, nalgebra-sparse, simba. Before wrapping, run `cargo deny` including transitive deps and confirm no_std/stable-Rust support.
 
 ### Benchmark candidates (full or near-full overlap; wrap only if the incumbent wins)
 - [x] tpt-simd-matrix vs `glam` / `ultraviolet` (3x3/4x4 mul, transpose, inverse) — **keep, mixed result**. Two runs: mat4 mul flips (run 1 tpt 7.2 vs glam 8.2 ns; run 2 glam 6.4 vs tpt 7.4 ns); glam faster on mat4 transpose both runs (2.0 vs 3.6 ns); tpt faster on mat3 inverse in run 2 (16.9 vs 22.4 ns, ultraviolet 17.0), tied in run 1. ultraviolet is slower on mul/transpose. No incumbent is consistently better and faster. Bench: `bench-vs/benches/matrix_vs_glam.rs` (uncommitted)
-- [ ] tpt-simd-blas gemm f32 vs `gemm`, `faer`, `matrixmultiply` — **optimised, still behind the best incumbent; keep for now**. Change: AVX2 f32 microkernel 16x4 (8 accumulators) -> 16x6 (12 accumulators); NR=6 on AVX2 only, AVX-512 path unchanged; fixed workspace sizing for padded B panels. blas tests pass (native and default). Clean run on an idle machine (after stopping a stray miri process), workspace variant, Gelem/s: 64: tpt 85, gemm 128, faer 120, matrixmultiply 93; 256: tpt 124, gemm 128, faer 136, matrixmultiply 108; 512: tpt 130, gemm 142, faer 141, matrixmultiply 116. Before the change tpt was 107 at 256 and 111 at 512, so this is about +15% at 256 and +17% at 512. Remaining gap (f32): ~8–9% at 256/512 and ~30% at 64 (per-call packing and overhead). f64: AVX2 kernel 8x4 -> 8x6 (12 accumulators), tests pass. Bench `bench-vs/benches/gemm_f64_vs.rs`, Gelem/s: 64: tpt 45, gemm 63, faer 62, matrixmultiply 40; 256: tpt 63, gemm 69, faer 23 (unexplained outlier), matrixmultiply 54; 512: tpt 20, gemm 22, faer 24, matrixmultiply 13. Absolute f64 numbers are low for every library, so compare ratios only. Status: behind gemm/faer at 64 and 512 by ~10–30%. Bench: `bench-vs/benches/gemm_vs.rs` (uncommitted)
+- [ ] tpt-simd-blas gemm f32/f64 vs `gemm`, `faer`, `matrixmultiply` — **keep for now; incumbents are faster at every size, decision pending**. Latest run (same idle machine, workspace variant, Gelem/s): f32 64: tpt 84, gemm 126, faer 127, matrixmultiply 97; 256: tpt 124, gemm 134, faer 138, matrixmultiply 107; 512: tpt 130, gemm 136, faer 131, matrixmultiply 114. f64 64: tpt 47, gemm 62, faer 62, matrixmultiply 50; 512: tpt 56, gemm 67, faer 64, matrixmultiply 53 (f64 numbers move a lot between runs, compare within a run only). Changes so far: 16x6 f32 and 8x6 f64 AVX2 tiles (12 accumulators); a full-tile store kernel that accumulates into C, which made ~2–5% difference at 64 and nothing measurable elsewhere (candidate to revert). Measured (timing-only experiment, reverted): skipping B packing at f32 n=64 saves ~0.7 µs of 5.9 µs (~12%), so B packing is part of the small-size gap but not all of it. Pack-A cost not measured. Deferred: optimisation will be revisited when all crates are benched together, before any wrap decision. Bench: `bench-vs/benches/gemm_vs.rs`, `gemm_f64_vs.rs` (uncommitted)
 - [ ] tpt-simd-fixed scalar types vs `fixed` / `az` (keep SIMD fixed-point vectors regardless)
 - [ ] tpt-simd-window formulas vs `dasp_window` / `apodize` (both scalar, stale; keep SIMD generate/apply unless slower)
 - [ ] tpt-simd-aligned vs `aligned-vec` / `aligned`

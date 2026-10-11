@@ -1,0 +1,17 @@
+[package]
+name = "tpt-simd-pixel"
+description = "Pixel kernels: RGB/RGBA conversion, planar/interleaved layout, u8 and f32 conversion, premultiply, HSV, histograms, with no runtime dependencies"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+keywords = ["simd", "pixel", "image", "color", "hsv"]
+categories = ["multimedia::images", "graphics", "no-std"]
+
+[dependencies]
+
+[lints]
+workspace = true

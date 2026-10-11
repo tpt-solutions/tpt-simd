@@ -103,6 +103,99 @@ pub(crate) unsafe fn kernel_f64(kc: usize, a: *const f64, b: *const f64, out: *m
     }
 }
 
+/// Full 16x6 tile that accumulates straight into C: `c[j*ldc + i] += alpha *
+/// sum_p a[p*16 + i] * b[p*6 + j]`. Same loop as [`kernel_f32`], but the
+/// result is stored with one FMA per vector instead of going through a
+/// temporary and a scalar write-back, which is a large share of the work at
+/// small `kc`.
+///
+/// # Safety
+/// `a` must be valid for `16*kc` reads, `b` for `6*kc` reads, and `c` for
+/// writes to a 16x6 tile with column stride `ldc` (16 contiguous elements per
+/// column). AVX2 and FMA must be available (see [`available`]).
+#[cfg(not(target_feature = "avx512f"))]
+#[target_feature(enable = "avx2,fma")]
+pub(crate) unsafe fn kernel_f32_store(
+    kc: usize,
+    a: *const f32,
+    b: *const f32,
+    c: *mut f32,
+    ldc: usize,
+    alpha: f32,
+) {
+    let mut acc = [[_mm256_setzero_ps(); 2]; 6];
+    for p in 0..kc {
+        // SAFETY: p < kc, so all reads are within the documented extents.
+        unsafe {
+            let ap = a.add(p * 16);
+            let bp = b.add(p * 6);
+            let a0 = _mm256_loadu_ps(ap);
+            let a1 = _mm256_loadu_ps(ap.add(8));
+            for (j, cj) in acc.iter_mut().enumerate() {
+                let bj = _mm256_broadcast_ss(&*bp.add(j));
+                cj[0] = _mm256_fmadd_ps(a0, bj, cj[0]);
+                cj[1] = _mm256_fmadd_ps(a1, bj, cj[1]);
+            }
+        }
+    }
+    let av = _mm256_set1_ps(alpha);
+    // SAFETY: the 16x6 tile at `c` is writable per the safety contract.
+    unsafe {
+        for (j, cj) in acc.iter().enumerate() {
+            let col = c.add(j * ldc);
+            let c0 = _mm256_loadu_ps(col);
+            let c1 = _mm256_loadu_ps(col.add(8));
+            _mm256_storeu_ps(col, _mm256_fmadd_ps(av, cj[0], c0));
+            _mm256_storeu_ps(col.add(8), _mm256_fmadd_ps(av, cj[1], c1));
+        }
+    }
+}
+
+/// Full 8x6 `f64` tile that accumulates straight into C; see
+/// [`kernel_f32_store`].
+///
+/// # Safety
+/// `a` must be valid for `8*kc` reads, `b` for `6*kc` reads, and `c` for
+/// writes to an 8x6 tile with column stride `ldc`. AVX2 and FMA must be
+/// available (see [`available`]).
+#[cfg(not(target_feature = "avx512f"))]
+#[target_feature(enable = "avx2,fma")]
+pub(crate) unsafe fn kernel_f64_store(
+    kc: usize,
+    a: *const f64,
+    b: *const f64,
+    c: *mut f64,
+    ldc: usize,
+    alpha: f64,
+) {
+    let mut acc = [[_mm256_setzero_pd(); 2]; 6];
+    for p in 0..kc {
+        // SAFETY: p < kc, so all reads are within the documented extents.
+        unsafe {
+            let ap = a.add(p * 8);
+            let bp = b.add(p * 6);
+            let a0 = _mm256_loadu_pd(ap);
+            let a1 = _mm256_loadu_pd(ap.add(4));
+            for (j, cj) in acc.iter_mut().enumerate() {
+                let bj = _mm256_broadcast_sd(&*bp.add(j));
+                cj[0] = _mm256_fmadd_pd(a0, bj, cj[0]);
+                cj[1] = _mm256_fmadd_pd(a1, bj, cj[1]);
+            }
+        }
+    }
+    let av = _mm256_set1_pd(alpha);
+    // SAFETY: the 8x6 tile at `c` is writable per the safety contract.
+    unsafe {
+        for (j, cj) in acc.iter().enumerate() {
+            let col = c.add(j * ldc);
+            let c0 = _mm256_loadu_pd(col);
+            let c1 = _mm256_loadu_pd(col.add(4));
+            _mm256_storeu_pd(col, _mm256_fmadd_pd(av, cj[0], c0));
+            _mm256_storeu_pd(col.add(4), _mm256_fmadd_pd(av, cj[1], c1));
+        }
+    }
+}
+
 /// AVX-512F `f32` gemm microkernel: `out[j*32 + i] = sum_p a[p*32 + i] * b[p*4 + j]`
 /// for a 32x4 tile. Two 512-bit rows per column give 8 accumulators, the same
 /// count as the AVX2 kernel, each doing twice the work per instruction.

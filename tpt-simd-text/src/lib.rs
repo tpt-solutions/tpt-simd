@@ -1,13 +1,16 @@
 //! Text kernels.
 //!
-//! | function | source | notes |
-//! |---|---|---|
-//! | [`is_valid_utf8`] | wraps `simdutf8` | SIMD validation |
-//! | [`hex_encode_lower`], [`hex_decode`] | wrap `faster-hex` | no allocation |
-//! | [`utf8_to_utf16`], [`utf16_to_utf8`] | built here | surrogate checks, exact sizes |
+//! | function | notes |
+//! |---|---|
+//! | [`is_valid_utf8`] | `core` validation by default; `simdutf8` with the `simdutf8` feature |
+//! | [`hex_encode_lower`], [`hex_decode`] | own implementation, no allocation |
+//! | [`utf8_to_utf16`], [`utf16_to_utf8`] | own implementation, surrogate checks, exact sizes |
 //!
-//! Every function that writes into a caller buffer checks the size first and
-//! returns [`TextError::BufferTooSmall`] without writing anything partial.
+//! There are no runtime dependencies by default. `simdutf8` is optional, and
+//! `simdutf8` and `faster-hex` are used only as dev-dependency oracles in tests.
+//!
+//! Every function that writes into a caller buffer validates its input and size
+//! before writing, so an error leaves the buffer untouched.
 //!
 //! ## Example
 //!
@@ -63,9 +66,19 @@ impl core::fmt::Display for TextError {
 }
 
 /// Returns `true` if `bytes` is valid UTF-8.
+///
+/// Uses `core::str::from_utf8` unless the `simdutf8` feature is enabled, in
+/// which case the `simdutf8` SIMD validator is used. Both give the same answer.
 #[must_use]
 pub fn is_valid_utf8(bytes: &[u8]) -> bool {
-    simdutf8::basic::from_utf8(bytes).is_ok()
+    #[cfg(feature = "simdutf8")]
+    {
+        simdutf8::basic::from_utf8(bytes).is_ok()
+    }
+    #[cfg(not(feature = "simdutf8"))]
+    {
+        core::str::from_utf8(bytes).is_ok()
+    }
 }
 
 fn check_size(needed: usize, got: usize) -> Result<(), TextError> {
@@ -144,12 +157,25 @@ pub fn utf16_to_utf8(src: &[u16], dst: &mut [u8]) -> Result<usize, TextError> {
 ///
 /// Returns [`TextError::BufferTooSmall`] if `dst` is too short.
 pub fn hex_encode_lower(src: &[u8], dst: &mut [u8]) -> Result<usize, TextError> {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
     let needed = src.len() * 2;
     check_size(needed, dst.len())?;
-    let got = dst.len();
-    faster_hex::hex_encode(src, &mut dst[..needed])
-        .map_err(|_| TextError::BufferTooSmall { needed, got })?;
+    for (pair, &b) in dst[..needed].chunks_exact_mut(2).zip(src) {
+        pair[0] = DIGITS[usize::from(b >> 4)];
+        pair[1] = DIGITS[usize::from(b & 0x0F)];
+    }
     Ok(needed)
+}
+
+/// Value of one hex digit, either case.
+#[inline]
+fn hex_nibble(c: u8) -> Option<u8> {
+    match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        b'A'..=b'F' => Some(c - b'A' + 10),
+        _ => None,
+    }
 }
 
 /// Decodes hex digits (either case) from `src` into `dst`. `src` must have an
@@ -166,12 +192,16 @@ pub fn hex_decode(src: &[u8], dst: &mut [u8]) -> Result<usize, TextError> {
     }
     let needed = src.len() / 2;
     check_size(needed, dst.len())?;
-    // Length and size were checked above, so the only failure left is a bad digit.
-    let got = dst.len();
-    faster_hex::hex_decode(src, &mut dst[..needed]).map_err(|e| match e {
-        faster_hex::Error::InvalidChar { .. } => TextError::InvalidHexDigit,
-        _ => TextError::BufferTooSmall { needed, got },
-    })?;
+    // Validate every digit before writing, so an error leaves dst untouched.
+    if src.iter().any(|&c| hex_nibble(c).is_none()) {
+        return Err(TextError::InvalidHexDigit);
+    }
+    for (out, pair) in dst[..needed].iter_mut().zip(src.chunks_exact(2)) {
+        // Digits were checked above, so both lookups succeed.
+        let hi = hex_nibble(pair[0]).unwrap_or(0);
+        let lo = hex_nibble(pair[1]).unwrap_or(0);
+        *out = (hi << 4) | lo;
+    }
     Ok(needed)
 }
 
@@ -184,7 +214,7 @@ mod tests {
     use std::vec::Vec;
 
     #[test]
-    fn utf8_validation_wraps_simdutf8() {
+    fn utf8_validation_basic() {
         assert!(is_valid_utf8("héllo 😀".as_bytes()));
         assert!(is_valid_utf8(b""));
         assert!(!is_valid_utf8(&[0xC3]));

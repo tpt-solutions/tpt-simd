@@ -16,6 +16,11 @@ or conditions.
 Dependencies must be MIT-compatible (permissive). Apache-2.0-only, GPL, LGPL
 and AGPL dependencies are not accepted.
 
+Crates implement their own code by default and have no runtime dependencies.
+An external crate may be used as a dev-dependency test oracle, or behind a
+default-off feature, but not as an unconditional runtime dependency unless an
+ADR says so (see `docs/adr/0004-no-runtime-wrapping.md`).
+
 ## Per-crate definition of done
 
 Every crate needs:

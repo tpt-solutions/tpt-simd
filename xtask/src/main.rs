@@ -134,3 +134,34 @@ fn run(command: &mut Command) -> Result<(), String> {
         Err(format!("{description} exited with {status}"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::NO_STD_TARGETS;
+
+    /// The `no-std` CI job in `.github/workflows/ci.yml` must build the same targets as `cargo xtask no-std`.
+    #[test]
+    fn no_std_targets_match_ci_workflow() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../.github/workflows/ci.yml");
+        let ci = std::fs::read_to_string(path).expect("read ci.yml");
+        let job = ci
+            .split("\n  no-std:\n")
+            .nth(1)
+            .and_then(|rest| rest.split("\n  aarch64:").next())
+            .expect("no-std job in ci.yml");
+
+        let mut ci_targets: Vec<&str> = job
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("- run: "))
+            .filter_map(|cmd| {
+                let mut words = cmd.split_whitespace();
+                words.find(|w| *w == "--target")?;
+                words.next()
+            })
+            .collect();
+        let mut xtask_targets: Vec<&str> = NO_STD_TARGETS.to_vec();
+        ci_targets.sort_unstable();
+        xtask_targets.sort_unstable();
+        assert_eq!(ci_targets, xtask_targets);
+    }
+}

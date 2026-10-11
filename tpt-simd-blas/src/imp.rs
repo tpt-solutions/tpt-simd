@@ -4,7 +4,7 @@ macro_rules! blas_impl {
     (
         $modname:ident, $t:ident, w = $w:expr, mr = $mr:expr, nr = $nr:expr,
         mc = $mc:expr, kc = $kc:expr, nc = $nc:expr, sqrt = $sqrt:path,
-        kernel = $kernel:path, kernel512 = $kernel512:path,
+        kernel = $kernel:path, kstore = $kstore:path, kernel512 = $kernel512:path,
         l1_dot = $ld:path, l1_sq = $lq:path, l1_abs = $la:path
     ) => {
         pub(crate) mod $modname {
@@ -286,6 +286,39 @@ macro_rules! blas_impl {
                 }
             }
 
+            /// Full-tile fast path: `c += alpha * A*B` straight into the
+            /// MR x NR tile at `c` (column stride `ldc`). Returns `false` when
+            /// no AVX2 store kernel applies, and the caller falls back to
+            /// [`micro`] plus a write-back.
+            #[inline(always)]
+            fn micro_store(
+                kc: usize, a: &[$t], b: &[$t], c: &mut [$t], ldc: usize, alpha: $t,
+            ) -> bool {
+                assert!(a.len() >= kc * MR && b.len() >= kc * NR);
+                assert!(c.len() >= (NR - 1) * ldc + MR);
+                #[cfg(all(
+                    not(feature = "scalar-only"),
+                    target_arch = "x86_64",
+                    any(
+                        all(target_feature = "avx2", target_feature = "fma"),
+                        feature = "runtime-dispatch"
+                    ),
+                    not(target_feature = "avx512f")
+                ))]
+                {
+                    if crate::x86::available() {
+                        // SAFETY: lengths and the tile extent asserted above;
+                        // AVX2+FMA are available (see `micro`).
+                        unsafe {
+                            $kstore(kc, a.as_ptr(), b.as_ptr(), c.as_mut_ptr(), ldc, alpha)
+                        };
+                        return true;
+                    }
+                }
+                let _ = (kc, a, b, c, ldc, alpha);
+                false
+            }
+
             #[allow(clippy::too_many_arguments)]
             fn macro_kernel(
                 mc: usize, nc: usize, kc: usize, alpha: $t,
@@ -298,6 +331,11 @@ macro_rules! blas_impl {
                     for ir in (0..mc).step_by(MR) {
                         let mr = MR.min(mc - ir);
                         let apanel = &ap[(ir / MR) * kc * MR..][..kc * MR];
+                        if mr == MR && nr == NR
+                            && micro_store(kc, apanel, bpanel, &mut c[(jr * ldc) + ir..], ldc, alpha)
+                        {
+                            continue;
+                        }
                         micro(kc, apanel, bpanel, &mut tmp);
                         for jj in 0..nr {
                             let col = &mut c[(jr + jj) * ldc + ir..][..mr];

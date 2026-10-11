@@ -1,0 +1,18 @@
+[package]
+name = "tpt-simd-audio"
+description = "Audio kernels: mix, interleave, peak/RMS, FIR, biquad, and windowed-sinc resampling, with no runtime dependencies beyond libm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+keywords = ["simd", "audio", "dsp", "biquad", "resample"]
+categories = ["multimedia::audio", "algorithms", "no-std"]
+
+[dependencies]
+libm.workspace = true
+
+[lints]
+workspace = true
