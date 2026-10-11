@@ -254,9 +254,16 @@ pub fn blend_i32(mask: SimdMask<i32, 8>, a: Simd<i32, 8>, b: Simd<i32, 8>) -> Si
     {
         x86::blend_i32(mask, a, b)
     }
-    #[cfg(not(all(
-        any(target_arch = "x86", target_arch = "x86_64"),
-        target_feature = "avx2"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        neon::blend_i32(mask, a, b)
+    }
+    #[cfg(not(any(
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "avx2"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         mask.select(a, b)
@@ -424,6 +431,39 @@ pub fn blend_imm_f32<const MASK: u8>(a: Simd<f32, 8>, b: Simd<f32, 8>) -> Simd<f
 #[inline]
 pub fn blend_imm_i8<const MASK: u32>(a: Simd<i8, 32>, b: Simd<i8, 32>) -> Simd<i8, 32> {
     Simd::from_fn(|i| if (MASK >> i) & 1 != 0 { a[i] } else { b[i] })
+}
+
+/// aarch64 NEON path for `blend_i32`: `vbslq_s32` selects bitwise, so an
+/// all-ones or all-zeros lane mask gives exactly `if mask { a } else { b }`.
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+mod neon {
+    use core::arch::aarch64::*;
+    use tpt_simd_core::{Simd, SimdMask};
+
+    pub(super) fn blend_i32(
+        mask: SimdMask<i32, 8>,
+        a: Simd<i32, 8>,
+        b: Simd<i32, 8>,
+    ) -> Simd<i32, 8> {
+        let m = mask.to_array();
+        let sel: [u32; 8] = core::array::from_fn(|i| if m[i] { u32::MAX } else { 0 });
+        let (xa, xb) = (a.to_array(), b.to_array());
+        let mut out = [0i32; 8];
+        // SAFETY: NEON is enabled on aarch64. All arrays are 32 bytes, accessed
+        // with 16-byte unaligned loads and stores at lane offsets 0 and 4.
+        unsafe {
+            for h in [0usize, 4] {
+                let m = vld1q_u32(sel.as_ptr().add(h));
+                let r = vbslq_s32(
+                    m,
+                    vld1q_s32(xa.as_ptr().add(h)),
+                    vld1q_s32(xb.as_ptr().add(h)),
+                );
+                vst1q_s32(out.as_mut_ptr().add(h), r);
+            }
+        }
+        Simd::from_array(out)
+    }
 }
 
 #[cfg(all(test, not(feature = "std")))]

@@ -29,7 +29,10 @@
 //! assert_eq!(b.to_array(), [-7.0, -5.0, -3.0, -1.0, 1.0, 3.0, 5.0, 7.0]);
 //! ```
 #![no_std]
-#![forbid(unsafe_code)]
+#![cfg_attr(
+    not(all(not(feature = "scalar-only"), target_arch = "aarch64")),
+    forbid(unsafe_code)
+)]
 
 #[cfg(any(feature = "std", test))]
 extern crate std;
@@ -54,7 +57,14 @@ use tpt_simd_core::{ComplexSimd, Simd, SimdElement, SimdInt};
 /// ```
 #[inline]
 pub fn butterfly_f32(a: &mut Simd<f32, 8>, b: &mut Simd<f32, 8>) {
-    butterfly_generic(a, b);
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        neon::butterfly_f32(a, b)
+    }
+    #[cfg(not(all(not(feature = "scalar-only"), target_arch = "aarch64")))]
+    {
+        butterfly_generic(a, b);
+    }
 }
 
 /// In-place butterfly on 16 `i16` lanes with **wrapping** arithmetic:
@@ -79,7 +89,54 @@ pub fn butterfly_f32(a: &mut Simd<f32, 8>, b: &mut Simd<f32, 8>) {
 /// ```
 #[inline]
 pub fn butterfly_i16(a: &mut Simd<i16, 16>, b: &mut Simd<i16, 16>) {
-    butterfly_generic(a, b);
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        neon::butterfly_i16(a, b)
+    }
+    #[cfg(not(all(not(feature = "scalar-only"), target_arch = "aarch64")))]
+    {
+        butterfly_generic(a, b);
+    }
+}
+
+/// aarch64 NEON paths: `a + b` and `a - b` on whole vectors (wrapping for
+/// integers), exactly the operations of `butterfly_generic`.
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+mod neon {
+    use core::arch::aarch64::*;
+    use tpt_simd_core::Simd;
+
+    pub(super) fn butterfly_f32(a: &mut Simd<f32, 8>, b: &mut Simd<f32, 8>) {
+        let (xa, xb) = (a.to_array(), b.to_array());
+        let (mut sa, mut db) = ([0.0f32; 8], [0.0f32; 8]);
+        // SAFETY: NEON is enabled on aarch64. All arrays are 32 bytes, accessed
+        // with 16-byte unaligned loads and stores at lane offsets 0 and 4.
+        unsafe {
+            for h in [0usize, 4] {
+                let (va, vb) = (vld1q_f32(xa.as_ptr().add(h)), vld1q_f32(xb.as_ptr().add(h)));
+                vst1q_f32(sa.as_mut_ptr().add(h), vaddq_f32(va, vb));
+                vst1q_f32(db.as_mut_ptr().add(h), vsubq_f32(va, vb));
+            }
+        }
+        *a = Simd::from_array(sa);
+        *b = Simd::from_array(db);
+    }
+
+    pub(super) fn butterfly_i16(a: &mut Simd<i16, 16>, b: &mut Simd<i16, 16>) {
+        let (xa, xb) = (a.to_array(), b.to_array());
+        let (mut sa, mut db) = ([0i16; 16], [0i16; 16]);
+        // SAFETY: NEON is enabled on aarch64. All arrays are 32 bytes, accessed
+        // with 16-byte unaligned loads and stores at lane offsets 0 and 8.
+        unsafe {
+            for h in [0usize, 8] {
+                let (va, vb) = (vld1q_s16(xa.as_ptr().add(h)), vld1q_s16(xb.as_ptr().add(h)));
+                vst1q_s16(sa.as_mut_ptr().add(h), vaddq_s16(va, vb));
+                vst1q_s16(db.as_mut_ptr().add(h), vsubq_s16(va, vb));
+            }
+        }
+        *a = Simd::from_array(sa);
+        *b = Simd::from_array(db);
+    }
 }
 
 /// In-place butterfly on 16 `i16` lanes with **saturating** arithmetic.

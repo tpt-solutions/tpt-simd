@@ -1,7 +1,9 @@
 # Appendix B: Example usage (spec)
 
-These examples are from the design spec `spec.txt`. They are **verified to
-compile and run as doctests** (see [known issues](known-issues.md)).
+These examples are from the design spec `spec.txt`. Each one is checked by
+`tpt-simd/tests/appendix_b.rs`, which asserts the documented output (see
+[known issues](known-issues.md)). The snippets below add the imports the
+spec leaves out.
 
 ## B.1 Complex multiplication (FFT)
 
@@ -17,8 +19,8 @@ let result = a * b;  // (1+2i)(3+4i) = (3-8) + (4+6)i = -5 + 10i
 ## B.2 Fixed-point motion compensation
 
 ```rust
+use tpt_simd_core::F32x8;
 use tpt_simd_fixed::Fixed;
-use tpt_simd_core::I32x8;
 
 let a: Fixed<i32, 16, 16, 8> = Fixed::from_f32(F32x8::splat(1.5));
 let b: Fixed<i32, 16, 16, 8> = Fixed::from_f32(F32x8::splat(2.5));

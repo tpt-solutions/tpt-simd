@@ -22,6 +22,11 @@ libm.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
+criterion = { workspace = true, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "vector"
+harness = false
 
 [lints]
 workspace = true

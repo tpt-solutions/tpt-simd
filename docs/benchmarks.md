@@ -516,3 +516,97 @@ What changed:
   software-`fmaf` speed by design (bit-identical results on every target). A root-cause
   fix for everything built on `Simd::mul_add` (tpt-simd-vector choosing a hardware FMA
   where `target_feature = "fma"` is on) would speed up all other crates' portable paths.
+
+# Session 2026-10-12: AVX-512BW dot, matrix i16, and the Q4 summary
+
+## AVX-512BW `dot_product_i16` (new path)
+
+`tpt-simd-dot` now has an AVX-512BW kernel (`x86::dot_i16_avx512bw`): the AVX2
+kernel with 512-bit `vpmaddwd`, two 64-element loads per operand per
+iteration. It is selected only when `avx512bw` is enabled at compile time
+(`target-cpu=native` on this host). Results are identical: each `vpmaddwd`
+lane is an exact `i32` pair sum and all additions wrap, so the summation order
+does not change the result. Verified by the existing unit and proptests (both
+configurations) and by the golden digest (`tpt-simd/tests/cross_arch_golden.rs`).
+
+A/B run on the same machine with the arm64 emulation container paused (criterion,
+`--warm-up-time 1 --measurement-time 3`, `i16_` filter), Tiger Lake i5-1135G7:
+
+| Bench | scalar (indexed) | portable | tpt, AVX2+FMA | tpt, native (AVX-512BW) |
+|---|---|---|---|---|
+| `i16_256` | 24.6 ns | 71.9 ns | 16.2 ns | 15.5 ns |
+| `i16_4096` | 276.5 ns | 413.4 ns | 158.6 ns | 129.4 ns |
+
+* At 4096 elements, AVX-512BW is 1.23x faster than the AVX2 path and 2.1x
+  faster than the indexed scalar loop.
+* At 256 elements there is no gain. The work is 4 iterations, so the fixed
+  cost dominates: the horizontal reduction (store 16 lanes, then 16 scalar
+  adds) and the scalar tail. A shuffle-based in-register reduction would be
+  the next step.
+* Earlier runs (overlapping a container build) were inconsistent. Only the
+  paused-container A/B above is used for comparisons.
+
+## `matrix::mat8x8_mul_i16`: codegen fix
+
+The explicit `Simd<i64, 8>` kernel compiled to 309 AVX2 instructions. AVX2 has
+no 64-bit lane multiply, so each product was emulated with `vpmuludq`, and the
+clamp went through a scalar per-lane `map`. The scalar reference
+(`mat8x8_mul_scalar_i16`) auto-vectorises to 131. The kernel is now written in
+the reference's loop shape, which compiles to 125 instructions. Bit-identical
+(matrix unit and proptest suites pass). Timing was not measured for this
+change; the instruction count is the evidence. See `docs/asm-audit.md`,
+second pass.
+
+## Q4: why the speedup targets are not met
+
+The spec's targets (section 6.2) assumed baselines that LLVM does not produce
+in practice. The causes, with the measurements behind them:
+
+1. **The baseline is already vectorised.** For simple element-wise and
+   reduction kernels the iterator loop auto-vectorises, so the explicit kernel
+   has nothing left to win: `saturate` (parity with the zip loop), `horizontal`
+   (LLVM already emits the optimal shuffle tree; hand-written AVX gave 0.68 µs,
+   the same), `dot_product_i16` (LLVM emits `vpmaddwd` for the scalar loop too),
+   `complex_mul` (parity with the zip loop; load/store bound).
+2. **Some kernels are bound by memory or L1.** `dot_product_i16` at 256 elements
+   is 32 loads of 32 bytes, close to the two-load-port ceiling. `window` and
+   `sparse` SpMV are memory bound. Doubling the instruction throughput does not
+   help here.
+3. **Fixed overheads dominate short inputs.** A single-register reduction is
+   about 1 ns of work. Store-to-load forwarding and the reduction tail set the
+   floor for `transpose_8x8_i16` on one block (2.3x to 2.9x) and for short dots.
+4. **Codegen pitfalls in our own code.** These were the largest avoidable losses,
+   found in this session's audit:
+   * i64 lane arithmetic on AVX2 (no 64-bit multiply): `mat8x8_mul_i16` was 2.5x
+     the instructions of its scalar reference. Fixed.
+   * Per-lane libm calls. Without hardware FMA, `complex_mul_f32` and
+     `mul_add_sub_f32` call `libm::fmaf` once per lane (16 and 8 calls per
+     call). On aarch64 this was the case for every build, because no NEON path
+     existed. Fixed for aarch64 (NEON `vfmaq_f32`); the x86 default build without
+     `+fma` still has this cost.
+   * Scalar lowering of 8-lane arrays on 128-bit targets: `butterfly_f32` on SSE2
+     (`docs/benchmarks.md`), and on aarch64 `butterfly_f32`, `butterfly_i16`,
+     `transpose_8x8_i16` and `blend_i32` compiled to scalar code (`csel`, `strh`,
+     one scalar `fadd` per lane). Fixed on aarch64 with NEON intrinsics.
+   * Per-lane branches: `round_f32` and `floor_f32` on aarch64 compiled to about
+     200 instructions with 30 branches. A single `vrnd*` instruction does the
+     same job. Fixed.
+5. **The default build is SSE2.** ADR 0001 makes ISA selection compile-time, so
+   a user who does not pass `-C target-cpu` gets the SSE2 code. Several results
+   above depend on the ISA: `butterfly_f32` is 0.18x of an iterator loop on
+   SSE2, and the 256-block 8x8 transpose is 4.6x on SSE2 but 7.0x with AVX2. That is a deliberate trade-off (ADR
+   0003 adds runtime dispatch only for blas), and it is the main reason a
+   default-build benchmark looks worse than the native one.
+6. **Determinism costs throughput.** `mat4x4_mul_f32` and the complex kernels
+   avoid FMA contraction where the portable path must be bit-identical, so they
+   issue a separate multiply and add. ADR 0003 relaxes this only for reductions.
+7. **The measurement environment is noisy.** The machine is shared, so run-to-run
+   spread is 10–50%. Comparisons in this file are made back-to-back, and results
+   are listed as ratios where that is the honest unit.
+
+Consequence: the remaining 3–8x targets are not reachable against the
+baselines LLVM produces. The realistic gains are the codegen fixes in item 4
+(which cannot change the ratio against an auto-vectorised baseline, but do
+remove slow paths on targets that lack a vector backend) and the explicit
+ISA paths on targets that lack them. The spec's cycle table should be replaced
+by the measured ratios in this file.

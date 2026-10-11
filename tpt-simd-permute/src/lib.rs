@@ -103,13 +103,84 @@ pub fn transpose_8x8_i16(data: &mut [[i16; 8]; 8]) {
             transpose_8x8_i16_sse2(data)
         }
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "sse2"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        neon::transpose_8x8_i16(data)
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "sse2"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         transpose_8x8_i16_portable(data)
+    }
+}
+
+/// aarch64 NEON transpose. Three `vtrn` stages (16-bit pairs, then 32-bit
+/// pairs) leave, for each column pair `{c, c+4}` (or `{2,6}`, `{1,5}`,
+/// `{3,7}`), one vector holding that column for rows 0-3 in its low half and
+/// rows 4-7 in its high half, two vectors per group. `vcombine` then yields
+/// each output row. Values are moved, not computed, so the result is exact.
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+mod neon {
+    use core::arch::aarch64::*;
+
+    pub(super) fn transpose_8x8_i16(data: &mut [[i16; 8]; 8]) {
+        let p = data.as_mut_ptr().cast::<i16>();
+        // SAFETY: NEON is enabled on aarch64. `data` is 128 contiguous bytes;
+        // each row is one 16-byte load and one 16-byte store at element
+        // offset 8 * k.
+        unsafe {
+            let r = |k: usize| vld1q_s16(p.add(8 * k));
+            let (r0, r1, r2, r3) = (r(0), r(1), r(2), r(3));
+            let (r4, r5, r6, r7) = (r(4), r(5), r(6), r(7));
+            let s32 = vreinterpretq_s32_s16;
+            let s16 = vreinterpretq_s16_s32;
+
+            let t0 = vtrn1q_s16(r0, r1);
+            let t1 = vtrn2q_s16(r0, r1);
+            let t2 = vtrn1q_s16(r2, r3);
+            let t3 = vtrn2q_s16(r2, r3);
+            let t4 = vtrn1q_s16(r4, r5);
+            let t5 = vtrn2q_s16(r4, r5);
+            let t6 = vtrn1q_s16(r6, r7);
+            let t7 = vtrn2q_s16(r6, r7);
+
+            // Columns {0,4}, {2,6}, {1,5}, {3,7}; rows 0-3 in `*`, rows 4-7 in `*2`.
+            let a = s16(vtrn1q_s32(s32(t0), s32(t2)));
+            let b = s16(vtrn2q_s32(s32(t0), s32(t2)));
+            let c = s16(vtrn1q_s32(s32(t1), s32(t3)));
+            let d = s16(vtrn2q_s32(s32(t1), s32(t3)));
+            let a2 = s16(vtrn1q_s32(s32(t4), s32(t6)));
+            let b2 = s16(vtrn2q_s32(s32(t4), s32(t6)));
+            let c2 = s16(vtrn1q_s32(s32(t5), s32(t7)));
+            let d2 = s16(vtrn2q_s32(s32(t5), s32(t7)));
+
+            let out = |k: usize, lo: int16x8_t, hi: int16x8_t| {
+                vst1q_s16(
+                    p.add(8 * k),
+                    vcombine_s16(vget_low_s16(lo), vget_low_s16(hi)),
+                );
+            };
+            let out_hi = |k: usize, lo: int16x8_t, hi: int16x8_t| {
+                vst1q_s16(
+                    p.add(8 * k),
+                    vcombine_s16(vget_high_s16(lo), vget_high_s16(hi)),
+                );
+            };
+            out(0, a, a2); // column 0
+            out(1, c, c2); // column 1
+            out(2, b, b2); // column 2
+            out(3, d, d2); // column 3
+            out_hi(4, a, a2); // column 4
+            out_hi(5, c, c2); // column 5
+            out_hi(6, b, b2); // column 6
+            out_hi(7, d, d2); // column 7
+        }
     }
 }
 

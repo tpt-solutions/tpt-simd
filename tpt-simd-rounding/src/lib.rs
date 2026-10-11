@@ -30,9 +30,10 @@
 //! Everywhere else (including plain SSE2, which has no `roundps`; that
 //! arrived with SSE4.1) a branch-free bit-manipulation fallback is used that
 //! LLVM vectorises with SSE2 instructions only. It needs no `libm`; `libm`
-//! is only used by the tests as the reference. NEON `vrnd*` is not
-//! hand-written: the fallback is left to LLVM. The `scalar-only` feature
-//! forces the fallback.
+//! is only used by the tests as the reference. On aarch64 the functions use
+//! NEON `vrnd*` / `fcvtzs` directly (the portable form compiled to ~200
+//! scalar instructions with branches). The `scalar-only` feature forces the
+//! fallback.
 #![no_std]
 #![deny(missing_docs)]
 
@@ -148,6 +149,71 @@ fn round_away_avx(a: Simd<f32, 8>) -> Simd<f32, 8> {
     Simd::from_array(out)
 }
 
+/// aarch64 NEON paths. NEON is part of the aarch64 baseline, so these are
+/// compiled on every aarch64 target (unless `scalar-only`). Each 8-lane
+/// operation is two 4-lane NEON operations. The rounding modes match the
+/// portable definitions exactly: `frinta` is ties away from zero, `frintm`
+/// floor, `frintp` ceil, `frintz` trunc and `frintn` ties to even; `fcvtzs`
+/// saturates and maps NaN to 0, like `as i32`.
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+mod neon {
+    use core::arch::aarch64::*;
+    use tpt_simd_core::Simd;
+
+    #[inline(always)]
+    fn map_f32(a: Simd<f32, 8>, op: impl Fn(float32x4_t) -> float32x4_t) -> Simd<f32, 8> {
+        let src = a.to_array();
+        let mut out = [0.0f32; 8];
+        // SAFETY: NEON is enabled on aarch64. `src` and `out` are 32-byte
+        // arrays, accessed with 16-byte unaligned loads and stores at lane
+        // offsets 0 and 4.
+        unsafe {
+            vst1q_f32(out.as_mut_ptr(), op(vld1q_f32(src.as_ptr())));
+            vst1q_f32(out.as_mut_ptr().add(4), op(vld1q_f32(src.as_ptr().add(4))));
+        }
+        Simd::from_array(out)
+    }
+
+    pub(super) fn round_away(a: Simd<f32, 8>) -> Simd<f32, 8> {
+        // SAFETY: NEON is enabled on aarch64 (see `map_f32`).
+        map_f32(a, |v| unsafe { vrndaq_f32(v) })
+    }
+
+    pub(super) fn floor(a: Simd<f32, 8>) -> Simd<f32, 8> {
+        // SAFETY: NEON is enabled on aarch64 (see `map_f32`).
+        map_f32(a, |v| unsafe { vrndmq_f32(v) })
+    }
+
+    pub(super) fn ceil(a: Simd<f32, 8>) -> Simd<f32, 8> {
+        // SAFETY: NEON is enabled on aarch64 (see `map_f32`).
+        map_f32(a, |v| unsafe { vrndpq_f32(v) })
+    }
+
+    pub(super) fn trunc(a: Simd<f32, 8>) -> Simd<f32, 8> {
+        // SAFETY: NEON is enabled on aarch64 (see `map_f32`).
+        map_f32(a, |v| unsafe { vrndq_f32(v) })
+    }
+
+    pub(super) fn ties_even(a: Simd<f32, 8>) -> Simd<f32, 8> {
+        // SAFETY: NEON is enabled on aarch64 (see `map_f32`).
+        map_f32(a, |v| unsafe { vrndnq_f32(v) })
+    }
+
+    pub(super) fn to_i32_sat(a: Simd<f32, 8>) -> Simd<i32, 8> {
+        let src = a.to_array();
+        let mut out = [0i32; 8];
+        // SAFETY: as in `map_f32`; `out` is 32 bytes, stored as two 4-lane halves.
+        unsafe {
+            vst1q_s32(out.as_mut_ptr(), vcvtq_s32_f32(vld1q_f32(src.as_ptr())));
+            vst1q_s32(
+                out.as_mut_ptr().add(4),
+                vcvtq_s32_f32(vld1q_f32(src.as_ptr().add(4))),
+            );
+        }
+        Simd::from_array(out)
+    }
+}
+
 /// `as i32` conversion of every lane (truncate toward zero, saturate, NaN
 /// becomes 0) using `vcvttps2dq` plus a fix-up for the two cases it handles
 /// differently (it returns `i32::MIN` for NaN and for positive overflow).
@@ -189,10 +255,17 @@ fn to_i32_sat(a: Simd<f32, 8>) -> Simd<i32, 8> {
     {
         to_i32_sat_avx(a)
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        neon::to_i32_sat(a)
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         a.map(|x| x as i32)
@@ -231,10 +304,17 @@ pub fn round_f32(a: Simd<f32, 8>) -> Simd<f32, 8> {
     {
         round_away_avx(a)
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        neon::round_away(a)
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         a.map(round_away_lane)
@@ -262,10 +342,17 @@ pub fn floor_f32(a: Simd<f32, 8>) -> Simd<f32, 8> {
     {
         round_avx::<0x09>(a) // _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        neon::floor(a)
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         a.map(floor_lane)
@@ -293,10 +380,17 @@ pub fn ceil_f32(a: Simd<f32, 8>) -> Simd<f32, 8> {
     {
         round_avx::<0x0A>(a) // _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        neon::ceil(a)
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         a.map(ceil_lane)
@@ -324,10 +418,17 @@ pub fn trunc_f32(a: Simd<f32, 8>) -> Simd<f32, 8> {
     {
         round_avx::<0x0B>(a) // _MM_FROUND_TO_ZERO | _MM_FROUND_NO_EXC
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        neon::trunc(a)
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         a.map(trunc_lane)
@@ -356,10 +457,17 @@ pub fn round_ties_even_f32(a: Simd<f32, 8>) -> Simd<f32, 8> {
     {
         round_avx::<0x08>(a) // _MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        neon::ties_even(a)
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         a.map(rint_lane)

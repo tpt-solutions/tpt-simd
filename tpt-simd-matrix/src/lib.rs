@@ -138,16 +138,22 @@ pub fn mat8x8_mul_scalar_i16(a: [[i16; 8]; 8], b: [[i16; 8]; 8]) -> [[i16; 8]; 8
 /// assert_eq!(tpt_simd_matrix::mat8x8_mul_i16(b, b)[0][0], i16::MAX);
 /// ```
 pub fn mat8x8_mul_i16(a: [[i16; 8]; 8], b: [[i16; 8]; 8]) -> [[i16; 8]; 8] {
-    let rows = b.map(|r| Simd::<i64, 8>::from_array(r.map(i64::from)));
+    // Written in the reference's loop shape on purpose. The explicit
+    // `Simd<i64, 8>` form (splat x row) compiled to ~280 AVX2 instructions:
+    // no 64-bit lane multiply (`vpmuludq` emulation) and a per-lane clamp.
+    // This shape vectorises to ~130 instructions; see docs/asm-audit.md.
     let mut out = [[0i16; 8]; 8];
     for i in 0..8 {
-        let mut acc = Simd::<i64, 8>::splat(0);
+        let mut acc = [0i64; 8];
         for k in 0..8 {
-            acc += Simd::splat(a[i][k] as i64) * rows[k];
+            let aik = a[i][k] as i64;
+            for j in 0..8 {
+                acc[j] += aik * b[k][j] as i64;
+            }
         }
-        out[i] = acc
-            .to_array()
-            .map(|v| v.clamp(i16::MIN as i64, i16::MAX as i64) as i16);
+        for j in 0..8 {
+            out[i][j] = acc[j].clamp(i16::MIN as i64, i16::MAX as i64) as i16;
+        }
     }
     out
 }

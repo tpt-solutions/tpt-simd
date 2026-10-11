@@ -1,0 +1,47 @@
+[package]
+name = "tpt-simd-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+tpt-simd-core = { path = "../tpt-simd-core" }
+tpt-simd-dot = { path = "../tpt-simd-dot" }
+tpt-simd-gather = { path = "../tpt-simd-gather" }
+tpt-simd-scatter = { path = "../tpt-simd-scatter" }
+tpt-simd-permute = { path = "../tpt-simd-permute" }
+tpt-simd-blas = { path = "../tpt-simd-blas" }
+
+[[bin]]
+name = "dot_i16"
+path = "fuzz_targets/dot_i16.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "gather_scatter_i32"
+path = "fuzz_targets/gather_scatter_i32.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "transpose_8x8_i16"
+path = "fuzz_targets/transpose_8x8_i16.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "gemm_f32"
+path = "fuzz_targets/gemm_f32.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

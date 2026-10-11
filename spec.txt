@@ -137,14 +137,22 @@ where
 Operations:
 
 impl<T, const INT_BITS: u32, const FRAC_BITS: u32, const N: usize> Fixed<T, INT_BITS, FRAC_BITS, N> {
-    pub fn add(self, other: Self) -> Self;
+    pub fn add(self, other: Self) -> Self;           // see note: wrapping/saturating variants
     pub fn sub(self, other: Self) -> Self;
-    pub fn mul(self, other: Self) -> Self;           // (a * b) >> FRAC_BITS with rounding
+    pub fn mul(self, other: Self) -> Self;           // = `*`; (a * b) >> FRAC_BITS, rounded (ties away), wrapping
     pub fn div(self, other: Self) -> Self;
     pub fn from_f32(v: Simd<f32, N>) -> Self;
     pub fn to_f32(self) -> Simd<f32, N>;
-    pub fn saturate(self) -> Self;                   // Clamp to representable range
+    // `saturate` is replaced by explicit variants (ADR 0002):
+    // saturating_mul / saturating_add / saturating_sub / saturating_div,
+    // wrapping_* for the wrapping forms, and mul_trunc (round toward -inf).
 }
+
+Implementation note (as built): `Fixed::mul` is the `*` operator and is
+wrapping, rounding ties away from zero. `Fixed::from_f32` takes a `Simd<f32, N>`
+and clamps to the format range (NaN maps to 0). Appendix B's `a * b` therefore
+compiles as written once `F32x8` / `Fixed` are imported (see
+tpt-simd/tests/appendix_b.rs).
 
 Intrinsics Used:
 _mm256_mullo_epi32 (multiply low)

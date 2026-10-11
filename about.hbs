@@ -1,0 +1,32 @@
+# Third-party licenses
+
+This file lists the third-party crates that tpt-simd depends on, grouped by
+license. It is generated; do not edit it by hand. Regenerate it with:
+
+```sh
+cargo about generate about.hbs -o THIRD-PARTY-LICENSES.md
+```
+
+Only licenses listed in `about.toml` are accepted. Dev-dependencies are not
+included because they are not distributed with the crates.
+
+## Summary
+
+{{#each overview}}
+- {{name}} ({{count}})
+{{/each}}
+
+{{#each licenses}}
+## {{name}} ({{id}})
+
+Used by:
+
+{{#each used_by}}
+- {{crate.name}} {{crate.version}}
+{{/each}}
+
+```text
+{{{text}}}
+```
+
+{{/each}}

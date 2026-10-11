@@ -1,0 +1,15 @@
+# cargo-about configuration: generates THIRD-PARTY-LICENSES.md.
+# Must match the allow-list in deny.toml (permissive, MIT-compatible only).
+accepted = [
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+]
+
+# Dev-dependencies are not distributed with the crates. criterion (dev-only)
+# pulls in ciborium, which is Apache-2.0-only; it is excluded here on purpose.
+ignore-dev-dependencies = true

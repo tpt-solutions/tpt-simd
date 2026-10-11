@@ -95,7 +95,18 @@ pub fn dot_product_i16(a: &[i16], b: &[i16]) -> i32 {
     #[cfg(all(
         not(feature = "scalar-only"),
         target_arch = "x86_64",
-        target_feature = "avx2"
+        target_feature = "avx512bw"
+    ))]
+    {
+        // SAFETY: this block is compiled only when AVX-512BW is enabled for
+        // the whole crate, and the slice lengths were checked equal above.
+        unsafe { x86::dot_i16_avx512bw(a, b) }
+    }
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        not(target_feature = "avx512bw")
     ))]
     {
         // SAFETY: this block is compiled only when AVX2 is enabled for the

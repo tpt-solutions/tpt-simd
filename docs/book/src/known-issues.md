@@ -4,11 +4,13 @@ Documented issues and their status.
 
 ## Appendix B doctests
 
-All spec Appendix B examples **compile and pass as doctests** (verified
-`cargo test --doc` on `tpt-simd-butterfly`, `tpt-simd-complex`,
-`tpt-simd-fixed`, `tpt-simd-dot`, `tpt-simd-permute`). They are embedded in
-the crate READMEs / doc comments, so `cargo doc --workspace --no-deps` with
-`RUSTDOCFLAGS=-Dwarnings` stays clean.
+The spec's Appendix B snippets are checked by the integration test
+`tpt-simd/tests/appendix_b.rs` (`cargo test -p tpt-simd --test appendix_b`),
+which resolves their imports through the umbrella crate and asserts each
+documented result. They are not doctests, so the book text is not compiled
+by `mdbook test`. The snippets needed two spec fixes, recorded in `spec.txt`:
+`Fixed` multiplies with `*` (wrapping, ties away), and `F32x8` must be
+imported. Per-crate doc comments carry their own examples in addition.
 
 ## Performance regressions
 

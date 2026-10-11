@@ -282,3 +282,105 @@ count of the whole wrapper (a rough size indicator).
 3. For slice kernels that tail-jump (dot, complex slice helpers, pack slice
    helpers), emit the dependency's own asm with
    `cargo rustc --release -p <crate> -- --emit asm`.
+
+## Second pass: aligned, mul, select, matrix, blas
+
+Closes the "not audited" gap for these crates (todo Phase 0 crate-done
+checklists). Same method: scratch wrappers outside the repo, `cargo asm` for
+wrappers, `cargo rustc -p <crate> --release -- --emit asm` for the crate's
+own symbols (summaries count instructions per function body). Build:
+`RUSTFLAGS="-C target-feature=+avx2,+fma"` (x86_64, this machine), no `std`.
+Counts are per function body; "calls" are direct calls inside the body.
+
+| Function | Instructions | Vector | Notes |
+|---|---|---|---|
+| `aligned::load_aligned::<f32, 8>` | 17 | 3 | 2 calls, both `panic_fmt` (panic paths, not in the hot path) |
+| `aligned::store_aligned::<f32, 8>` | 16 | 3 | same (2 `panic_fmt` calls) |
+| `mul::mul_hi_i16` | 4 | 4 | `vpmulhw`, no scalar tail |
+| `mul::mul_lo_i32` | 4 | 4 | |
+| `mul::mul_hi_i32` | 10 | 10 | 64-bit product via even/odd `vpmuldq` |
+| `mul::mul_widen_i16` | 5 | 5 | |
+| `mul::mul_add_sub_f32` | 6 | 6 | with `+fma`: `vfmadd231ps` plus a sign-flip `vxorps`, not a single `vfmaddsub` (Phase 4 open item); without `+fma` see the table above (`libm::fmaf` per lane) |
+| `select::select_i32` | 4 | 4 | `vpermps` |
+| `select::select_lanes_f32` | 4 | 4 | |
+| `select::select_from_slice_i32` | 48 | 9 | `vpgatherdd` with a `vtestps` bounds check; 1 `panic_fmt` call |
+| `matrix::mat4x4_mul_f32` | 66 | 63 | broadcast + `vmulps`/`vaddps`; no FMA by design (bit-identical, ADR 0001) |
+| `matrix::mat8x8_mul_i16` | **125** (was 309) | 110 | see Changes; now the same code shape as the scalar reference |
+| `matrix::mat8x8_mul_scalar_i16` (reference) | 131 | 110 | LLVM auto-vectorises the loop |
+| `matrix::mat4x4_transpose_f32` | 16 | 16 | 4 `vunpck*` + `vmovlhps`/`vunpckhpd`, the expected network |
+| `matrix::mat8x8_transpose_i16` | 24 | 24 | `vpermq` + `vpunpck*` |
+| `matrix::mat3x3_inverse_f32` | 125 | 115 | branch-free adjugate; the `scale` loop is `vmaxss` |
+| `blas::axpy_f32` | 84 | 22 | vector loop + scalar tail; no FMA (unfused by design) |
+| `blas::scal_f32` | 66 | 17 | |
+| `blas::single::dot` | 208 | 141 | 128-bit (`xmm`) accumulators in the body, not `ymm`; see Findings |
+| `blas::single::gemv` | 488 | 126 | 1 `ymm` loop plus `xmm`/scalar edges |
+| `blas::single::gemm_with_workspace` | 1222 | 170 | 8 `vfmadd` and 81 `ymm` uses (the 8x4 FMA microkernel is present); the rest is packing and edge code with bounds checks (18 `slice_index_fail` call sites) |
+
+### Findings (second pass)
+
+* **matrix::mat8x8_mul_i16 was slower than its own reference.** The explicit
+  `Simd<i64, 8>` version compiled to 309 instructions: AVX2 has no 64-bit lane
+  multiply, so every product was emulated with `vpmuludq`, and the final clamp
+  went through `to_array().map(..)`, which is scalar code. The reference loop
+  compiles to 131. Changed (see below).
+* **dot / gemv / asum in blas use `xmm` accumulators.** The level-1 and
+  level-2 real kernels are generic lane code, and LLVM splits the 8-lane
+  arrays into 128-bit halves; `ymm` appears only in the gemm microkernel. This
+  is the same 8-lane-array lowering problem noted for `butterfly_f32` on SSE2
+  (`docs/benchmarks.md`). Not changed; the fix is an explicit AVX2 path for
+  these kernels (ADR 0003 tolerance tier applies to the reductions).
+* **blas gemm packing has bounds checks in the hot loops.** 101 `cmp` and 18
+  panic call sites in the 1222-instruction body. Not changed; using
+  `get_unchecked` would need `unsafe` in a crate that otherwise forbids it on
+  the portable path.
+* `mul` and `select` have no standalone symbol: both are `#[inline]` and were
+  inspected inside the wrapper bodies, so the counts above are the inlined
+  bodies.
+
+### Changes made (second pass)
+
+* `tpt-simd-matrix::mat8x8_mul_i16`: rewritten in the reference's loop shape
+  (`acc[j] += a[i][k] as i64 * b[k][j] as i64`, then clamp). Bit-identical;
+  `cargo test -p tpt-simd-matrix` passes (7 unit + 3 proptest). Instruction
+  count 309 -> 125.
+
+## aarch64 codegen (NEON), before and after
+
+Emitted with `cargo rustc --release --lib -- --emit asm` for
+`aarch64-unknown-linux-gnu` (rustc 1.97, default NEON baseline, no extra
+target features), in the arm64 container. Counts are per function body from
+the wrapper and crate `.s` files. Only functions that were changed or that
+were the worst cases are listed.
+
+| Function | Before | After | Notes |
+|---|---|---|---|
+| `rounding::round_f32` | 213 instrs, 30 branches, scalar bit-manipulation per lane | 4 (`frinta` x2) | ties away from zero, matches the portable definition |
+| `rounding::round_ties_even_f32` | not measured before | `frintn` x2 | |
+| `rounding::round_to_nearest_even_i32` | 20 (18 SIMD) | `fcvtzs` x2 (conversion) + ties-even | saturating, NaN -> 0 |
+| `rounding::floor_f32` | 197 instrs, 30 branches | `frintm` (via `neon::floor`) | not re-inspected separately; same map_f32 pattern |
+| `mul::complex_mul_f32` | 166 instrs, **16 `libm::fmaf` calls** | 16 (`fmla` x4, `fmul` x4, `fneg` x2) | no per-lane calls |
+| `mul::mul_add_sub_f32` | 82 instrs, **8 `libm::fmaf` calls** | 10 (`fmla` x2) | |
+| `butterfly::butterfly_f32` | 32, all scalar (`fadd`/`fsub` per lane) | 8 (`fadd` x2, `fsub` x2) | |
+| `butterfly::butterfly_i16` | 117, all scalar | 8 (vector `add`/`sub` on `.8h`) | |
+| `blend::blend_i32` | 32, scalar `csel` per lane | 8 (`cmeq` x2, `bsl` x2) | |
+| `permute::transpose_8x8_i16` | 112, scalar halfword moves | 36 (`trn1` x8, `trn2` x8, register moves) | |
+
+Already good on aarch64 without changes (LLVM vectorises the portable code):
+`saturating_add_i16` / `saturating_sub_i16` / `saturating_add_i8` (`sqadd`,
+`sqsub`), `pack_i16_to_i8` (`sqxtn`), `saturating_mul_i16` (`smull` +
+`sqxtn`), `horizontal_sum_i32` (`addv`), `horizontal_max_i16` (`smaxv`),
+`horizontal_sum_f32` (`faddp`), `mul_hi_i16` (`smull` + `uzp2`),
+`mul_lo_i32` (`mul` on lanes), `shift_left_i32` (`ushl`), `rotate_left_i32`
+(`ushl` + `orr`), `dot_product_i16` (`smlal`).
+
+Still scalar on aarch64 (not changed): `select_i32` (24 scalar instrs, `ldr`/`and`
+lookup), `select_from_slice_i32`, `interleave_stereo_i16` (91 instrs with
+branches; `vst2q_s16` would be the fix), `dot_product_f32` (portable
+body, 241 instrs, no SIMD arrangement suffixes, mostly `ldp`/`stp`), `interpolate` and `window`
+(not inspected).
+
+Not available on stable Rust (checked with `rustup run stable rustc`):
+SVE intrinsics (`core::arch::aarch64::sv*`, feature `stdarch_aarch64_sve`) and
+RISC-V vector intrinsics (no `vsetvli` etc. in `core::arch::riscv64`). The
+`sve` target feature is accepted on stable and LLVM auto-vectorises for it; the
+`v` target feature emits an "unstable feature" warning on stable.

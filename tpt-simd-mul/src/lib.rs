@@ -146,11 +146,18 @@ pub fn mul_add_sub_f32(a: Simd<f32, 8>, b: Simd<f32, 8>, c: Simd<f32, 8>) -> Sim
     {
         mul_add_sub_f32_avx2(a, b, c)
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2",
-        target_feature = "fma"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        neon::mul_add_sub_f32(a, b, c)
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2",
+            target_feature = "fma"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         mul_add_sub_f32_portable(a, b, c)
@@ -303,14 +310,83 @@ pub fn complex_mul_f32(a: ComplexSimd<f32, 8>, b: ComplexSimd<f32, 8>) -> Comple
     {
         complex_mul_f32_avx2(a, b)
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2",
-        target_feature = "fma"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        neon::complex_mul_f32(a, b)
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2",
+            target_feature = "fma"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         complex_mul_f32_portable(a, b)
+    }
+}
+
+/// aarch64 NEON paths. NEON is part of the aarch64 baseline. Both kernels
+/// use `vfmaq_f32`, which is a single-rounding fused multiply-add like
+/// `libm::fmaf`, so the results match the portable definitions bit for bit.
+/// The portable code costs one libm call per lane on aarch64 (16 for a
+/// complex multiply of 8 lanes); this is one fused instruction per 4 lanes.
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+mod neon {
+    use core::arch::aarch64::*;
+    use tpt_simd_core::{ComplexSimd, Simd};
+
+    /// `a * b + c` on odd-lane-negated `c` (`fmaddsub`), as one fused op per half.
+    pub(super) fn mul_add_sub_f32(
+        a: Simd<f32, 8>,
+        b: Simd<f32, 8>,
+        c: Simd<f32, 8>,
+    ) -> Simd<f32, 8> {
+        let (xa, xb, xc) = (a.to_array(), b.to_array(), c.to_array());
+        let mut out = [0.0f32; 8];
+        // SAFETY: NEON is enabled on aarch64. All arrays are 32 bytes, accessed
+        // with 16-byte unaligned loads and stores at lane offsets 0 and 4.
+        unsafe {
+            // Sign pattern +1, -1, +1, -1: multiplying by +-1 is exact, so the
+            // fused op below sees the same `c * sign` as the portable code.
+            let sign = vld1q_f32([1.0f32, -1.0, 1.0, -1.0].as_ptr());
+            for h in [0usize, 4] {
+                let cs = vmulq_f32(vld1q_f32(xc.as_ptr().add(h)), sign);
+                let r = vfmaq_f32(
+                    cs,
+                    vld1q_f32(xa.as_ptr().add(h)),
+                    vld1q_f32(xb.as_ptr().add(h)),
+                );
+                vst1q_f32(out.as_mut_ptr().add(h), r);
+            }
+        }
+        Simd::from_array(out)
+    }
+
+    /// `re = fma(ar, br, -(ai*bi))`, `im = fma(ar, bi, ai*br)`, matching
+    /// `complex_mul_f32_portable` operation for operation.
+    pub(super) fn complex_mul_f32(
+        a: ComplexSimd<f32, 8>,
+        b: ComplexSimd<f32, 8>,
+    ) -> ComplexSimd<f32, 8> {
+        let (ar, ai) = (a.real.to_array(), a.imag.to_array());
+        let (br, bi) = (b.real.to_array(), b.imag.to_array());
+        let (mut re, mut im) = ([0.0f32; 8], [0.0f32; 8]);
+        // SAFETY: NEON is enabled on aarch64. All arrays are 32 bytes, accessed
+        // with 16-byte unaligned loads and stores at lane offsets 0 and 4.
+        unsafe {
+            for h in [0usize, 4] {
+                let (xr, xi) = (vld1q_f32(ar.as_ptr().add(h)), vld1q_f32(ai.as_ptr().add(h)));
+                let (yr, yi) = (vld1q_f32(br.as_ptr().add(h)), vld1q_f32(bi.as_ptr().add(h)));
+                let re_v = vfmaq_f32(vnegq_f32(vmulq_f32(xi, yi)), xr, yr);
+                let im_v = vfmaq_f32(vmulq_f32(xi, yr), xr, yi);
+                vst1q_f32(re.as_mut_ptr().add(h), re_v);
+                vst1q_f32(im.as_mut_ptr().add(h), im_v);
+            }
+        }
+        ComplexSimd::new(Simd::from_array(re), Simd::from_array(im))
     }
 }
 

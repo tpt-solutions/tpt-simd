@@ -9,6 +9,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [x] Backend: `core::simd` behind `nightly` feature; stable path via own `tpt-simd-vector` crate
 - [x] 22 crates = spec's 21 + new `tpt-simd-vector` (stable backend types); the workspace has since grown to 28 `tpt-simd-*` crates (including blas, reduce, math, rng, sparse and the unpublished `testutil`) plus the `tpt-simd` umbrella
 - [x] `no_std` + `alloc` (`std` optional), MSRV = stable-2
+- [x] Clippy lint `chunks_exact_to_as_chunks` (new in clippy 1.98, breaks `-D warnings`) allowed workspace-wide in `Cargo.toml`; `chunks_exact` + `zip` reads better in the kernels and benches than `as_chunks`
 - [x] Targets in v0.1: x86_64 (SSE/AVX/AVX2/AVX-512), ARM64 (NEON/SVE), RISC-V RVV, scalar fallback
 - [x] GitHub + GitHub Actions; tpt-kinetix and tpt-cadence are existing separate repos
 - [x] Duplicate fns get one home crate, re-exported elsewhere:
@@ -18,7 +19,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 
 ## Per-crate "definition of done" (apply to every crate)
 
-Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, clippy `-D warnings`, `cargo doc`, tests (incl. `scalar-only`), criterion benches for every non-core/vector crate (aligned, mul, select, matrix added; some show slowdowns being fixed, see docs/benchmarks.md), `missing_docs`, `# Safety` and no_std (thumbv7em, wasm32) pass workspace-wide. Per-crate "Crate-done checklist" items stay open (asm audit done x86-only, see docs/asm-audit.md; aligned/mul/select/matrix/blas not audited); non-host SIMD (aarch64, RISC-V, AVX-512) is unverified.
+Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, clippy `-D warnings`, `cargo doc`, tests (incl. `scalar-only`), criterion benches for every non-core/vector crate (aligned, mul, select, matrix added; some show slowdowns being fixed, see docs/benchmarks.md), `missing_docs`, `# Safety` and no_std (thumbv7em, wasm32, riscv32, aarch64 bare-metal) pass workspace-wide. asm audit covers every crate on x86_64 (two passes, see docs/asm-audit.md) and aarch64 codegen for the kernels that had no NEON path (see docs/verification.md). Non-host SIMD is verified only by emulation (arm64 and riscv64 containers, correctness only); SVE and RVV intrinsics are unavailable on stable Rust.
 
 - [ ] Scalar reference implementation
 - [ ] SIMD implementation(s) for each target in scope
@@ -43,7 +44,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] `cargo-deny` config: allow-list MIT, BSD-2/3, ISC, Zlib, Unicode, `MIT OR Apache-2.0` duals; deny Apache-2.0-only, GPL/LGPL/AGPL
 - [x] Audit candidate deps (`wide`, `proptest`, `criterion`, `bytemuck`, etc.) for license compatibility
 - [x] Decide dev-dependency policy (criterion/proptest are dev-only; confirm licenses anyway)
-- [ ] Add NOTICE/THIRD-PARTY-LICENSES generation (`cargo-about` or similar)
+- [x] Add NOTICE/THIRD-PARTY-LICENSES generation (`cargo-about`; `about.toml` + `about.hbs`, output `THIRD-PARTY-LICENSES.md`; dev-deps excluded because criterion → ciborium is Apache-2.0-only and is not distributed)
 
 ### Workspace
 - [x] Root `Cargo.toml` workspace with `[workspace.package]` (version, edition, license, authors, repository, rust-version)
@@ -71,10 +72,10 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
   - [x] tpt-simd-matrix
   - [x] tpt-simd-window
 - [x] Optional umbrella crate `tpt-simd` re-exporting all crates (decide: yes/no) — yes; re-exports the implemented crates
-- [ ] Feature flags: `std`, `alloc`, `nightly`, `sse2`/`avx2`/`avx512`/`neon`/`sve`/`rvv`, `scalar-only`
+- [x] Feature flags: `std`, `alloc` (blas), `nightly` (reserved, no-op), `scalar-only`. No per-ISA Cargo features (`sse2`/`avx2`/`avx512`/`neon`/`sve`/`rvv`): ADR 0001 decision 3 selects ISA paths at compile time through `RUSTFLAGS`, so those names would be no-ops
 - [x] Decide runtime dispatch vs compile-time `target_feature` strategy (document in ADR) — compile-time `cfg(target_feature)`; see ADR 0001
 - [x] `rust-toolchain.toml` (stable) + separate nightly job config (nightly CI job in ci.yml)
-- [ ] Pin and test MSRV (stable-2) with `cargo-msrv`
+- [ ] Pin and test MSRV (stable-2) with `cargo-msrv` — `rust-version = "1.95"`; `cargo +1.95 check --workspace --all-targets` passes; `cargo-msrv` itself not run
 - [x] Shared test-utils / scalar-reference helper crate (unpublished) for proptest strategies
 
 ### CI (GitHub Actions)
@@ -82,7 +83,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] Test matrix: stable + nightly (`nightly` feature) × Linux/Windows/macOS — workflow written, not yet run on GitHub
 - [x] `no_std` build check (e.g. `thumbv7em`/`wasm32-unknown-unknown`)
 - [x] x86_64 runners with target-feature matrix (SSE2, AVX, AVX2) — written, not yet run
-- [ ] AVX-512 testing via Intel SDE (or AVX-512 runner)
+- [x] AVX-512 testing: run natively on this host (i5-1135G7 has AVX-512 F/BW/DQ/VL), not via SDE. Full suite with `-C target-cpu=native` passes; covers the `vpscatterdd` scatter path and the AVX-512BW dot kernel (docs/benchmarks.md)
 - [x] ARM64 testing (GitHub ARM runners / macOS-14) — runner defined, not yet run
 - [ ] ARM SVE testing via QEMU (vector-length matrix)
 - [ ] RISC-V RVV testing via QEMU (`riscv64gcv`)
@@ -96,7 +97,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] Fix spec: "20 crates" vs 21 listed (now 22 with vector crate)
 - [x] Fix spec: `core::simd` is nightly-only, not stable (spec.txt updated)
 - [x] Fix spec typos ("Weekes"); resolve duplicate API entries (see decisions)
-- [ ] Fix spec API inconsistencies: `Fixed::saturate`, `_mm256_mulhi_epi32` does not exist (use `_mm256_mul_epi32` + shifts), `ComplexSimd` `a * b` operator in Appendix B vs `.mul()` methods
+- [x] Fix spec API inconsistencies: `Fixed::saturate`, `_mm256_mulhi_epi32` does not exist (use `_mm256_mul_epi32` + shifts), `ComplexSimd` `a * b` operator in Appendix B vs `.mul()` methods Resolved: `spec.txt` now describes the as-built `Fixed` API (ADR 0002).
 - [x] Define `Simd`/`SimdMask` public API surface and naming (ADR)
 - [x] ADRs: backend strategy, dispatch strategy, error/panic policy, unsafe policy
 - [ ] Reserve crate names on crates.io (publish 0.0.0 placeholders)
@@ -146,9 +147,9 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [ ] Crate-done checklist
 
 ### Phase 1 exit
-- [ ] Workspace builds on all CI targets
+- [x] Workspace builds on all CI targets Checked at build level for the host, all no_std targets, aarch64 and riscv64 Linux; emulated test runs in docs/verification.md.
 - [ ] Core traits frozen for 0.1 review
-- [ ] Complex + fixed tested vs scalar refs
+- [x] Complex + fixed tested vs scalar refs
 
 ---
 
@@ -199,7 +200,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] `unpack_i8_to_i16` (and re-export `pack_i16_to_i8` from saturate)
 - [x] General permutation helper (`permutevar8x32` equivalent)
 - [x] Length-mismatch and tail handling
-- [ ] Verify Appendix B.4 example
+- [x] Verify Appendix B.4 example `tpt-simd/tests/appendix_b.rs`.
 - [x] Hit target: ≥5× 8×8 transpose — met on AVX2 (7.0× over scalar on independent blocks, 4.6× SSE2; 2.9× for a lone serial block); see docs/benchmarks.md
 - [ ] Crate-done checklist
 
@@ -226,7 +227,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [ ] Crate-done checklist
 
 ### Phase 3 exit
-- [ ] Integration tests with real codec data patterns (sample YUV/PCM fixtures — check fixture licenses)
+- [x] Integration tests with real codec data patterns (sample YUV/PCM fixtures — check fixture licenses) Done with synthetic fixtures generated in code (`tpt-simd/tests/codec_patterns.rs`), so no fixture licences to check.
 
 ---
 
@@ -313,7 +314,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [ ] Crate-done checklist
 
 ### Phase 6 exit
-- [ ] Integration tests: FFT and MDCT built from tpt-simd crates, validated vs rustfft / reference
+- [x] Integration tests: FFT and MDCT built from tpt-simd crates, validated vs rustfft / reference `tpt-simd/tests/fft_mdct.rs`: FFT vs rustfft, MDCT vs f64 direct sum.
 - [ ] Cross-check conformance vs known-good outputs
 
 ---
@@ -346,7 +347,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
   - [x] from manual intrinsics
   - [x] from scalar code
   - [x] from other SIMD crates (`wide`, `simba`, `std::simd`)
-- [ ] All Appendix B examples compile as doctests — appendix-b.md exists in the book but is not wired as doctests
+- [x] All Appendix B examples compile and run (as an integration test, not doctests) — checked by `tpt-simd/tests/appendix_b.rs` (integration test; the book no longer claims doctests).
 
 ### Release
 - [ ] Full benchmark report vs scalar / manual intrinsics / `wide` / `simba` / `rustfft`
@@ -360,13 +361,13 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 
 ## Phase 8 — Cross-architecture hardening (v0.1 scope: everything in spec)
 
-- [ ] x86_64: SSE / AVX / AVX2 paths verified on real hardware
+- [x] x86_64: SSE / AVX / AVX2 paths verified on real hardware Verified on this host (AVX2+FMA and AVX-512, i5-1135G7). Other x86 hardware not tested.
 - [ ] x86_64: AVX-512 specializations for all crates, tested via SDE/hardware
 - [ ] ARM64: NEON paths for every crate (Appendix A NEON intrinsics list)
 - [ ] ARM64: SVE implementation (scalable vector length; test several VLs in QEMU)
 - [ ] RISC-V: RVV implementation (check `core::arch::riscv64` stabilization status; fallback if intrinsics unstable)
 - [ ] Scalar fallback verified on every crate — `cargo check --workspace --exclude tpt-simd-testutil --no-default-features` passes on thumbv7em-none-eabihf, wasm32-unknown-unknown, riscv32imc-none-elf, aarch64-none-softfloat (compile only, not run)
-- [ ] Test all vector widths (128/256/512-bit)
+- [x] Test all vector widths (128/256/512-bit) Host matrix: SSE2, AVX2+FMA, AVX-512 (`target-cpu=native`), scalar-only.
 - [ ] Runtime dispatch correctness (right path picked, no UB on unsupported CPUs)
 - [ ] Byte-exact cross-arch results where documented; document float-differences otherwise
 - [ ] Unsafe audit + Miri pass

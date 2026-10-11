@@ -49,3 +49,7 @@ tpt-simd-sparse = { path = "../tpt-simd-sparse", version = "0.1.0" }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Reference FFT for the Phase 6 cross-check (tests/fft_mdct.rs). MIT OR Apache-2.0.
+rustfft = "6"
