@@ -4,7 +4,7 @@ macro_rules! blas_impl {
     (
         $modname:ident, $t:ident, w = $w:expr, mr = $mr:expr, nr = $nr:expr,
         mc = $mc:expr, kc = $kc:expr, nc = $nc:expr, sqrt = $sqrt:path,
-        kernel = $kernel:path
+        kernel = $kernel:path, kernel512 = $kernel512:path
     ) => {
         pub(crate) mod $modname {
             //! Per-type implementation (see the crate docs).
@@ -213,6 +213,27 @@ macro_rules! blas_impl {
                 #[cfg(all(
                     not(feature = "scalar-only"),
                     target_arch = "x86_64",
+                    target_feature = "avx2",
+                    target_feature = "fma",
+                    target_feature = "avx512f"
+                ))]
+                {
+                    // SAFETY: lengths asserted above; `out` has MR*NR elements
+                    // (MR is the AVX-512 tile height in this build); AVX-512F
+                    // and FMA are enabled at compile time.
+                    unsafe { $kernel512(kc, a.as_ptr(), b.as_ptr(), out.as_mut_ptr()) };
+                    return;
+                }
+                #[cfg(not(all(
+                    not(feature = "scalar-only"),
+                    target_arch = "x86_64",
+                    target_feature = "avx2",
+                    target_feature = "fma",
+                    target_feature = "avx512f"
+                )))]
+                #[cfg(all(
+                    not(feature = "scalar-only"),
+                    target_arch = "x86_64",
                     any(
                         all(target_feature = "avx2", target_feature = "fma"),
                         feature = "runtime-dispatch"
@@ -227,6 +248,13 @@ macro_rules! blas_impl {
                         return;
                     }
                 }
+                #[cfg(not(all(
+                    not(feature = "scalar-only"),
+                    target_arch = "x86_64",
+                    target_feature = "avx2",
+                    target_feature = "fma",
+                    target_feature = "avx512f"
+                )))]
                 {
                     let mut acc = [[0.0 as $t; MR]; NR];
                     for p in 0..kc {

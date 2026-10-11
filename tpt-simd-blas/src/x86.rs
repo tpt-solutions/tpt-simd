@@ -7,6 +7,7 @@
 use core::arch::x86_64::*;
 
 /// `true` if the AVX2+FMA kernels may be called.
+#[cfg(not(target_feature = "avx512f"))]
 #[inline(always)]
 pub(crate) fn available() -> bool {
     #[cfg(all(target_feature = "avx2", target_feature = "fma"))]
@@ -36,6 +37,7 @@ pub(crate) fn available() -> bool {
 /// # Safety
 /// `a` must be valid for `16*kc` reads, `b` for `4*kc` reads, `out` for 64
 /// writes. AVX2 and FMA must be available (see [`available`]).
+#[cfg(not(target_feature = "avx512f"))]
 #[target_feature(enable = "avx2,fma")]
 pub(crate) unsafe fn kernel_f32(kc: usize, a: *const f32, b: *const f32, out: *mut f32) {
     let mut c00 = _mm256_setzero_ps();
@@ -85,6 +87,7 @@ pub(crate) unsafe fn kernel_f32(kc: usize, a: *const f32, b: *const f32, out: *m
 /// # Safety
 /// `a` must be valid for `8*kc` reads, `b` for `4*kc` reads, `out` for 32
 /// writes. AVX2 and FMA must be available (see [`available`]).
+#[cfg(not(target_feature = "avx512f"))]
 #[target_feature(enable = "avx2,fma")]
 pub(crate) unsafe fn kernel_f64(kc: usize, a: *const f64, b: *const f64, out: *mut f64) {
     let mut c00 = _mm256_setzero_pd();
@@ -126,5 +129,109 @@ pub(crate) unsafe fn kernel_f64(kc: usize, a: *const f64, b: *const f64, out: *m
         _mm256_storeu_pd(out.add(20), c21);
         _mm256_storeu_pd(out.add(24), c30);
         _mm256_storeu_pd(out.add(28), c31);
+    }
+}
+
+/// AVX-512F `f32` gemm microkernel: `out[j*32 + i] = sum_p a[p*32 + i] * b[p*4 + j]`
+/// for a 32x4 tile. Two 512-bit rows per column give 8 accumulators, the same
+/// count as the AVX2 kernel, each doing twice the work per instruction.
+///
+/// # Safety
+/// `a` must be valid for `32*kc` reads, `b` for `4*kc` reads, `out` for 128
+/// writes. AVX-512F and FMA must be enabled at compile time (the caller's
+/// `cfg` guarantees this).
+#[cfg(target_feature = "avx512f")]
+#[target_feature(enable = "avx512f,fma")]
+pub(crate) unsafe fn kernel_f32_512(kc: usize, a: *const f32, b: *const f32, out: *mut f32) {
+    let mut c00 = _mm512_setzero_ps();
+    let mut c01 = _mm512_setzero_ps();
+    let mut c10 = _mm512_setzero_ps();
+    let mut c11 = _mm512_setzero_ps();
+    let mut c20 = _mm512_setzero_ps();
+    let mut c21 = _mm512_setzero_ps();
+    let mut c30 = _mm512_setzero_ps();
+    let mut c31 = _mm512_setzero_ps();
+    for p in 0..kc {
+        // SAFETY: p < kc, so all reads are within the documented extents.
+        unsafe {
+            let ap = a.add(p * 32);
+            let bp = b.add(p * 4);
+            let a0 = _mm512_loadu_ps(ap);
+            let a1 = _mm512_loadu_ps(ap.add(16));
+            let b0 = _mm512_set1_ps(*bp);
+            let b1 = _mm512_set1_ps(*bp.add(1));
+            let b2 = _mm512_set1_ps(*bp.add(2));
+            let b3 = _mm512_set1_ps(*bp.add(3));
+            c00 = _mm512_fmadd_ps(a0, b0, c00);
+            c01 = _mm512_fmadd_ps(a1, b0, c01);
+            c10 = _mm512_fmadd_ps(a0, b1, c10);
+            c11 = _mm512_fmadd_ps(a1, b1, c11);
+            c20 = _mm512_fmadd_ps(a0, b2, c20);
+            c21 = _mm512_fmadd_ps(a1, b2, c21);
+            c30 = _mm512_fmadd_ps(a0, b3, c30);
+            c31 = _mm512_fmadd_ps(a1, b3, c31);
+        }
+    }
+    // SAFETY: 128 floats are writable at `out`.
+    unsafe {
+        _mm512_storeu_ps(out, c00);
+        _mm512_storeu_ps(out.add(16), c01);
+        _mm512_storeu_ps(out.add(32), c10);
+        _mm512_storeu_ps(out.add(48), c11);
+        _mm512_storeu_ps(out.add(64), c20);
+        _mm512_storeu_ps(out.add(80), c21);
+        _mm512_storeu_ps(out.add(96), c30);
+        _mm512_storeu_ps(out.add(112), c31);
+    }
+}
+
+/// AVX-512F `f64` gemm microkernel: `out[j*16 + i] = sum_p a[p*16 + i] * b[p*4 + j]`
+/// for a 16x4 tile (see [`kernel_f32_512`] for the accumulator layout).
+///
+/// # Safety
+/// `a` must be valid for `16*kc` reads, `b` for `4*kc` reads, `out` for 64
+/// writes. AVX-512F and FMA must be enabled at compile time.
+#[cfg(target_feature = "avx512f")]
+#[target_feature(enable = "avx512f,fma")]
+pub(crate) unsafe fn kernel_f64_512(kc: usize, a: *const f64, b: *const f64, out: *mut f64) {
+    let mut c00 = _mm512_setzero_pd();
+    let mut c01 = _mm512_setzero_pd();
+    let mut c10 = _mm512_setzero_pd();
+    let mut c11 = _mm512_setzero_pd();
+    let mut c20 = _mm512_setzero_pd();
+    let mut c21 = _mm512_setzero_pd();
+    let mut c30 = _mm512_setzero_pd();
+    let mut c31 = _mm512_setzero_pd();
+    for p in 0..kc {
+        // SAFETY: p < kc, so all reads are within the documented extents.
+        unsafe {
+            let ap = a.add(p * 16);
+            let bp = b.add(p * 4);
+            let a0 = _mm512_loadu_pd(ap);
+            let a1 = _mm512_loadu_pd(ap.add(8));
+            let b0 = _mm512_set1_pd(*bp);
+            let b1 = _mm512_set1_pd(*bp.add(1));
+            let b2 = _mm512_set1_pd(*bp.add(2));
+            let b3 = _mm512_set1_pd(*bp.add(3));
+            c00 = _mm512_fmadd_pd(a0, b0, c00);
+            c01 = _mm512_fmadd_pd(a1, b0, c01);
+            c10 = _mm512_fmadd_pd(a0, b1, c10);
+            c11 = _mm512_fmadd_pd(a1, b1, c11);
+            c20 = _mm512_fmadd_pd(a0, b2, c20);
+            c21 = _mm512_fmadd_pd(a1, b2, c21);
+            c30 = _mm512_fmadd_pd(a0, b3, c30);
+            c31 = _mm512_fmadd_pd(a1, b3, c31);
+        }
+    }
+    // SAFETY: 64 doubles are writable at `out`.
+    unsafe {
+        _mm512_storeu_pd(out, c00);
+        _mm512_storeu_pd(out.add(8), c01);
+        _mm512_storeu_pd(out.add(16), c10);
+        _mm512_storeu_pd(out.add(24), c11);
+        _mm512_storeu_pd(out.add(32), c20);
+        _mm512_storeu_pd(out.add(40), c21);
+        _mm512_storeu_pd(out.add(48), c30);
+        _mm512_storeu_pd(out.add(56), c31);
     }
 }

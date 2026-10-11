@@ -5,8 +5,9 @@ Phase 1-4 crates". This file records what was inspected, how, what was found
 and what was changed.
 
 Date: 2026-10-07. Toolchain: rustc 1.97.1 (LLVM 22.1.6), `cargo-show-asm`
-0.2.63, host `x86_64-pc-windows-msvc`, CPU with AVX2, FMA, AVX-VNNI (no
-AVX-512).
+0.2.63, host `x86_64-pc-windows-msvc`, CPU with AVX2, FMA, AVX-VNNI and AVX-512 (F/BW/DQ/VL). The 2026-10-07 audit
+used the default and AVX2 builds; the AVX-512 kernel `dot_i16_avx512bw` was
+inspected on 2026-10-12 (see docs/benchmarks.md, Phase 9).
 
 ## Method
 
@@ -136,7 +137,7 @@ count of the whole wrapper (a rough size indicator).
 | Function | Key instructions | Verdict |
 |---|---|---|
 | `try_gather_i32/f32`, `gather_checked_*` | range check by vector compare + `vmovmskps` (no per-lane bounds checks), then one `vpgatherdd` / `vgatherdps`; `panic_fmt` outlined | OK |
-| `try_scatter_*`, `scatter_checked_*` | validation loop, then 8 scalar stores (AVX2 has no scatter; no AVX-512 on the host) | By design; AVX-512 `vpscatterdd` path unverified |
+| `try_scatter_*`, `scatter_checked_*` | validation loop, then 8 scalar stores (AVX2 has no scatter; the AVX-512 path is used only with `target-cpu=native`) | By design; AVX-512 `vpscatterdd` codegen not yet inspected |
 
 ### tpt-simd-mul
 
@@ -252,7 +253,8 @@ count of the whole wrapper (a rough size indicator).
 
 * **Non-x86 targets**: NEON/aarch64, wasm32 `simd128`, RISC-V V. No cross
   targets were audited, so none of the NEON claims in the docs are verified.
-* **AVX-512** (host lacks it) and AVX-VNNI beyond what `-C target-cpu=native`
+* **AVX-512**: only `dot_i16_avx512bw` was inspected (2026-10-12); the other
+  AVX-512 path (scatter) and AVX-VNNI beyond what `-C target-cpu=native`
   happened to emit.
 * **Other ISA baselines** (SSE4.1, AVX without AVX2) were not compiled
   separately; only SSE2, `avx2+fma` and native.

@@ -91,5 +91,51 @@ fn benches(c: &mut Criterion) {
     }
 }
 
-criterion_group!(scatter, benches);
+/// Scalar vs `scatter_i32` across working-set sizes, to find where the
+/// `vpscatterdd` path starts to pay off (see docs/benchmarks.md, Phase 9).
+fn crossover(c: &mut Criterion) {
+    for &n in &[1usize << 10, 1 << 12, 1 << 14, 1 << 16, 1 << 18] {
+        let mut data = vec![0i32; n];
+        let mut s = 0x2545_F491u32;
+        let vecs: Vec<I32x8> = (0..1024)
+            .map(|_| {
+                let mut a = [0i32; 8];
+                for v in &mut a {
+                    s ^= s << 13;
+                    s ^= s >> 17;
+                    s ^= s << 5;
+                    *v = (s as usize % n) as i32;
+                }
+                I32x8::from_array(a)
+            })
+            .collect();
+        let vv = I32x8::from_array([1, 2, 3, 4, 5, 6, 7, 8]);
+        let mut g = c.benchmark_group(format!("crossover_i32_{n}"));
+        g.bench_function("scalar", |t| {
+            t.iter(|| {
+                for v in &vecs {
+                    let a = v.to_array();
+                    scalar_i32(
+                        black_box(&mut data),
+                        black_box(&a),
+                        black_box(&[1, 2, 3, 4, 5, 6, 7, 8]),
+                    );
+                }
+            })
+        });
+        g.bench_function("tpt", |t| {
+            t.iter(|| {
+                for v in &vecs {
+                    // SAFETY: all indices are < n.
+                    unsafe {
+                        scatter_i32(black_box(data.as_mut_ptr()), black_box(*v), black_box(vv))
+                    }
+                }
+            })
+        });
+        g.finish();
+    }
+}
+
+criterion_group!(scatter, benches, crossover);
 criterion_main!(scatter);

@@ -46,7 +46,8 @@ fn scalar_complex(a: &[ComplexSimd<f32, 8>], b: &[ComplexSimd<f32, 8>]) -> ([f32
 }
 
 fn bench(c: &mut Criterion) {
-    for &n in &[256usize, 4096] {
+    // 255 = 7 * 32 + 31 exercises the worst-case tail (31 leftover elements).
+    for &n in &[255usize, 256, 4096] {
         let a: Vec<i16> = (0..n).map(|i| ((i * 31) % 2001) as i16 - 1000).collect();
         let b: Vec<i16> = (0..n).map(|i| ((i * 17) % 1999) as i16 - 1000).collect();
         let mut g = c.benchmark_group(format!("i16_{n}"));

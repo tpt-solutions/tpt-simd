@@ -226,30 +226,44 @@ pub use lapack::{Diag, NotPositiveDefiniteError, SingularError, Trans, Uplo};
 ))]
 mod x86;
 
-// The `kernel` path is only expanded (and resolved) on AVX2+FMA builds.
+/// `true` when the AVX-512F microkernels are compiled in. Then the microtiles
+/// are twice as tall (two 512-bit rows per column). This is a compile-time
+/// choice, so the packing layout is fixed for each build.
+const AVX512_TILES: bool = cfg!(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2",
+    target_feature = "fma",
+    target_feature = "avx512f"
+));
+
+// The `kernel` paths are only expanded (and resolved) on AVX2+FMA builds, and
+// `kernel512` only on AVX-512F builds.
 blas_impl!(
     single,
     f32,
     w = 32,
-    mr = 16,
+    mr = if crate::AVX512_TILES { 32 } else { 16 },
     nr = 4,
     mc = 128,
     kc = 256,
     nc = 512,
     sqrt = libm::sqrtf,
-    kernel = crate::x86::kernel_f32
+    kernel = crate::x86::kernel_f32,
+    kernel512 = crate::x86::kernel_f32_512
 );
 blas_impl!(
     double,
     f64,
     w = 16,
-    mr = 8,
+    mr = if crate::AVX512_TILES { 16 } else { 8 },
     nr = 4,
     mc = 64,
     kc = 256,
     nc = 512,
     sqrt = libm::sqrt,
-    kernel = crate::x86::kernel_f64
+    kernel = crate::x86::kernel_f64,
+    kernel512 = crate::x86::kernel_f64_512
 );
 
 complex_impl!(csingle, f32, real = single, w = 8, sqrt = libm::sqrtf);

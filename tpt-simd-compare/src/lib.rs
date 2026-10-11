@@ -279,6 +279,7 @@ mod x86 {
 
     /// Shared driver for the fused counters: `cmp` maps 8 elements to a
     /// vector of 0 / -1 (32-bit) lanes.
+    #[cfg(not(target_feature = "avx512f"))]
     #[inline(always)]
     fn count_by<T: Copy>(
         data: &[T],
@@ -326,6 +327,7 @@ mod x86 {
 
     macro_rules! count_i32 {
         ($name:ident, $cmp:expr, $op:tt) => {
+            #[cfg(not(target_feature = "avx512f"))]
             pub fn $name(data: &[i32], rhs: i32) -> usize {
                 // SAFETY: AVX2 is statically enabled.
                 let t = unsafe { _mm256_set1_epi32(rhs) };
@@ -344,6 +346,7 @@ mod x86 {
 
     macro_rules! count_f32 {
         ($name:ident, $pred:ident, $op:tt) => {
+            #[cfg(not(target_feature = "avx512f"))]
             pub fn $name(data: &[f32], rhs: f32) -> usize {
                 // SAFETY: AVX is statically enabled.
                 let t = unsafe { _mm256_set1_ps(rhs) };
@@ -363,13 +366,92 @@ mod x86 {
     count_f32!(count_eq_f32, _CMP_EQ_OQ, ==);
 }
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+mod x86_512 {
+    //! AVX-512F fused counters: one mask compare per 16 elements, counted with
+    //! `popcnt` on the mask register. Four independent counters keep the
+    //! per-chunk adds off one dependency chain (as the AVX2 `count_by` does).
+    use core::arch::x86_64::*;
+
+    // One 16-element compare, returning the mask as a count (0..=16).
+    #[inline]
+    #[target_feature(enable = "avx512f")]
+    unsafe fn gt_i32(p: *const i32, r: __m512i) -> u32 {
+        // SAFETY: caller guarantees 16 readable i32 at `p`.
+        unsafe { _mm512_cmpgt_epi32_mask(_mm512_loadu_si512(p.cast()), r).count_ones() }
+    }
+    #[inline]
+    #[target_feature(enable = "avx512f")]
+    unsafe fn lt_i32(p: *const i32, r: __m512i) -> u32 {
+        // SAFETY: caller guarantees 16 readable i32 at `p`.
+        unsafe { _mm512_cmplt_epi32_mask(_mm512_loadu_si512(p.cast()), r).count_ones() }
+    }
+    #[inline]
+    #[target_feature(enable = "avx512f")]
+    unsafe fn eq_i32(p: *const i32, r: __m512i) -> u32 {
+        // SAFETY: caller guarantees 16 readable i32 at `p`.
+        unsafe { _mm512_cmpeq_epi32_mask(_mm512_loadu_si512(p.cast()), r).count_ones() }
+    }
+    #[inline]
+    #[target_feature(enable = "avx512f")]
+    unsafe fn gt_f32(p: *const f32, r: __m512) -> u32 {
+        // SAFETY: caller guarantees 16 readable f32 at `p`.
+        unsafe { _mm512_cmp_ps_mask::<_CMP_GT_OQ>(_mm512_loadu_ps(p), r).count_ones() }
+    }
+    #[inline]
+    #[target_feature(enable = "avx512f")]
+    unsafe fn lt_f32(p: *const f32, r: __m512) -> u32 {
+        // SAFETY: caller guarantees 16 readable f32 at `p`.
+        unsafe { _mm512_cmp_ps_mask::<_CMP_LT_OQ>(_mm512_loadu_ps(p), r).count_ones() }
+    }
+    #[inline]
+    #[target_feature(enable = "avx512f")]
+    unsafe fn eq_f32(p: *const f32, r: __m512) -> u32 {
+        // SAFETY: caller guarantees 16 readable f32 at `p`.
+        unsafe { _mm512_cmp_ps_mask::<_CMP_EQ_OQ>(_mm512_loadu_ps(p), r).count_ones() }
+    }
+
+    macro_rules! count_512 {
+        ($name:ident, $t:ty, $step:ident, $splat:ident, $op:tt) => {
+            #[target_feature(enable = "avx512f")]
+            pub(crate) unsafe fn $name(data: &[$t], rhs: $t) -> usize {
+                let r = $splat(rhs);
+                let (body, tail) = data.as_chunks::<16>();
+                let (quads, rest) = body.as_chunks::<4>();
+                let (mut t0, mut t1, mut t2, mut t3) = (0usize, 0usize, 0usize, 0usize);
+                for q in quads {
+                    // SAFETY: each `q[k]` is 16 elements, all in bounds of `data`.
+                    unsafe {
+                        t0 += $step(q[0].as_ptr(), r) as usize;
+                        t1 += $step(q[1].as_ptr(), r) as usize;
+                        t2 += $step(q[2].as_ptr(), r) as usize;
+                        t3 += $step(q[3].as_ptr(), r) as usize;
+                    }
+                }
+                for c in rest {
+                    // SAFETY: `c` is 16 elements, in bounds of `data`.
+                    t0 += unsafe { $step(c.as_ptr(), r) } as usize;
+                }
+                t0 + t1 + t2 + t3 + tail.iter().filter(|&&x| x $op rhs).count()
+            }
+        };
+    }
+    count_512!(count_gt_i32, i32, gt_i32, _mm512_set1_epi32, >);
+    count_512!(count_lt_i32, i32, lt_i32, _mm512_set1_epi32, <);
+    count_512!(count_eq_i32, i32, eq_i32, _mm512_set1_epi32, ==);
+    count_512!(count_gt_f32, f32, gt_f32, _mm512_set1_ps, >);
+    count_512!(count_lt_f32, f32, lt_f32, _mm512_set1_ps, <);
+    count_512!(count_eq_f32, f32, eq_f32, _mm512_set1_ps, ==);
+}
+
 macro_rules! count_fn {
     ($name:ident, $t:ty, $op:tt, $sym:literal) => {
         #[doc = concat!("Number of elements `x` of `data` with `x ", $sym, " rhs`.")]
         #[doc = ""]
-        #[doc = "Fused compare + count: no [`SimdMask`] is materialised. On AVX2 builds this"]
-        #[doc = "is a vector compare plus per-lane counter accumulation (much faster than"]
-        #[doc = "calling `cmp_*` + [`mask_count`] per vector); otherwise a scalar loop."]
+        #[doc = "Fused compare + count: no [`SimdMask`] is materialised. On AVX-512F builds this"]
+        #[doc = "is one mask compare plus `popcnt` per 16 elements; on AVX2 builds a vector"]
+        #[doc = "compare plus per-lane counter accumulation (both much faster than calling"]
+        #[doc = "`cmp_*` + [`mask_count`] per vector); otherwise a scalar loop."]
         #[doc = "Semantics are those of the scalar operator (a NaN element never matches"]
         #[doc = "`>`, `<` or `==`)."]
         #[doc = ""]
@@ -377,13 +459,25 @@ macro_rules! count_fn {
         #[doc = "Never."]
         #[inline]
         pub fn $name(data: &[$t], rhs: $t) -> usize {
-            #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "avx2"))]
+            #[cfg(all(target_arch = "x86_64", target_feature = "avx512f"))]
+            {
+                // SAFETY: AVX-512F is statically enabled.
+                unsafe { x86_512::$name(data, rhs) }
+            }
+            #[cfg(all(
+                any(target_arch = "x86", target_arch = "x86_64"),
+                target_feature = "avx2",
+                not(target_feature = "avx512f")
+            ))]
             {
                 x86::$name(data, rhs)
             }
-            #[cfg(not(all(
-                any(target_arch = "x86", target_arch = "x86_64"),
-                target_feature = "avx2"
+            #[cfg(not(any(
+                all(target_arch = "x86_64", target_feature = "avx512f"),
+                all(
+                    any(target_arch = "x86", target_arch = "x86_64"),
+                    target_feature = "avx2"
+                )
             )))]
             {
                 data.iter().filter(|&&x| x $op rhs).count()

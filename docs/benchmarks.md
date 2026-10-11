@@ -1,6 +1,7 @@
 # Benchmarks (Phases 1–2)
 
-Machine: x86_64 with AVX2 + FMA (no AVX-512), Windows 11, Rust 1.97 stable,
+Machine: x86_64 with AVX2 + FMA and AVX-512 F/BW/DQ/VL (Tiger Lake i5-1135G7;
+the AVX-512 numbers below come from `-C target-cpu=native` runs), Windows 11, Rust 1.97 stable,
 criterion. Numbers are from a shared, loaded machine, so expect a few percent
 (more for single-register ops) of noise. "native" = `RUSTFLAGS="-C
 target-cpu=native"`; "default" = baseline x86_64 (SSE2).
@@ -87,7 +88,7 @@ compare only within a row). Reproduce with `cargo bench -p <crate> --bench <name
 | compare: count `gt` i32 / f32 | 0.29 / 0.96 µs | 5.6 / 7.9 µs | 0.05x / 0.12x | **much slower**: mask materialisation + `mask_count`; scalar loop auto-vectorises |
 | gather: 256-entry table | 1.0 µs | 10.8 µs | 0.09x | hardware gather loses to scalar loads |
 | gather: 4M-entry table | 7.6 µs | 59.6 µs | 0.13x | as above; `checked` ≈ unchecked at 4M |
-| scatter: 256 / 4M | 4.5 / 61.8 µs | 4.5 / 56.7 µs | 1.0x | no AVX-512 on this machine: scalar path |
+| scatter: 256 / 4M | 4.5 / 61.8 µs | 4.5 / 56.7 µs | 1.0x | pre-AVX-512 run (scalar path); AVX-512 numbers in the Phase 9 section |
 
 ## Phase 3–6 optimisation pass (second run, native)
 
@@ -610,3 +611,140 @@ baselines LLVM produces. The realistic gains are the codegen fixes in item 4
 remove slow paths on targets that lack a vector backend) and the explicit
 ISA paths on targets that lack them. The spec's cycle table should be replaced
 by the measured ratios in this file.
+
+# Phase 9: AVX-512 tuning pass (dot i16)
+
+Scope: the two existing AVX-512 kernels (`dot_i16_avx512bw`, `scatter_*`). Other
+AVX-512 specialisations are not started.
+
+Changes to `dot_i16_avx512bw` (`tpt-simd-dot/src/x86.rs`):
+
+* The remainder of 1..=31 elements is loaded with one zero-masked
+  `_mm512_maskz_loadu_epi16` per operand instead of a scalar loop. Masked-off
+  lanes are not accessed and add 0, so the result is unchanged.
+* The 512-bit accumulator is folded to 256 bits in-register before storing, so
+  the final reduction is 8 scalar adds instead of 16.
+
+Results are unchanged: the wrapping `i32` sum does not depend on order. Verified
+by the dot unit tests (which sweep every tail length 0..=130) and proptests,
+under both `target-cpu=native` and the default build.
+
+A/B on the same machine (criterion, `--warm-up-time 1 --measurement-time 3`).
+The bench now includes `i16_255`, the worst-case tail (7×32 + 31). The scalar
+baseline drifts by up to 1.5x between runs on this machine, so compare ratios
+within a run:
+
+| Bench (native) | before (tpt) | after (tpt) | speedup |
+|---|---|---|---|
+| `i16_255` | 49.8 ns | 22.2 ns | 2.2x |
+| `sat_i16_255` | (not re-run) | | |
+
+`i16_256` and `i16_4096` are multiples of 32 and have no tail, so they are
+unaffected in principle; a single noisy run gave 14.1 ns and 133 ns (the earlier
+run recorded 15.5 ns and 129 ns).
+
+Codegen check (`cargo asm`, native): the masked tail lowers to
+`vmovdqu16 zmm {k1}{z}` loads, and the reduction is a `vextracti64x4` fold to
+256 bits followed by 128-bit adds. No scalar tail loop remains.
+
+Scatter AVX-512 (`scatter_i32`, `_mm256_i32scatter_epi32`, `avx512f`+`avx512vl`),
+clean A/B from one native run (criterion `--warm-up-time 1 --measurement-time 3`):
+
+| Bench | scalar | tpt (AVX-512) | ratio |
+|---|---|---|---|
+| `scatter_i32_256` | 6.1 µs | 6.7 µs | 0.9x (no gain) |
+| `scatter_i32_4194304` | 51.3 µs | 35.4 µs | 1.45x |
+
+Crossover sweep (`crossover_i32_*` in `tpt-simd-scatter/benches/scatter.rs`,
+same native build, 1024 random index sets of 8 per iteration). Ratio is
+scalar time / tpt time, so above 1.0 means AVX-512 is faster:
+
+| Array elements | run 1 (2 s) | run 2 (5 s) |
+|---|---|---|
+| 1 024 | 1.5x | 1.0x |
+| 4 096 | 1.1x | 1.1x |
+| 16 384 | 1.0x | 1.0x |
+| 65 536 | 0.8x | 1.3x |
+| 262 144 | 0.9x | 1.2x |
+| 256 (`scatter_i32_256`) | 0.9x | 2.1x |
+| 4 194 304 (`scatter_i32_4194304`) | 1.45x | — |
+
+The two runs disagree by up to 2.3x at the same size, which is more than the
+gain or loss being measured. No size shows a loss that holds across runs, and
+16 K elements is parity in both. A size-based dispatch to scalar would not be
+justified by these numbers, so none was added. The `vpscatterdd` path stays
+as-is. Settling a crossover would need a quieter machine and more repetitions.
+
+## AVX-512F gemm microkernels (tpt-simd-blas)
+
+`tpt-simd-blas` now has AVX-512F f32 and f64 microkernels (`kernel_f32_512`,
+`kernel_f64_512` in `tpt-simd-blas/src/x86.rs`). They are used when AVX-512F,
+AVX2 and FMA are enabled at compile time (`target-cpu=native` on this host).
+The f32 tile is 32x4, the f64 tile 16x4: twice as tall as the AVX2 tiles, with
+the same 8 accumulators. The tile height is a compile-time choice
+(`AVX512_TILES` in `tpt-simd-blas/src/lib.rs`), so the packing layout is fixed
+per build. Builds without AVX-512F keep the AVX2 tiles (16x4 f32, 8x4 f64).
+
+Correctness: the blas test suite (104 unit tests and the integration test)
+passes in the default, AVX2+FMA and native AVX-512 builds. Clippy
+`-D warnings` is clean in all three.
+
+A/B (criterion, `--warm-up-time 1 --measurement-time 3`, `gemm_` filter, same
+source; the AVX2 build is the baseline). The AVX-512 build also gets other
+AVX-512 codegen, not just the kernel, so the gain is the combined effect.
+
+| Bench | AVX2 + FMA | AVX-512F | speedup |
+|---|---|---|---|
+| `gemm_256/f32/tpt` | 647 µs | 480 µs | 1.35x |
+| `gemm_512/f32/tpt` | 6.00 ms | 3.86 ms | 1.56x |
+| `gemm_256/f64/tpt` | 1.31 ms | 1.12 ms | 1.17x |
+| `gemm_512/f64/tpt` | 12.3 ms | 8.43 ms | 1.46x |
+
+The 512 f32 case is about 69 GFLOP/s on this machine (2n^3 / time), up from
+about 45. The spread on the AVX2 512 f32 run was wide (4.7 to 7.5 ms), so
+treat the 1.56x as approximate.
+
+## AVX-512F f32 dot (tpt-simd-dot)
+
+`dot_product_f32` now uses an AVX-512F main loop when AVX-512F is enabled at
+compile time (`dot_f32_blocks_512` in `tpt-simd-dot/src/x86.rs`). Two `__m512`
+accumulators hold the portable layout's four 8-lane accumulators, and multiply
+and add are rounded separately (no FMA), as in the portable path. The remainder
+and final reduction are shared with the portable code (`portable::dot_f32_tail`),
+so the result is bit-identical. The existing test
+`f32_matches_documented_order_all_lengths` compares bits for every length 0..=100.
+
+A/B in one native build (criterion, `--warm-up-time 1 --measurement-time 3`):
+
+| Bench | portable | AVX-512F | speedup |
+|---|---|---|---|
+| `f32_256` | 38.4 ns | 33.8 ns | 1.14x |
+| `f32_4096` | 401 ns | 298 ns | 1.35x |
+
+The accumulation order is fixed by the documented contract, so each block still
+feeds two dependent add chains. That limits the gain; a different order would
+change the results.
+
+## AVX-512F fused counters (tpt-simd-compare)
+
+`count_gt/lt/eq_{i32,f32}` now use an AVX-512F path when AVX-512F is enabled at
+compile time (`x86_512` module in `tpt-simd-compare/src/lib.rs`). Each 16
+elements is one mask compare (`_mm512_cmp*_mask`) and a `popcnt` of the mask,
+with four independent counters. The float compares use the ordered quiet
+predicates (`_CMP_*_OQ`), so NaN never matches, as in the scalar operator.
+Counts are exact integers, so results match the other paths bit for bit. The
+existing fused-count tests and proptests (`i32_vs_scalar`, `f32_vs_scalar`, with
+NaN and specials) pass in the native, AVX2 and default builds.
+
+A/B in the same session (criterion, `count_gt_*/fused`). Machine noise is large
+here: the scalar baseline alone moved from 449 to 803 ns across runs, so these
+are approximate.
+
+| Bench | AVX2 build | AVX-512F build (unrolled) |
+|---|---|---|
+| `count_gt_i32/fused` | 171 ns | 186 ns (range 182-237 across runs) |
+| `count_gt_f32/fused` | 204 ns | 165 ns (range 165-209 across runs) |
+
+Read this as: i32 is about parity with AVX2, f32 is a modest gain. A
+single-accumulator AVX-512 version was measured too and was no better in the
+A/B (i32 221 ns, f32 301 ns in that run), so the four-counter version was kept.

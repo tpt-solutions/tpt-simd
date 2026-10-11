@@ -87,14 +87,16 @@ pub fn dot_product_f32(a: &[f32], b: &[f32]) -> f32 {
             acc[k] += xv * yv;
         }
     }
+    dot_f32_tail(acc, ca.remainder(), cb.remainder())
+}
+
+/// Finishes [`dot_product_f32`] from the four accumulators after every full
+/// 32-element block has been added. `a_rem`/`b_rem` are the trailing elements
+/// (< 32). Shared with the AVX-512 kernel so both produce identical bits.
+pub(crate) fn dot_f32_tail(mut acc: [F32x8; 4], a_rem: &[f32], b_rem: &[f32]) -> f32 {
     // Remainder (< 32 elements) continues the same element -> accumulator map;
     // the last partial 8-chunk is zero padded (adds +0 to untouched lanes).
-    for (k, (x, y)) in ca
-        .remainder()
-        .chunks(8)
-        .zip(cb.remainder().chunks(8))
-        .enumerate()
-    {
+    for (k, (x, y)) in a_rem.chunks(8).zip(b_rem.chunks(8)).enumerate() {
         let xv = F32x8::from_slice_or(x, 0.0);
         let yv = F32x8::from_slice_or(y, 0.0);
         acc[k] += xv * yv;

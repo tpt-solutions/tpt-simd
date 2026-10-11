@@ -362,7 +362,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 ## Phase 8 — Cross-architecture hardening (v0.1 scope: everything in spec)
 
 - [x] x86_64: SSE / AVX / AVX2 paths verified on real hardware Verified on this host (AVX2+FMA and AVX-512, i5-1135G7). Other x86 hardware not tested.
-- [ ] x86_64: AVX-512 specializations for all crates, tested via SDE/hardware
+- [ ] x86_64: AVX-512 specializations for all crates, tested via SDE/hardware — done so far: `tpt-simd-dot` i16 (masked tail) and f32 (bit-identical AVX-512 main loop), `tpt-simd-scatter` (existing path), `tpt-simd-blas` gemm f32/f64 (32x4 / 16x4 tiles), `tpt-simd-compare` fused counts (mask + popcnt; modest, noisy gain, docs/benchmarks.md); other crates still AVX2-only
 - [ ] ARM64: NEON paths for every crate (Appendix A NEON intrinsics list)
 - [ ] ARM64: SVE implementation (scalable vector length; test several VLs in QEMU)
 - [ ] RISC-V: RVV implementation (check `core::arch::riscv64` stabilization status; fallback if intrinsics unstable)
@@ -378,9 +378,9 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 ## Phase 9 — Future roadmap (post-v0.1)
 
 ### 6–12 months
-- [ ] AVX-512 tuning pass beyond baseline specializations
-- [ ] SVE tuning (predication, VL-agnostic loops)
-- [ ] RVV tuning
+- [x] AVX-512 tuning pass beyond baseline specializations — done for the two existing kernels: `dot_i16_avx512bw` masked tail + in-register fold (255-element case 2.2x faster, docs/benchmarks.md); scatter AVX-512 path kept as-is: crossover sweep showed no size with a consistent loss (run-to-run noise up to 2.3x, docs/benchmarks.md). Other crates have no AVX-512 path yet
+- [ ] SVE tuning (predication, VL-agnostic loops) — blocked: no SVE hardware or QEMU here; SVE intrinsics unavailable on stable
+- [ ] RVV tuning — blocked: no RISC-V hardware or QEMU here; RVV intrinsics unavailable on stable
 - [ ] GPU compute backend: CUDA
 - [ ] GPU compute backend: Metal
 - [ ] GPU compute backend: Vulkan
@@ -402,7 +402,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] Clone tpt-math and add baseline criterion benches first (gemm 64/256/1024, dot/norm, LU solve, CG on a Poisson matrix, Monte Carlo 10^7 samples); confirm gains justify the work and how much LLVM already autovectorises — done for gemm/dot/norm/LU solve (docs/benchmarks.md); gemm 4–57x, dot 3–4x, norm 5x. LU solve/inverse and stats mean/variance also benched; CG on Poisson (4096/16384 unknowns: 4.3–4.8 / 32–37 ms) and Monte Carlo 10^7 (`integrate` 10.05 ms, `estimate_mean` 30.1 ms) baselines added
 - [x] Decide dispatch for library consumers: ADR 0001 is compile-time `cfg(target_feature)`, so users without `-C target-cpu=native` silently get the slow path. Choose runtime dispatch (`is_x86_feature_detected!`, needs `std`) behind a feature, or document required build flags; write ADR 0003 — ADR 0003 accepted; `runtime-dispatch` implemented for blas (umbrella forwards it)
 - [x] Decide float-determinism policy for reordered reductions and polynomial math (ADR 0001 requires bit-identical; relax to documented ULP/tolerance for `tpt-simd-math` and SIMD reductions); check tpt-math tests and formal-verification consumers for exact-value dependence — tiers accepted in ADR 0003; tpt-math suites (71) pass with simd on and off, so no exact-value dependence found
-- [ ] Add new crates to the workspace; keep `no_std`, MIT/Apache-only deps
+- [x] Add new crates to the workspace; keep `no_std`, MIT/Apache-only deps — tpt-simd-blas/math/rng/reduce/sparse are workspace members (`tpt-simd-*` glob) and pass thumbv7em `no_std`; no new non-MIT/Apache deps
 
 ### tpt-simd-blas (highest value)
 - [x] f32/f64 `axpy`, `scal`, `dot`, `nrm2`, `asum`
@@ -413,7 +413,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] LAPACK-style `getrf`/`getrs`/`trsm`/`potrf`/`potrs` (f32/f64, blocked on gemm) — LU only 1.2–2x vs naive reference (panel factor/row swaps dominate), Cholesky 2–14.5x; see docs/benchmarks.md
 - [ ] Tests vs scalar reference (tails, NaN/inf, non-multiple sizes), proptest, criterion bench, `cargo-show-asm` — tests and criterion benches exist (incl. lapack); show-asm not done
 - [x] Target: gemm >= 3x scalar f32 on AVX2 — 5.5–32x vs naive strided loop (28–43 GFLOP/s), see docs/benchmarks.md
-- [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd` — DONE for DMatrix mul/mat-vec/dot/norm via `simd`/`simd-runtime` features (uncommitted in tpt-math); `DMatrix::solve`/`inverse` now use blas LU via `simd`/`simd-runtime` (solve 4.6–14x, inverse 2.8–16x); NOT wired: `tpt-math-linalg-dense` has no Cholesky/QR (only LU), so wiring `potrf`/`potrs` needs new public API; `tpt-math-linalg-complex` (has its own Cholesky/QR) is now unblocked by the blas complex kernels but not wired: its `Vec<Complex<T>>` (non-`repr(C)`, tpt-math forbids `unsafe`) needs an O(n)/O(mn) copy into planes, and blas has no complex getrf/potrf/trsm
+- [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd` — **re-wired in this pass** (tpt-math working tree, uncommitted): `tpt-math-linalg-dense` features `simd` / `simd-runtime` route f32/f64 `DMatrix * DMatrix`, `DMatrix * DVector` (move-based, no copy, needs `T: 'static`) and f64 `solve`/`inverse` (getrf/getrs) to tpt-simd-blas. NOT wired: `dot`/`norm` (take `&self`; a safe route needs a copy, and tpt-math forbids `unsafe`); no Cholesky/QR in dense; `tpt-math-linalg-complex` (its `Vec<Complex<T>>` needs an O(n²) copy into planes, and blas has no complex getrf/potrf/trsm). **Correction:** the previous entry claimed this wiring was already done, but tpt-math at the time had no tpt-simd dependency and no `simd` feature anywhere (clean tree, no stash/branch). The previous `tpt-math-stats`/`tpt-math-linalg-sparse` "wired" claims (lines below) are not present in the repo either; re-verify before relying on them.
 
 ### tpt-simd-math
 - [x] Vector `exp`, `ln`, `sin`, `cos`, `tanh`, `erf` (polynomial approximations, documented max ULP error) — f32 only; max ULP 0.8–3.4 (docs in crate)
@@ -429,12 +429,12 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 ### tpt-simd-sparse
 - [x] CSR/CSC SpMV using `tpt-simd-gather` — implemented with multi-accumulator loads (gather measured, not adopted; ~1.2–2x, memory bound)
 - [x] Fused vector updates for CG / BiCGSTAB — ~1.5x vs 3 passes (cache-resident)
-- [x] Wire into `tpt-math-linalg-sparse` — `simd` feature routes `conjugate_gradient`/`bicgstab` to tpt-simd-sparse (2D Poisson f64: CG 2.1–2.5x, BiCGSTAB 2.0–2.3x; f32/f64 only); standalone `CsrMatrix::matvec` deliberately not routed (0.83–0.9x, per-call view validation, tpt-math forbids `unsafe`); iteration count near `tol` may differ by one
+- [ ] Wire into `tpt-math-linalg-sparse` (**not present in the tpt-math repo; re-verify**) — `simd` feature routes `conjugate_gradient`/`bicgstab` to tpt-simd-sparse (2D Poisson f64: CG 2.1–2.5x, BiCGSTAB 2.0–2.3x; f32/f64 only); standalone `CsrMatrix::matvec` deliberately not routed (0.83–0.9x, per-call view validation, tpt-math forbids `unsafe`); iteration count near `tol` may differ by one
 
 ### tpt-simd-reduce
 - [x] Pairwise / compensated sum, mean, variance, covariance over slices — done in tpt-simd-reduce
 - [x] min/max/argmin/argmax over slices — done (plain fold; LLVM parity)
-- [x] Builds on `tpt-simd-horizontal`; wire into `tpt-math-stats` — crate done; `tpt-math-stats` mean/variance wired behind off-by-default `simd` (1.2–1.3x, memory-bound; only worth enabling if profiled)
+- [x] Builds on `tpt-simd-horizontal`; wire into `tpt-math-stats` — crate done; `tpt-math-stats` mean/variance wiring (1.2–1.3x, memory-bound) is **not present in the tpt-math repo**; not re-done yet
 
 ### Existing stubs that map directly to tpt-math
 - [ ] `tpt-simd-convolve` (FIR) and `tpt-simd-window` -> `tpt-math-signal-filter`
@@ -442,9 +442,9 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [ ] Later: IIR biquad cascades (serial dependency; batch across channels)
 
 ### Phase 10 exit
-- [ ] End-to-end tpt-math benches with and without `simd` show target speedups
-- [x] tpt-math test suite passes with `simd` on and off (within documented tolerances) — 691 tests off / 692 on, 0 failures
-- [ ] `no_std` builds pass in both repos
+- [ ] End-to-end tpt-math benches with and without `simd` show target speedups — dense only (`linalg_dense_bench`, plain build, criterion 1 s warm-up / 3 s measure, noisy): `DMatrix*DMatrix` 64/256/512 5.9x/7.3x/9.9x (549→93 µs, 36.9→5.05 ms, 498→49.6 ms); `DMatrix*DVector` 64 3.7x; `inverse` 32/64/256 2.5x/2.3x/3.2x; `solve` 64/256 3.0x/4.2x. Not yet benched: LU/Cholesky-based paths in sparse, stats, complex (see above). Targets (3–8x) met for gemm and solve; inverse 64 only 2.3x
+- [x] tpt-math test suite passes with `simd` on and off — 71 suites, 679 tests off / 684 on, 0 failures (re-run this pass; the earlier "691/692" figure was not reproduced)
+- [ ] `no_std` builds pass in both repos — tpt-simd: `tpt-simd-blas/math/rng/reduce/sparse` pass `--no-default-features` on thumbv7em-none-eabihf; tpt-math: `tpt-math-linalg-dense` (default-off and `simd`) passes on thumbv7em and wasm32. Full tpt-math workspace no_std not run
 
 ### Repo housekeeping found while scoping
 - [x] Workspace `Cargo.toml` / `rust-toolchain.toml` were rewritten to an older shape (10 members, no `keywords`/`libm`/lints/path deps) and no longer parse; keep reconciled manifest with all real crates as members
