@@ -75,8 +75,8 @@ jobs:
         with:
           targets: thumbv7em-none-eabihf, wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --workspace --exclude tpt-simd-testutil --target thumbv7em-none-eabihf
-      - run: cargo build --workspace --exclude tpt-simd-testutil --target wasm32-unknown-unknown
+      - run: cargo build --workspace --exclude tpt-simd-testutil --exclude xtask --target thumbv7em-none-eabihf
+      - run: cargo build --workspace --exclude tpt-simd-testutil --exclude xtask --target wasm32-unknown-unknown
 
   aarch64:
     runs-on: ubuntu-24.04-arm
@@ -87,18 +87,25 @@ jobs:
       - run: cargo test --workspace --features std
 
   avx512:
-    # Intel SDE emulates AVX-512 on runners without it.
+    # Runs the test suite compiled for Skylake-X when the runner CPU has the
+    # AVX-512 subsets that target uses. Hosted runners are a mix of Intel and
+    # AMD CPUs, so the job checks /proc/cpuinfo rather than assuming support.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Build tests with AVX-512 enabled
-        run: cargo test --workspace --features std --no-run
+      - name: Test with AVX-512 enabled (skipped if the CPU lacks it)
+        run: |
+          if grep -q -w -m1 avx512f /proc/cpuinfo \
+            && grep -q -w -m1 avx512bw /proc/cpuinfo \
+            && grep -q -w -m1 avx512vl /proc/cpuinfo; then
+            cargo test --workspace --features std
+          else
+            echo "::warning::runner CPU lacks AVX-512F/BW/VL; AVX-512 tests were not run"
+          fi
         env:
           RUSTFLAGS: -D warnings -C target-cpu=skylake-avx512
-      - name: Note
-        run: echo "Run the built test binaries under Intel SDE (sde64 -skx -- <binary>) once SDE is installed in the runner image."
 
   qemu-riscv:
     runs-on: ubuntu-latest
@@ -109,7 +116,7 @@ jobs:
           targets: riscv64gc-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
       - name: Cross-compile check (RVV portable path)
-        run: cargo check --workspace --exclude tpt-simd-testutil --target riscv64gc-unknown-linux-gnu
+        run: cargo check --workspace --exclude tpt-simd-testutil --exclude xtask --target riscv64gc-unknown-linux-gnu
 
   miri:
     runs-on: ubuntu-latest
@@ -119,7 +126,8 @@ jobs:
         with:
           components: miri
       - uses: Swatinem/rust-cache@v2
-      - run: cargo miri test --workspace --features std,scalar-only
+      # rust-toolchain.toml pins stable, which overrides the nightly installed above; +nightly forces it.
+      - run: cargo +nightly miri test --workspace --features std,scalar-only
         env:
           PROPTEST_CASES: "8"
           MIRIFLAGS: -Zmiri-disable-isolation

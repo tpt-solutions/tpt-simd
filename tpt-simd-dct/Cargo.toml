@@ -1,0 +1,18 @@
+[package]
+name = "tpt-simd-dct"
+description = "Table-based DCT-II/III and MDCT/IMDCT for codec-sized blocks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+keywords = ["simd", "dct", "mdct", "audio", "codec"]
+categories = ["algorithms", "multimedia::audio", "no-std"]
+
+[dependencies]
+libm.workspace = true
+
+[lints]
+workspace = true

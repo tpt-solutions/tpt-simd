@@ -1,0 +1,22 @@
+[package]
+name = "tpt-simd-hash"
+description = "Checksums and hashes: CRC-32, Adler-32, FNV-1a and a rolling hash, with no runtime dependencies"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+keywords = ["simd", "crc32", "adler32", "checksum", "hash"]
+categories = ["algorithms", "no-std"]
+
+[dependencies]
+
+[dev-dependencies]
+# Differential-test oracles only; not used by the library.
+crc32fast = { version = "1.5.2", default-features = false }
+simd-adler32 = { version = "0.3.10", default-features = false }
+
+[lints]
+workspace = true

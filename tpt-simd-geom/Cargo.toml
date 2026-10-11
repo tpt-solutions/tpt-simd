@@ -1,0 +1,18 @@
+[package]
+name = "tpt-simd-geom"
+description = "Batched 3D geometry over structure-of-arrays f32 data: distance, dot, AABB overlap, ray-AABB"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+keywords = ["simd", "geometry", "aabb", "ray", "soa"]
+categories = ["algorithms", "mathematics", "no-std"]
+
+[dependencies]
+libm.workspace = true
+
+[lints]
+workspace = true

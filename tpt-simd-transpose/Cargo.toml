@@ -1,0 +1,17 @@
+[package]
+name = "tpt-simd-transpose"
+description = "Cache-blocked matrix transpose and strided 2D copies for any Copy element type"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+keywords = ["simd", "transpose", "matrix", "strided", "layout"]
+categories = ["algorithms", "mathematics", "no-std"]
+
+[dependencies]
+
+[lints]
+workspace = true

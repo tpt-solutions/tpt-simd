@@ -31,3 +31,7 @@ desktop.ini
 .env.*
 .claude/settings.local.json
 **/target-*/
+
+# Local build/test logs (generated, not source)
+/build.*
+/test.*

@@ -1,0 +1,29 @@
+[package]
+name = "bench-vs"
+description = "Unpublished head-to-head benchmarks of tpt-simd crates against third-party incumbents (Phase 12)"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dev-dependencies]
+tpt-simd-matrix = { path = "../tpt-simd-matrix", version = "0.1.0" }
+tpt-simd-blas = { path = "../tpt-simd-blas", version = "0.1.0" }
+glam = "0.30"
+ultraviolet = "0.10"
+gemm = "0.19"
+matrixmultiply = "0.3"
+faer = "0.24"
+criterion = { workspace = true, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "matrix_vs_glam"
+harness = false
+
+[[bench]]
+name = "gemm_vs"
+harness = false
+
+[[bench]]
+name = "gemm_f64_vs"
+harness = false

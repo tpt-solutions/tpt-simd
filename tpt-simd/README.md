@@ -31,6 +31,13 @@ assert_eq!(r.imag.to_array(), [10.0; 8]);
 
 Other crates are reached through modules, for example `tpt_simd::dot`, `tpt_simd::blas` or `tpt_simd::window`; see each crate's documentation for its API.
 
+Runnable examples live in [examples/](examples/):
+
+```sh
+cargo run -p tpt-simd --example quickstart                      # tour: complex multiply, dot, FIR, reduce
+cargo run -p tpt-simd --features std --example cpu_report       # which SIMD paths this build and CPU use
+```
+
 ## Module map
 
 | Module | Crate | Area |

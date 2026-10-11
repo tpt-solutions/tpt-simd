@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["tpt-simd", "tpt-simd-*"]
+members = ["tpt-simd", "tpt-simd-*", "xtask", "bench-vs"]
 
 [workspace.package]
 version = "0.1.0"
@@ -25,6 +25,8 @@ tpt-simd-testutil = { path = "tpt-simd-testutil" }  # unpublished (publish = fal
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 missing_docs = "warn"
+# Older clippy releases do not know `chunks_exact_to_as_chunks` below; keep them quiet.
+unknown_lints = "allow"
 
 [workspace.lints.clippy]
 undocumented_unsafe_blocks = "warn"

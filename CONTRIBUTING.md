@@ -29,6 +29,18 @@ Every crate needs:
 
 See [todo.md](todo.md) for the full checklist.
 
+## Local checks
+
+The workspace ships a small task runner (`xtask`, no dependencies) that runs
+the same checks as CI:
+
+```sh
+cargo xtask ci       # fmt, clippy -D warnings, cargo doc, tests (std and scalar-only)
+cargo xtask no-std   # no_std builds for thumbv7em-none-eabihf and wasm32 (if installed)
+cargo xtask msrv     # cargo check on Rust 1.95 (if installed)
+cargo xtask cpu      # which SIMD features this build and this CPU support
+```
+
 ## Workflow
 
 tpt-simd accepts **issues only**. Pull requests are not accepted and will be
@@ -42,4 +54,4 @@ closed unmerged.
 
 ## Conduct
 
-Participation is governed by our [Code of Conduct](CODE_OF_CONDUCT.md).
+Participation is governed by the [Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/), version 2.1.

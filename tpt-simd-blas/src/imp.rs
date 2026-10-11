@@ -183,7 +183,8 @@ macro_rules! blas_impl {
                 }
                 let kc = KC.min(k);
                 let mc = MC.min(round_up(m, MR));
-                let nc = NC.min(round_up(n, NR));
+                // Packed B panels are NR wide, so the last one may pad past NC.
+                let nc = round_up(NC.min(round_up(n, NR)), NR);
                 mc * kc + kc * nc
             }
 

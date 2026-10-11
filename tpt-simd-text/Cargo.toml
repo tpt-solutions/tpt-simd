@@ -1,0 +1,19 @@
+[package]
+name = "tpt-simd-text"
+description = "Text kernels: UTF-8 validation and hex (wrapped), UTF-8 <-> UTF-16 transcoding (built)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+readme = "README.md"
+keywords = ["simd", "utf8", "utf16", "hex", "transcoding"]
+categories = ["encoding", "no-std"]
+
+[dependencies]
+simdutf8 = { version = "0.1.5", default-features = false }
+faster-hex = { version = "1.0.0", default-features = false }
+
+[lints]
+workspace = true

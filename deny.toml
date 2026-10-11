@@ -20,6 +20,9 @@ allow = [
 [bans]
 multiple-versions = "warn"
 wildcards = "deny"
+# tpt-simd-testutil is an unpublished path-only dev-dependency (see the workspace Cargo.toml),
+# so its missing version is intentional and not a crates.io wildcard.
+allow-wildcard-paths = true
 
 [sources]
 unknown-registry = "deny"

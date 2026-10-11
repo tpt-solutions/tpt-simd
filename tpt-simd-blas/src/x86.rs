@@ -32,103 +32,74 @@ pub(crate) fn available() -> bool {
     }
 }
 
-/// `out[j*16 + i] = sum_p a[p*16 + i] * b[p*4 + j]` for a 16x4 tile.
+/// `out[j*16 + i] = sum_p a[p*16 + i] * b[p*6 + j]` for a 16x6 tile.
+///
+/// Twelve independent accumulators (6 columns x 2 row vectors). An FMA takes
+/// 4 cycles and two FMA ports are available, so at least 8 chains are needed
+/// to keep them busy; 12 leaves slack for the loads and broadcasts.
 ///
 /// # Safety
-/// `a` must be valid for `16*kc` reads, `b` for `4*kc` reads, `out` for 64
+/// `a` must be valid for `16*kc` reads, `b` for `6*kc` reads, `out` for 96
 /// writes. AVX2 and FMA must be available (see [`available`]).
 #[cfg(not(target_feature = "avx512f"))]
 #[target_feature(enable = "avx2,fma")]
 pub(crate) unsafe fn kernel_f32(kc: usize, a: *const f32, b: *const f32, out: *mut f32) {
-    let mut c00 = _mm256_setzero_ps();
-    let mut c01 = _mm256_setzero_ps();
-    let mut c10 = _mm256_setzero_ps();
-    let mut c11 = _mm256_setzero_ps();
-    let mut c20 = _mm256_setzero_ps();
-    let mut c21 = _mm256_setzero_ps();
-    let mut c30 = _mm256_setzero_ps();
-    let mut c31 = _mm256_setzero_ps();
+    let mut c = [[_mm256_setzero_ps(); 2]; 6];
     for p in 0..kc {
         // SAFETY: p < kc, so all reads are within the documented extents.
         unsafe {
             let ap = a.add(p * 16);
-            let bp = b.add(p * 4);
+            let bp = b.add(p * 6);
             let a0 = _mm256_loadu_ps(ap);
             let a1 = _mm256_loadu_ps(ap.add(8));
-            let b0 = _mm256_broadcast_ss(&*bp);
-            let b1 = _mm256_broadcast_ss(&*bp.add(1));
-            let b2 = _mm256_broadcast_ss(&*bp.add(2));
-            let b3 = _mm256_broadcast_ss(&*bp.add(3));
-            c00 = _mm256_fmadd_ps(a0, b0, c00);
-            c01 = _mm256_fmadd_ps(a1, b0, c01);
-            c10 = _mm256_fmadd_ps(a0, b1, c10);
-            c11 = _mm256_fmadd_ps(a1, b1, c11);
-            c20 = _mm256_fmadd_ps(a0, b2, c20);
-            c21 = _mm256_fmadd_ps(a1, b2, c21);
-            c30 = _mm256_fmadd_ps(a0, b3, c30);
-            c31 = _mm256_fmadd_ps(a1, b3, c31);
+            for (j, cj) in c.iter_mut().enumerate() {
+                let bj = _mm256_broadcast_ss(&*bp.add(j));
+                cj[0] = _mm256_fmadd_ps(a0, bj, cj[0]);
+                cj[1] = _mm256_fmadd_ps(a1, bj, cj[1]);
+            }
         }
     }
-    // SAFETY: 64 floats are writable at `out`.
+    // SAFETY: 96 floats are writable at `out`.
     unsafe {
-        _mm256_storeu_ps(out, c00);
-        _mm256_storeu_ps(out.add(8), c01);
-        _mm256_storeu_ps(out.add(16), c10);
-        _mm256_storeu_ps(out.add(24), c11);
-        _mm256_storeu_ps(out.add(32), c20);
-        _mm256_storeu_ps(out.add(40), c21);
-        _mm256_storeu_ps(out.add(48), c30);
-        _mm256_storeu_ps(out.add(56), c31);
+        for (j, cj) in c.iter().enumerate() {
+            _mm256_storeu_ps(out.add(j * 16), cj[0]);
+            _mm256_storeu_ps(out.add(j * 16 + 8), cj[1]);
+        }
     }
 }
 
-/// `out[j*8 + i] = sum_p a[p*8 + i] * b[p*4 + j]` for an 8x4 tile.
+/// `out[j*8 + i] = sum_p a[p*8 + i] * b[p*6 + j]` for an 8x6 tile.
+///
+/// Twelve independent accumulators (6 columns x 2 row vectors), for the same
+/// latency reason as [`kernel_f32`].
 ///
 /// # Safety
-/// `a` must be valid for `8*kc` reads, `b` for `4*kc` reads, `out` for 32
+/// `a` must be valid for `8*kc` reads, `b` for `6*kc` reads, `out` for 48
 /// writes. AVX2 and FMA must be available (see [`available`]).
 #[cfg(not(target_feature = "avx512f"))]
 #[target_feature(enable = "avx2,fma")]
 pub(crate) unsafe fn kernel_f64(kc: usize, a: *const f64, b: *const f64, out: *mut f64) {
-    let mut c00 = _mm256_setzero_pd();
-    let mut c01 = _mm256_setzero_pd();
-    let mut c10 = _mm256_setzero_pd();
-    let mut c11 = _mm256_setzero_pd();
-    let mut c20 = _mm256_setzero_pd();
-    let mut c21 = _mm256_setzero_pd();
-    let mut c30 = _mm256_setzero_pd();
-    let mut c31 = _mm256_setzero_pd();
+    let mut c = [[_mm256_setzero_pd(); 2]; 6];
     for p in 0..kc {
         // SAFETY: p < kc, so all reads are within the documented extents.
         unsafe {
             let ap = a.add(p * 8);
-            let bp = b.add(p * 4);
+            let bp = b.add(p * 6);
             let a0 = _mm256_loadu_pd(ap);
             let a1 = _mm256_loadu_pd(ap.add(4));
-            let b0 = _mm256_broadcast_sd(&*bp);
-            let b1 = _mm256_broadcast_sd(&*bp.add(1));
-            let b2 = _mm256_broadcast_sd(&*bp.add(2));
-            let b3 = _mm256_broadcast_sd(&*bp.add(3));
-            c00 = _mm256_fmadd_pd(a0, b0, c00);
-            c01 = _mm256_fmadd_pd(a1, b0, c01);
-            c10 = _mm256_fmadd_pd(a0, b1, c10);
-            c11 = _mm256_fmadd_pd(a1, b1, c11);
-            c20 = _mm256_fmadd_pd(a0, b2, c20);
-            c21 = _mm256_fmadd_pd(a1, b2, c21);
-            c30 = _mm256_fmadd_pd(a0, b3, c30);
-            c31 = _mm256_fmadd_pd(a1, b3, c31);
+            for (j, cj) in c.iter_mut().enumerate() {
+                let bj = _mm256_broadcast_sd(&*bp.add(j));
+                cj[0] = _mm256_fmadd_pd(a0, bj, cj[0]);
+                cj[1] = _mm256_fmadd_pd(a1, bj, cj[1]);
+            }
         }
     }
-    // SAFETY: 32 doubles are writable at `out`.
+    // SAFETY: 48 doubles are writable at `out`.
     unsafe {
-        _mm256_storeu_pd(out, c00);
-        _mm256_storeu_pd(out.add(4), c01);
-        _mm256_storeu_pd(out.add(8), c10);
-        _mm256_storeu_pd(out.add(12), c11);
-        _mm256_storeu_pd(out.add(16), c20);
-        _mm256_storeu_pd(out.add(20), c21);
-        _mm256_storeu_pd(out.add(24), c30);
-        _mm256_storeu_pd(out.add(28), c31);
+        for (j, cj) in c.iter().enumerate() {
+            _mm256_storeu_pd(out.add(j * 8), cj[0]);
+            _mm256_storeu_pd(out.add(j * 8 + 4), cj[1]);
+        }
     }
 }
 
