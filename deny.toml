@@ -2,6 +2,12 @@
 
 [advisories]
 yanked = "deny"
+# RUSTSEC-2024-0436: `paste` is unmaintained, and no safe upgrade exists. It reaches the
+# lock file only through `bench-vs` dev-dependencies (`gemm`, `faer`, which use `pulp`/`qd`),
+# so it never ships in a published crate. Revisit when `gemm` or `faer` drops it.
+ignore = [
+    { id = "RUSTSEC-2024-0436", reason = "paste is pulled in only by unpublished bench-vs dev-dependencies (gemm, faer); no safe upgrade" },
+]
 
 [licenses]
 confidence-threshold = 0.9
