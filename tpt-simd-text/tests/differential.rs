@@ -124,6 +124,29 @@ fn utf16_transcoding_matches_std_both_directions() {
 }
 
 #[test]
+fn hex_decode_agrees_with_faster_hex_for_every_byte_value_in_every_lane() {
+    // Every byte value at every position of 32-, 64- and 96-byte inputs (whole AVX2 blocks,
+    // with the SSE2 and scalar tails after them). The rest of the input is valid digits, so the
+    // only difference between cases is the byte under test.
+    for n in [32usize, 64, 96] {
+        for pos in 0..n {
+            for b in 0..=255u8 {
+                let mut src: Vec<u8> = (0..n).map(|i| b"0aF9bE"[i % 6]).collect();
+                src[pos] = b;
+                let mut ours = vec![0xAAu8; n / 2];
+                let mut theirs = vec![0xAAu8; n / 2];
+                let got = hex_decode(&src, &mut ours);
+                let want = faster_hex::hex_decode(&src, &mut theirs);
+                assert_eq!(got.is_ok(), want.is_ok(), "n={n} pos={pos} b={b:#04x}");
+                if got.is_ok() {
+                    assert_eq!(ours, theirs, "n={n} pos={pos} b={b:#04x}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn hex_decode_rejects_invalid_byte_at_every_position_without_writing() {
     // Each length crosses the 16-byte SIMD blocks, and the bad byte is placed in the blocks and
     // in the scalar tail. Bytes near the digit ranges are the easiest to misclassify.

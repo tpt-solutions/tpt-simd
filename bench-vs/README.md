@@ -17,3 +17,18 @@ done
 
 Use `runtime-dispatch` as configured in `Cargo.toml`: the SIMD kernels are chosen at
 runtime, the same as the incumbents. Do not set `RUSTFLAGS` for these runs.
+
+## Interleaved A/B comparison
+
+Two versions of a suite can be compared in one session with `ab_compare.py`. It runs
+version A and version B alternately, several times each, and reports the median of each
+side and the ratio B / A. This is the preferred way to show a change, since the incumbent
+can move by 30% or more between sessions.
+
+```sh
+python bench-vs/ab_compare.py --a HEAD --b WORKTREE --suites text_vs --runs 2
+```
+
+`WORKTREE` means the current working tree, including uncommitted changes. A git ref is
+built in a temporary worktree and removed afterwards. Each side builds once, so the first
+run takes a while.

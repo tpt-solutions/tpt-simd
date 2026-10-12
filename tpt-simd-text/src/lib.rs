@@ -496,10 +496,13 @@ pub fn hex_decode(src: &[u8], dst: &mut [u8]) -> Result<usize, TextError> {
     let tail_invalid = tail
         .iter()
         .fold(0u8, |acc, &c| acc | HEX_VALUE[usize::from(c)]);
-    if !simd_head_valid(head) || tail_invalid & 0xF0 != 0 {
+    if tail_invalid & 0xF0 != 0 {
         return Err(TextError::InvalidHexDigit);
     }
-    simd_head_decode(head, &mut dst[..head_len / 2]);
+    // The head validates itself before it writes, so an error leaves `dst` untouched.
+    if !simd_head_decode(head, &mut dst[..head_len / 2]) {
+        return Err(TextError::InvalidHexDigit);
+    }
     for (out, pair) in dst[head_len / 2..needed]
         .iter_mut()
         .zip(tail.chunks_exact(2))
@@ -520,35 +523,25 @@ fn simd_head_len(_len: usize) -> usize {
     0
 }
 
-/// `true` if every byte of `head` is a hex digit. `head` is a whole number of 16-byte blocks.
+/// Validates and decodes `head` (a whole number of 16-byte blocks) into `dst`
+/// (`head.len() / 2` bytes). Returns `false`, and writes nothing, if a byte is not a hex digit.
 #[cfg(target_arch = "x86_64")]
-fn simd_head_valid(head: &[u8]) -> bool {
-    let wide = head.len() / 32 * 32;
-    if wide > 0 && hex_avx2::available() {
-        return hex_avx2::validate(&head[..wide]) && hex_sse2::validate(&head[wide..]);
+fn simd_head_decode(head: &[u8], dst: &mut [u8]) -> bool {
+    if head.len() >= 32 && hex_avx2::available() {
+        return hex_avx2::validate_and_decode(head, dst);
     }
-    hex_sse2::validate(head)
-}
-
-#[cfg(not(target_arch = "x86_64"))]
-fn simd_head_valid(_head: &[u8]) -> bool {
+    if !hex_sse2::validate(head) {
+        return false;
+    }
+    hex_sse2::decode(head, dst);
     true
 }
 
-/// Decodes `head` (validated, whole 16-byte blocks) into `dst` (`head.len() / 2` bytes).
-#[cfg(target_arch = "x86_64")]
-fn simd_head_decode(head: &[u8], dst: &mut [u8]) {
-    let wide = head.len() / 32 * 32;
-    if wide > 0 && hex_avx2::available() {
-        hex_avx2::decode(&head[..wide], &mut dst[..wide / 2]);
-        hex_sse2::decode(&head[wide..], &mut dst[wide / 2..]);
-        return;
-    }
-    hex_sse2::decode(head, dst);
-}
-
 #[cfg(not(target_arch = "x86_64"))]
-fn simd_head_decode(_head: &[u8], _dst: &mut [u8]) {}
+fn simd_head_decode(head: &[u8], _dst: &mut [u8]) -> bool {
+    // No SIMD on this target, so the head is always empty and nothing is decoded here.
+    head.is_empty()
+}
 
 /// SSE2 hex decoder. SSE2 is part of the x86_64 baseline, so no detection is needed.
 ///
@@ -621,11 +614,12 @@ mod hex_sse2 {
 #[allow(unsafe_code)]
 mod hex_avx2 {
     use core::arch::x86_64::{
-        __m256i, _mm_storeu_si128, _mm256_add_epi8, _mm256_and_si256, _mm256_castsi256_si128,
-        _mm256_cmpgt_epi8, _mm256_loadu_si256, _mm256_movemask_epi8, _mm256_or_si256,
-        _mm256_packus_epi16, _mm256_permute2x128_si256, _mm256_permute4x64_epi64, _mm256_set1_epi8,
-        _mm256_set1_epi16, _mm256_setzero_si256, _mm256_shuffle_epi8, _mm256_slli_epi16,
-        _mm256_srli_epi16, _mm256_storeu_si256, _mm256_unpackhi_epi8, _mm256_unpacklo_epi8,
+        __m256i, _mm_loadu_si128, _mm_storeu_si128, _mm256_add_epi8, _mm256_and_si256,
+        _mm256_broadcastsi128_si256, _mm256_castsi256_si128, _mm256_cmpeq_epi8, _mm256_loadu_si256,
+        _mm256_maddubs_epi16, _mm256_or_si256, _mm256_packus_epi16, _mm256_permute2x128_si256,
+        _mm256_permute4x64_epi64, _mm256_set1_epi8, _mm256_set1_epi16, _mm256_setzero_si256,
+        _mm256_shuffle_epi8, _mm256_srli_epi16, _mm256_storeu_si256, _mm256_sub_epi8,
+        _mm256_testz_si256, _mm256_unpackhi_epi8, _mm256_unpacklo_epi8,
     };
 
     /// `true` if the AVX2 kernels may be called on this CPU.
@@ -647,34 +641,76 @@ mod hex_avx2 {
         unsafe { encode_impl(src, dst) }
     }
 
-    /// Validates `src` (a whole number of 32-byte blocks). Requires `available()`.
-    pub(super) fn validate(src: &[u8]) -> bool {
-        // SAFETY: the caller checked `available()`, and the slice is whole blocks.
-        unsafe { validate_impl(src) }
+    /// Validates `src` and, only if every byte is a hex digit, decodes it into `dst` (half as
+    /// long). `src` is a whole number of 16-byte blocks. Returns `false` and writes nothing if a
+    /// byte is invalid. Requires `available()`.
+    pub(super) fn validate_and_decode(src: &[u8], dst: &mut [u8]) -> bool {
+        // SAFETY: the caller checked `available()`, so AVX2 is present.
+        unsafe { validate_and_decode_impl(src, dst) }
     }
 
-    /// Decodes `src` (validated, whole 32-byte blocks) into `dst` (half as long).
-    /// Requires `available()`.
-    pub(super) fn decode(src: &[u8], dst: &mut [u8]) {
-        // SAFETY: the caller checked `available()`, and the slices are whole blocks.
-        unsafe { decode_impl(src, dst) }
-    }
-
-    /// Digit values of 32 bytes, and the mask of bytes that are hex digits.
+    /// One call does both passes, so the feature check and the call overhead are paid once.
+    /// The whole 32-byte blocks use AVX2, and a trailing 16-byte block uses SSE2.
     #[target_feature(enable = "avx2")]
-    unsafe fn values(x: __m256i) -> (__m256i, __m256i) {
-        let is_digit = _mm256_and_si256(
-            _mm256_cmpgt_epi8(x, _mm256_set1_epi8(0x2F)),
-            _mm256_cmpgt_epi8(_mm256_set1_epi8(0x3A), x),
-        );
-        let lower = _mm256_or_si256(x, _mm256_set1_epi8(0x20));
-        let is_letter = _mm256_and_si256(
-            _mm256_cmpgt_epi8(lower, _mm256_set1_epi8(0x60)),
-            _mm256_cmpgt_epi8(_mm256_set1_epi8(0x67), lower),
-        );
+    unsafe fn validate_and_decode_impl(src: &[u8], dst: &mut [u8]) -> bool {
+        let wide = src.len() / 32 * 32;
+        // SAFETY: `validate_impl` and `decode_impl` only read whole 32-byte blocks of their
+        // input, which `src[..wide]` is. The SSE2 helpers take the rest.
+        unsafe {
+            if !validate_impl(&src[..wide]) || !super::hex_sse2::validate(&src[wide..]) {
+                return false;
+            }
+            decode_impl(&src[..wide], &mut dst[..wide / 2]);
+        }
+        super::hex_sse2::decode(&src[wide..], &mut dst[wide / 2..]);
+        true
+    }
+
+    /// Class bits by high nibble: `0x3_` is a digit row (bit 0), `0x4_` and `0x6_` are letter
+    /// rows (bit 1). Every other high nibble is in no class.
+    const HI_CLASS: [u8; 16] = [0, 0, 0, 1, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    /// Class bits by low nibble: `_0`..`_9` are digits (bit 0), `_1`..`_6` are letters too
+    /// (bit 1). `_A`..`_F` are not in the digit class, so only letter rows can match them.
+    const LO_CLASS: [u8; 16] = [1, 3, 3, 3, 3, 3, 3, 1, 1, 1, 0, 0, 0, 0, 0, 0];
+
+    /// For each byte, zero if it is a hex digit and non-zero otherwise. A byte is a hex digit
+    /// when its high-nibble class and low-nibble class share a bit, which is one lookup per
+    /// nibble. `hi` and `lo` hold `HI_CLASS` and `LO_CLASS`, broadcast to both lanes.
+    #[target_feature(enable = "avx2")]
+    unsafe fn class_and(x: __m256i, hi: __m256i, lo: __m256i) -> __m256i {
+        let nibble_mask = _mm256_set1_epi8(0x0F);
+        let high = _mm256_and_si256(_mm256_srli_epi16::<4>(x), nibble_mask);
+        let low = _mm256_and_si256(x, nibble_mask);
+        _mm256_and_si256(_mm256_shuffle_epi8(hi, high), _mm256_shuffle_epi8(lo, low))
+    }
+
+    /// Digit value of each byte of `x`, which must be hex digits. Letters have bit 6 set, so
+    /// `(c & 0x0F) + 9` is their value and `c & 0x0F` is the value of a digit.
+    #[target_feature(enable = "avx2")]
+    unsafe fn digit_values(x: __m256i) -> __m256i {
         let nibble = _mm256_and_si256(x, _mm256_set1_epi8(0x0F));
-        let value = _mm256_add_epi8(nibble, _mm256_and_si256(is_letter, _mm256_set1_epi8(9)));
-        (value, _mm256_or_si256(is_digit, is_letter))
+        let letter = _mm256_and_si256(_mm256_srli_epi16::<6>(x), _mm256_set1_epi8(1));
+        // 0 - 1 is 0xFF, so `and` with 9 adds 9 for letters and 0 for digits.
+        let bonus = _mm256_and_si256(
+            _mm256_sub_epi8(_mm256_setzero_si256(), letter),
+            _mm256_set1_epi8(9),
+        );
+        _mm256_add_epi8(nibble, bonus)
+    }
+
+    /// The two lookup tables, broadcast to both 128-bit lanes: `(HI_CLASS, LO_CLASS)`.
+    #[target_feature(enable = "avx2")]
+    unsafe fn class_tables() -> (__m256i, __m256i) {
+        // SAFETY: each table is 16 bytes, read with a 16-byte load.
+        unsafe {
+            let hi = _mm_loadu_si128(HI_CLASS.as_ptr().cast());
+            let lo = _mm_loadu_si128(LO_CLASS.as_ptr().cast());
+            (
+                _mm256_broadcastsi128_si256(hi),
+                _mm256_broadcastsi128_si256(lo),
+            )
+        }
     }
 
     #[target_feature(enable = "avx2")]
@@ -705,29 +741,31 @@ mod hex_avx2 {
 
     #[target_feature(enable = "avx2")]
     unsafe fn validate_impl(src: &[u8]) -> bool {
-        let mut all_valid = _mm256_set1_epi8(-1);
+        // SAFETY: this function is only reached with AVX2, which `class_tables` requires.
+        let (hi, lo) = unsafe { class_tables() };
+        let mut invalid = _mm256_setzero_si256();
         for chunk in src.chunks_exact(32) {
             // SAFETY: `chunks_exact(32)` yields 32 readable bytes per chunk.
             let x = unsafe { _mm256_loadu_si256(chunk.as_ptr().cast()) };
-            // SAFETY: this function is only reached with AVX2, which `values` requires.
-            all_valid = _mm256_and_si256(all_valid, unsafe { values(x) }.1);
+            // SAFETY: this function is only reached with AVX2, which `class_and` requires.
+            let class = unsafe { class_and(x, hi, lo) };
+            invalid = _mm256_or_si256(invalid, _mm256_cmpeq_epi8(class, _mm256_setzero_si256()));
         }
-        _mm256_movemask_epi8(all_valid) == -1
+        _mm256_testz_si256(invalid, invalid) != 0
     }
 
     #[target_feature(enable = "avx2")]
     unsafe fn decode_impl(src: &[u8], dst: &mut [u8]) {
-        let low_byte = _mm256_set1_epi16(0x00FF);
+        // Pairs of digit values become bytes: `maddubs` gives `16 * high + low` per 16-bit lane.
+        let pair_weights = _mm256_set1_epi16(0x0110);
         for (i, chunk) in src.chunks_exact(32).enumerate() {
             // SAFETY: `chunks_exact(32)` yields 32 readable bytes per chunk; the 16-byte store
             // at `i * 16` is inside `dst`, which is half the length of `src`.
             let x = unsafe { _mm256_loadu_si256(chunk.as_ptr().cast()) };
-            // SAFETY: this function is only reached with AVX2, which `values` requires.
-            let (v, _) = unsafe { values(x) };
-            // Byte 2k is the high nibble of output byte k, byte 2k+1 the low nibble.
-            let high = _mm256_slli_epi16::<4>(_mm256_and_si256(v, low_byte));
-            let low = _mm256_srli_epi16::<8>(v);
-            let packed = _mm256_packus_epi16(_mm256_or_si256(high, low), _mm256_setzero_si256());
+            // SAFETY: this function is only reached with AVX2, which `digit_values` requires.
+            let v = unsafe { digit_values(x) };
+            let pairs = _mm256_maddubs_epi16(v, pair_weights);
+            let packed = _mm256_packus_epi16(pairs, _mm256_setzero_si256());
             // Each lane's eight result bytes sit in its low qword (qwords 0 and 2). Gather
             // them into the low 128 bits, in order.
             let ordered = _mm256_permute4x64_epi64::<0x08>(packed);

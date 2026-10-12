@@ -18,9 +18,12 @@ is in [benchmarks.md](benchmarks.md).
 
 ## Method
 
-- **Machine:** Intel Core i5-1135G7 (Tiger Lake), Windows 11. It reports AVX2,
-  FMA and VPCLMULQDQ to Rust's feature detection. It does not report `avx512f`,
-  so AVX-512 kernels are not used here.
+- **Machine (Round 5 onward):** Intel Core i5-13500 (Raptor Lake, 20 threads),
+  Windows 11. It has no AVX-512, so AVX-512 kernels are not used. Feature
+  detection was not re-checked on this machine for Round 5.
+- **Previous machine (Rounds 1–4):** Intel Core i5-1135G7 (Tiger Lake), Windows 11.
+  It reported AVX2, FMA and VPCLMULQDQ to Rust's feature detection and did not
+  report `avx512f`. Its numbers are not comparable with Round 5.
 - **Harness:** Criterion. Release profile with `opt-level = 3`, `lto = "thin"`,
   `codegen-units = 1`.
 - **Build flags:** none (`target-cpu` is not set). Kernels that need a CPU
@@ -36,7 +39,69 @@ Reproduce a suite with, for example:
 cargo bench -p bench-vs --bench hash_vs
 ```
 
-## Summary (refresh run)
+## Summary (Round 5: new machine, two same-run passes)
+
+Intel Core i5-13500, Criterion full mode, two passes back to back. All eight suites
+passed both times (16 runs). Ratio = tpt-simd ÷ incumbent, shown as run 1 / run 2,
+each measured in its own run. For gemm the incumbent is the fastest one in that run.
+
+Status: **ahead** = both runs below 0.95. **parity** = worst run at most 1.10.
+**near** = worst run at most 1.15. **behind** = worst run above 1.15. **noisy** =
+the two runs differ by more than 20%, so neither ratio is reliable on its own.
+
+| Area | Operation | Size | Ratio (run 1 / run 2) | Status |
+|---|---|---|---|---|
+| blas | f32 gemm vs faer / gemm | 64 | 1.51 / 1.42 | behind |
+| blas | f32 gemm | 256 | 1.13 / 1.08 | near |
+| blas | f32 gemm | 512 | 1.05 / 1.03 | parity |
+| blas | f64 gemm vs gemm / faer | 64 | 1.39 / 1.37 | behind |
+| blas | f64 gemm | 256 | 1.11 / 1.12 | near |
+| blas | f64 gemm | 512 | 1.06 / 1.03 | parity |
+| hash | CRC-32 vs crc32fast | 64 B | 0.85 / 0.92 | ahead |
+| hash | CRC-32 | 4 KB | 1.00 / 1.00 | parity |
+| hash | CRC-32 | 1 MB | 1.02 / 1.00 | parity |
+| hash | Adler-32 vs simd-adler32 | 64 B | 1.56 / 1.51 | behind |
+| hash | Adler-32 | 4 KB | 1.04 / 1.03 | parity |
+| hash | Adler-32 | 1 MB | 1.02 / 1.03 | parity |
+| matrix | mat4 mul vs glam | 4×4 | 1.13 / 1.14 | near |
+| matrix | mat4 transpose, by value vs glam | 4×4 | 1.54 / 1.68 | behind |
+| matrix | mat4 transpose, in place vs glam | 4×4 | 2.06 / 2.26 | behind |
+| matrix | mat3 inverse vs glam | 3×3 | 1.74 / 1.77 | behind |
+| search | find_byte vs memchr | 64 B | 0.69 / 0.77 | ahead |
+| search | find_byte | 4 KB | 1.21 / 0.98 | noisy |
+| search | find_byte | 1 MB | 0.92 / 0.93 | ahead |
+| search | count_byte vs memchr_iter | 64 B | 0.63 / 0.55 | ahead |
+| search | count_byte | 4 KB | 0.59 / 0.55 | ahead |
+| search | count_byte | 1 MB | 0.43 / 0.43 | ahead |
+| search | substring vs memmem | 64 B | 0.37 / 0.37 | ahead\* |
+| search | substring | 4 KB | 0.49 / 0.50 | ahead\* |
+| search | substring | 1 MB | 0.63 / 0.60 | ahead\* |
+| text | hex encode vs faster-hex | 64 B | 1.66 / 1.61 | behind |
+| text | hex encode | 4 KB | 1.05 / 1.00 | parity |
+| text | hex encode | 256 KB | 0.97 / 1.00 | parity |
+| text | hex decode vs faster-hex | 64 B | 2.34 / 2.42 | behind |
+| text | hex decode | 4 KB | 1.64 / 1.65 | behind |
+| text | hex decode | 256 KB | 1.54 / 1.68 | behind |
+| text | UTF-8 validate vs simdutf8 | 64 B | 1.53 / 1.54 | behind |
+| text | UTF-8 validate | 4 KB | 1.07 / 1.05 | parity |
+| text | UTF-8 validate | 256 KB | 1.09 / 1.04 | parity |
+| sort | `sort_unstable` vs std | 1 K | 0.97 / 1.12 | near |
+| sort | `sort_unstable` | 100 K | 1.61 / 1.54 | behind |
+| sort | `sort_unstable` | 1 M | 1.19 / 1.47 | behind |
+| sort | `sort_u32` radix vs std | 1 K | 1.00 / 0.76 | noisy |
+| sort | `sort_u32` radix | 100 K | 0.42 / 0.41 | ahead |
+| sort | `sort_u32` radix | 1 M | 0.41 / 0.40 | ahead |
+| sort | `select_nth` vs std | 1 K | 1.24 / 1.24 | behind |
+| sort | `select_nth` | 100 K | 1.39 / 1.42 | behind |
+| sort | `select_nth` | 1 M | 1.53 / 1.21 | noisy |
+| sort | `argsort` vs std | 1 K | 0.89 / 0.88 | ahead |
+| sort | `argsort` | 100 K | 0.89 / 0.92 | ahead |
+| sort | `argsort` | 1 M | 0.99 / 0.91 | parity |
+
+\* Substring uses the same favourable pattern as before (last needle byte occurs
+once), so these rows do not show performance on common last bytes.
+
+## Summary (previous machine, Round 1 refresh, superseded)
 
 | Area | Operation | Size | tpt-simd | Incumbent | Ratio | Status |
 |---|---|---|---|---|---|---|
@@ -205,7 +270,23 @@ Remaining gap: the recursion and the insertion sort for small slices.
 - **matrix:** by-value transpose; branch-free 3×3 inverse scale.
 - **umbrella:** `runtime-dispatch` on by default, and `tpt-simd-hash` re-exported.
 
-## Open gaps
+## Open gaps (Round 5, new machine)
+
+Rows behind in both runs, largest first:
+
+1. hex decode: 1.5–2.4× at every size in Round 5. Round 6 (lookup-table validator) brings 4 KB and 256 KB to about 1.1–1.4×; 64 B stays about 2×.
+2. Matrix: mat4 transpose 1.5–2.3×, mat3 inverse 1.7×. mat4 mul is 1.13–1.14×.
+3. Generic `sort_unstable`: 1.5–1.6× at 100 K, 1.2–1.5× at 1 M.
+4. `select_nth`: 1.2–1.4× at 1 K and 100 K (the 1 M row is noisy).
+5. UTF-8 validate at 64 B: about 1.5×.
+6. Hex encode at 64 B: about 1.6×.
+7. Adler-32 at 64 B: about 1.5×.
+8. gemm at 64: f32 1.4–1.5×, f64 1.4×. gemm at 256: f32 1.08–1.13×, f64 1.1×.
+
+Already ahead or at parity: CRC-32 (64 B ahead, larger sizes at parity), find_byte at
+64 B and 1 MB, all count_byte and substring rows, radix `sort_u32`, `argsort`.
+
+## Open gaps (previous machine, superseded)
 
 In rough order of size (ratios from the refresh run):
 
@@ -385,3 +466,137 @@ Open items from this round:
   earlier invalid quick-mode numbers is still unknown. The item stays open until the
   full runs are repeated.
 - Run 2 for sort, matrix and gemm, and gemm f64.
+
+## Round 5: new machine (Intel Core i5-13500)
+
+The whole set was re-measured on the new machine, as two same-run passes, with no code
+changes. It supersedes the Round 4 open items:
+
+- gemm f64 is now recorded (rows in the Round 5 summary).
+- The second runs for hash, text, search, sort, matrix and gemm f32 are done, and
+  all eight suites passed in both passes.
+- Still open: UTF-8 at 64 B, Adler-32 at 64 B, and the cause of the earlier invalid
+  quick-mode numbers. The todo item on input reuse is for the maintainer to close.
+- Not yet compared with incumbents: `tpt-simd-fixed`, `tpt-simd-window`,
+  `tpt-simd-aligned`, and `tpt-simd-blend` / `select` / `shift` (todo.md, benchmark
+  candidates). The `kernels` suite gives absolute timings and scalar baselines only.
+- Noisy rows (the two runs disagree by more than 20%): find_byte at 4 KB, radix
+  `sort_u32` at 1 K, and `select_nth` at 1 M. Re-run these before quoting them.
+
+## Round 6: hex decode, lookup-table validator
+
+`hex_decode` keeps its two passes (validate everything, then write), because the
+guarantee that an error leaves `dst` untouched needs them. The change is in both passes:
+
+- Validation: a digit is classified with two `vpshufb` lookups, one on the high nibble
+  and one on the low nibble, instead of range comparisons. Each byte's high-nibble class
+  and low-nibble class must share a bit.
+- Decode: digit values come from a mask-and-add, and pairs are combined with one
+  `vpmaddubsw` instead of shifts and an `or`.
+- Tests: `tests/differential.rs` gains an exhaustive check. Every byte value is put at
+  every position of 32-, 64- and 96-byte inputs and compared with `faster-hex`, for both
+  the result and the output bytes. The crate's tests pass with and without
+  `runtime-dispatch`, and clippy is clean.
+
+Same-session A/B (the same machine, the original code and the change run back to back,
+times in ns, criterion medians):
+
+| Size | tpt before | tpt after | tpt change | faster-hex before / after |
+|---|---|---|---|---|
+| 64 B | 12.3 | 11.1 | 0.90× | 5.1 / 5.4 |
+| 4 KB | 505 | 393 | 0.78× | 303 / 358 |
+| 256 KB | 33 062 | 27 465 | 0.83× | 30 246 / 19 663 |
+
+The incumbent moved by up to 35% between the two halves of the session (256 KB), so the
+ratios were checked against a second run with the change in place. The kernel's own
+time is the more reliable number: about 20% faster at 4 KB and 256 KB.
+
+Ratio, tpt-simd ÷ faster-hex, after the change: 4 KB 1.10–1.23, 256 KB 1.15–1.40,
+64 B about 2.1 (unchanged; the cost at 64 B is call overhead, not the kernel).
+
+Not changed in this round, and still open:
+
+- Hex encode and UTF-8 validation at 64 B (about 1.5–1.6×). The cost is per call, in the
+  dispatch and the setup around the vector loop, not in the loop itself.
+- Generic `sort_unstable` (1.5× at 100 K). The crate is `#![deny(unsafe_code)]`, so the
+  partition cannot use unchecked indexing, and a block partition is not practical without it.
+  That policy needs a decision.
+- Matrix transpose and 3×3 inverse (needs a register-typed API) and gemm at 64 (packing).
+
+## Round 6b: profiling the 64 B hex decode path
+
+Profiling used a standalone release harness (thin LTO, `codegen-units = 1`) that calls
+`hex_decode` and `faster_hex::hex_decode` in the same process. Samples were taken over
+input sizes from 0 to 1024 bytes, and each size's best of seven timed batches is reported.
+A PE binary without per-function symbols, and with the kernels inlined, could not be
+profiled by instruction, so the cost was split by size instead.
+
+- **Fixed cost:** an empty call takes 3.3 ns against 1.4 ns for `faster-hex`. The
+  dispatch path called the feature check twice and went through a separate validate
+  wrapper and an empty SSE2 call.
+- **Per byte:** at 64 B the remaining work is about 4.5 ns against about 3 ns, and the
+  kernel cost is roughly linear above 128 B.
+
+Change: validation and decoding of the head are now one AVX2 call, with the feature check
+done once. The order is unchanged: the tail is checked first, then the head validates
+itself before it writes, so an error still leaves `dst` untouched.
+
+Same-session A/B, old (Round 6) against new, ns, two alternating builds each:
+
+| Size | old | new | Ratio to faster-hex (old / new) |
+|---|---|---|---|
+| 0 B | 3.35–3.44 | 3.01–3.27 | 2.2–2.3 / 2.0–2.2 |
+| 64 B | 8.33–8.75 | 7.44–7.53 | 1.7–1.9 / 1.65–1.75 |
+| 4 KB | 169–171 | 169 | 1.22–1.23 / 1.22–1.24 |
+| 256 KB | 11 216–11 678 | 11 148–11 489 | 1.24–1.33 / 1.22–1.24 |
+
+The 64 B path is about 13–15% faster. Larger sizes are unchanged, which is expected:
+they are limited by the two passes over the input, not by call overhead.
+
+What remains at 64 B is the fixed call cost (about 1.5 ns over `faster-hex`) and the two
+validation passes. Removing the second pass would change the error guarantee, so that is a
+design decision and not part of this change.
+
+## Round 6c: hex encode and UTF-8 at 64 B (investigated, no change kept)
+
+A size sweep (0 to 4 KB) with the standalone harness found the same shape as hex decode:
+per-byte cost matches `faster-hex`, and the gap is a fixed cost of about 1–2 ns per call.
+Hex encode is about 1.8× at 64 B and UTF-8 about 1.5×; both reach parity by 4 KB.
+
+Three suspects were tested:
+
+- **Dispatch chain:** merging the remainder into one AVX2 entry point (as for decode) gave
+  no measurable change. Encode: 64 B 4.96 / 5.08 ns before, 4.92 / 4.74 ns after. UTF-8:
+  7.75 / 7.64 ns before, 7.82 / 7.58 ns after. The change was reverted.
+- **Runtime feature check:** `is_x86_feature_detected!("avx2")` costs about 0.5 ns per call.
+  That is part of the fixed cost, but not all of it.
+- **Result type:** returning `Result<usize, TextError>` costs about 0.35 ns over returning
+  `Option<usize>`.
+
+The remaining 1–2 ns is not yet located. Finding it needs a copy of the crate in the
+harness and a bisection, which was not done. The decode change in Round 6b, which did
+reduce the 64 B cost, does not carry over, because encode and UTF-8 do not have the
+decode's two-pass structure.
+
+## Round 6d: whole-session A/B with `bench-vs/ab_compare.py`
+
+`HEAD` (before this round's code changes) against the working tree, text suite, two
+interleaved runs each, in one session. Each value is the median of the two runs (ns).
+B / A is the ratio of the working tree to `HEAD`.
+
+| Benchmark | A (HEAD) | B (working tree) | B / A |
+|---|---|---|---|
+| hex decode 64 B | 14.02 | 8.91 | 0.64 |
+| hex decode 4 KB | 493.6 | 353.0 | 0.72 |
+| hex decode 256 KB | 31 381 | 22 051 | 0.70 |
+| hex encode 64 B | 5.26 | 4.63 | 0.88 |
+| hex encode 4 KB | 107.9 | 105.1 | 0.97 |
+| UTF-8 validate 64 B | 8.77 | 7.78 | 0.89 |
+| UTF-8 validate 4 KB | 233.1 | 223.6 | 0.96 |
+
+Hex encode and UTF-8 have no code changes from `HEAD`, so their ratios are a control for
+the noise floor. They land between 0.88 and 0.97, which puts the noise at about ±10% on
+this machine. Only the decode rows (0.64–0.72) are clearly above that.
+
+Against `faster-hex` in the same session, hex decode at 64 B went from about 2.3× to about
+1.8×, and at 4 KB and 256 KB from about 1.6× to about 1.2×.

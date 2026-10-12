@@ -13,16 +13,17 @@ horizontal reductions, transposes, saturating arithmetic and more.
 
 ## Goals
 
-- 40 focused crates plus a `tpt-simd` umbrella (and the unpublished `testutil`), each solving one common SIMD problem
+- 39 focused crates plus a `tpt-simd` umbrella (and the unpublished `testutil`), each solving one common SIMD problem
 - `no_std` + `alloc` (`std` optional)
-- Targets: x86_64 (SSE/AVX/AVX2/AVX-512), ARM64 (NEON/SVE), RISC-V RVV, scalar fallback
-- Stable backend via `tpt-simd-vector`; `core::simd` behind the `nightly` feature
+- Targets: x86_64 (SSE2/AVX2, AVX-512 where a kernel has a path), aarch64 (via LLVM lowering of the portable backend), and a portable fallback everywhere else
+- Stable backend via `tpt-simd-vector`; the `nightly` feature is reserved for a future `core::simd` backend and is currently a no-op
 - Direct integration path into tpt-kinetix and tpt-cadence
 
 ## Crates
 
-`tpt-simd` re-exports everything below; depend on individual crates to keep
-the dependency graph small.
+`tpt-simd` re-exports most of the crates below (not `vector`, `dct`, `ntt`,
+`audio`, `bits`, `geom`, `transpose`, `pixel`, `distance` or `half`); depend on
+individual crates to keep the dependency graph small.
 
 | Area | Crates |
 | --- | --- |
@@ -62,7 +63,9 @@ All crate names are prefixed `tpt-simd-`.
 
 ## Getting full performance
 
-Three opt-ins, all off by default so `no_std` users are unaffected:
+Three opt-ins. The first two are off by default so `no_std` users are unaffected;
+`runtime-dispatch` is on by default in the `tpt-simd` umbrella (use
+`default-features = false` to drop it):
 
 - **`std` feature** (e.g. `tpt-simd = { version = "0.1", features = ["std"] }`):
   float `mul_add`/`round`/`floor`/`ceil`/`trunc`/`sqrt` use the `std` intrinsics
@@ -71,7 +74,7 @@ Three opt-ins, all off by default so `no_std` users are unaffected:
 - **`-C target-cpu=native`** (or specific `-C target-feature=+avx2,+fma`):
   dispatch is compile-time (see [ADR 0001](docs/adr/0001-backend-and-dispatch.md)),
   so the AVX2/FMA paths are only used when the target features are enabled.
-- **`runtime-dispatch` feature** (implies `std`; currently affects `tpt-simd-blas` gemm):
+- **`runtime-dispatch` feature** (implies `std`; affects `tpt-simd-blas` gemm and the `hash`, `text` and `search` kernels):
   detects AVX2+FMA at runtime so no `-C target-cpu` is needed (gemm f32 ~1.8x
   faster than the plain build; still below a fully native build). See [ADR 0003](docs/adr/0003-runtime-dispatch-and-float-tolerance.md).
 
@@ -81,22 +84,23 @@ Measured numbers and caveats: [docs/benchmarks.md](docs/benchmarks.md).
 
 Head-to-head benchmarks against established crates (`crc32fast`, `simd-adler32`,
 `memchr`, `faster-hex`, `simdutf8`, `glam`, `gemm`, `faer`, std sort). Ratio = tpt-simd
-time ÷ incumbent time, measured in the same run; below 1.0 is faster. Summary:
+time ÷ incumbent time, measured in the same run; below 1.0 is faster. Measured on an
+Intel Core i5-13500 (2026-10-12), two same-run passes, shown as a range. Summary:
 
 | Area | Operation | Size | Ratio | Notes |
 |---|---|---|---|---|
 | hash | CRC-32 | 4 KB | 1.00 | parity with `crc32fast` |
-| search | `find_byte` | 4 KB | 1.01 | parity with `memchr` |
-| search | `count_byte` | 1 MB | 0.52 | faster than `memchr_iter` |
-| text | UTF-8 validate | 4 KB / 256 KB | ~1.05 | close to `simdutf8` |
-| text | hex decode | 4 KB | 1.68 | slower than `faster-hex` |
-| sort | radix `sort_u32` | 1 M | 0.39 | faster than std |
-| sort | generic `sort_unstable` | 1 M | 1.48 | slower than std |
-| matrix | mat3 inverse | 3×3 | 1.7 | slower than `glam` |
-| gemm f32 | 512 | 1.02 | parity with `faer` |
+| search | `find_byte` | 1 MB | 0.92–0.93 | faster than `memchr` |
+| search | `count_byte` | 1 MB | 0.43 | faster than `memchr_iter` |
+| text | UTF-8 validate | 4 KB / 256 KB | 1.04–1.09 | close to `simdutf8` |
+| text | hex decode | 4 KB | 1.64–1.65 | slower than `faster-hex` (lookup-table validator) |
+| sort | radix `sort_u32` | 1 M | 0.40–0.41 | faster than std |
+| sort | generic `sort_unstable` | 1 M | 1.19–1.47 | slower than std |
+| matrix | mat3 inverse | 3×3 | 1.74–1.77 | slower than `glam` |
+| gemm f32 | 512 | 1.03–1.05 | parity with `gemm` / `faer` |
 
-Full tables, the method, and the caveats (single runs where noted, and the suites
-not yet repeated): [docs/incumbent-benchmarks.md](docs/incumbent-benchmarks.md).
+Full tables, the method, and the caveats (noisy rows, and what is not yet compared):
+[docs/incumbent-benchmarks.md](docs/incumbent-benchmarks.md).
 
 ## License
 
