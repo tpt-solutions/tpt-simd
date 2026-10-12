@@ -469,7 +469,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 
 ### Runtime dispatch and correctness
 - [ ] Move runtime CPU dispatch into `tpt-simd-core` (shared helper, cached result) so every kernel crate with an intrinsics path can select it, not only `tpt-simd-blas` (ADR 0003 follow-up)
-- [ ] Add `cargo-hack --feature-powerset` (over `std`, `scalar-only`, `nightly`, `runtime-dispatch`) to CI to catch feature-combination breakage
+- [x] Add `cargo-hack --feature-powerset` to CI to catch feature-combination breakage — `feature-powerset` job in ci.yml runs `cargo hack check --workspace --feature-powerset` (514 combinations locally, all clean with `-D warnings`). The run found dead-code warnings in `tpt-simd-search` (memchr builds) and `tpt-simd-text` (simdutf8 builds); gated those helpers and re-ran the affected crates' tests
 - [x] Add a CI check that `cargo xtask no-std` target list matches the `no-std` job in ci.yml (avoid the two drifting apart) — unit test `no_std_targets_match_ci_workflow` in `xtask/src/main.rs`, runs under `cargo test --workspace`
 - [x] Remove the `scalar-only` and `nightly` no-op features or document them as reserved in one place — kept both (removing is a breaking change); only `nightly` is a no-op (reserved). `scalar-only` is not a no-op: it forces the portable path. Documented in the book's feature table (`docs/book/src/api.md`)
 
