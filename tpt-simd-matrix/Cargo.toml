@@ -32,3 +32,6 @@ workspace = true
 [[bench]]
 name = "matrix"
 harness = false
+
+[lib]
+bench = false

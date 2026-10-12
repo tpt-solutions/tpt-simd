@@ -31,3 +31,6 @@ workspace = true
 [[bench]]
 name = "horizontal"
 harness = false
+
+[lib]
+bench = false

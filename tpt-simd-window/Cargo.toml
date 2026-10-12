@@ -33,3 +33,6 @@ workspace = true
 [[bench]]
 name = "window"
 harness = false
+
+[lib]
+bench = false

@@ -32,3 +32,6 @@ workspace = true
 [[bench]]
 name = "rounding"
 harness = false
+
+[lib]
+bench = false

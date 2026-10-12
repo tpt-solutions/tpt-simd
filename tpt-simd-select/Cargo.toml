@@ -33,3 +33,6 @@ workspace = true
 [[bench]]
 name = "select"
 harness = false
+
+[lib]
+bench = false

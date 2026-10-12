@@ -31,3 +31,6 @@ workspace = true
 [[bench]]
 name = "butterfly"
 harness = false
+
+[lib]
+bench = false

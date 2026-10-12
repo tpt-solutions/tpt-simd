@@ -31,3 +31,6 @@ workspace = true
 [[bench]]
 name = "gather"
 harness = false
+
+[lib]
+bench = false

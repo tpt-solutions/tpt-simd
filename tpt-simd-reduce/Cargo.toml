@@ -32,3 +32,6 @@ workspace = true
 [[bench]]
 name = "reduce"
 harness = false
+
+[lib]
+bench = false

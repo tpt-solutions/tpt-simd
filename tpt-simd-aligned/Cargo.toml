@@ -32,3 +32,6 @@ workspace = true
 [[bench]]
 name = "aligned"
 harness = false
+
+[lib]
+bench = false

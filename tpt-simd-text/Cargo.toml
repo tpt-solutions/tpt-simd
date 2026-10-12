@@ -29,3 +29,6 @@ faster-hex = { version = "1.0.0", default-features = false }
 
 [lints]
 workspace = true
+
+[lib]
+bench = false

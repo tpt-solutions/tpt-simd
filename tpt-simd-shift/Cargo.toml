@@ -31,3 +31,6 @@ workspace = true
 [[bench]]
 name = "shift"
 harness = false
+
+[lib]
+bench = false

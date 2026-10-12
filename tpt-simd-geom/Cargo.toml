@@ -16,3 +16,6 @@ libm.workspace = true
 
 [lints]
 workspace = true
+
+[lib]
+bench = false

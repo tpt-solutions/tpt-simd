@@ -32,3 +32,6 @@ workspace = true
 [[bench]]
 name = "convolve"
 harness = false
+
+[lib]
+bench = false

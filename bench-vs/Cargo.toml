@@ -97,3 +97,6 @@ harness = false
 [[bench]]
 name = "fixed_vs"
 harness = false
+
+[lib]
+bench = false

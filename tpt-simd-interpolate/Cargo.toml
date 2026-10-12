@@ -32,3 +32,6 @@ workspace = true
 [[bench]]
 name = "interpolate"
 harness = false
+
+[lib]
+bench = false

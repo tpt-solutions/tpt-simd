@@ -26,3 +26,6 @@ tpt-simd-testutil.workspace = true
 
 [lints]
 workspace = true
+
+[lib]
+bench = false

@@ -15,3 +15,6 @@ categories = ["algorithms", "compression", "no-std"]
 
 [lints]
 workspace = true
+
+[lib]
+bench = false

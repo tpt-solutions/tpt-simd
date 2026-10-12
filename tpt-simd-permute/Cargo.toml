@@ -32,3 +32,6 @@ workspace = true
 [[bench]]
 name = "permute"
 harness = false
+
+[lib]
+bench = false

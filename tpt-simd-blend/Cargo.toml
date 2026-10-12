@@ -31,3 +31,6 @@ workspace = true
 [[bench]]
 name = "blend"
 harness = false
+
+[lib]
+bench = false

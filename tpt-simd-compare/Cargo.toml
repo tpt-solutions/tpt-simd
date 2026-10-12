@@ -31,3 +31,6 @@ workspace = true
 [[bench]]
 name = "compare"
 harness = false
+
+[lib]
+bench = false

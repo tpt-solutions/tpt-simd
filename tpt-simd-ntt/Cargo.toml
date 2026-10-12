@@ -15,3 +15,6 @@ categories = ["algorithms", "mathematics", "no-std"]
 
 [lints]
 workspace = true
+
+[lib]
+bench = false

@@ -31,3 +31,6 @@ workspace = true
 [[bench]]
 name = "saturate"
 harness = false
+
+[lib]
+bench = false

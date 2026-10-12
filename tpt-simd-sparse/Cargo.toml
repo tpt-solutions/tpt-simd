@@ -36,3 +36,6 @@ harness = false
 [[example]]
 name = "cg"
 required-features = ["alloc"]
+
+[lib]
+bench = false

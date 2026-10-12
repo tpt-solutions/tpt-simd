@@ -31,3 +31,6 @@ workspace = true
 [[bench]]
 name = "rng"
 harness = false
+
+[lib]
+bench = false
