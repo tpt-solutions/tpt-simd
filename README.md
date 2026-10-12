@@ -77,6 +77,27 @@ Three opt-ins, all off by default so `no_std` users are unaffected:
 
 Measured numbers and caveats: [docs/benchmarks.md](docs/benchmarks.md).
 
+## Performance against incumbents
+
+Head-to-head benchmarks against established crates (`crc32fast`, `simd-adler32`,
+`memchr`, `faster-hex`, `simdutf8`, `glam`, `gemm`, `faer`, std sort). Ratio = tpt-simd
+time ÷ incumbent time, measured in the same run; below 1.0 is faster. Summary:
+
+| Area | Operation | Size | Ratio | Notes |
+|---|---|---|---|---|
+| hash | CRC-32 | 4 KB | 1.00 | parity with `crc32fast` |
+| search | `find_byte` | 4 KB | 1.01 | parity with `memchr` |
+| search | `count_byte` | 1 MB | 0.52 | faster than `memchr_iter` |
+| text | UTF-8 validate | 4 KB / 256 KB | ~1.05 | close to `simdutf8` |
+| text | hex decode | 4 KB | 1.68 | slower than `faster-hex` |
+| sort | radix `sort_u32` | 1 M | 0.39 | faster than std |
+| sort | generic `sort_unstable` | 1 M | 1.48 | slower than std |
+| matrix | mat3 inverse | 3×3 | 1.7 | slower than `glam` |
+| gemm f32 | 512 | 1.02 | parity with `faer` |
+
+Full tables, the method, and the caveats (single runs where noted, and the suites
+not yet repeated): [docs/incumbent-benchmarks.md](docs/incumbent-benchmarks.md).
+
 ## License
 
 Licensed under either of

@@ -209,7 +209,7 @@ Remaining gap: the recursion and the insertion sort for small slices.
 
 In rough order of size (ratios from the refresh run):
 
-1. UTF-8 validation, about 12× (needs a SIMD validator).
+1. UTF-8 validation: about 1.05× at 4 KB and 256 KB, about 1.5× at 64 B (Round 4).
 2. Hex decode, about 3× (needs an AVX2 path).
 3. Hex encode, about 1.5–2.8×.
 4. Adler-32, about 1.5×.
@@ -294,3 +294,94 @@ Notes:
   in the same run, with the second run repeated for f64. Small sizes (64) are still
   behind by 1.3–1.4×; the cause is not profiled, and the packing and edge-tile work in
   plan step 6 is the next candidate.
+
+## Round 4: full-mode re-run (2026-10-12) and the UTF-8 validator
+
+Full criterion mode (default warm-up and measurement), one suite at a time. Ratio =
+tpt-simd ÷ incumbent, from the same run. Times are criterion medians (noisy machine).
+
+Status of this round:
+
+- **hash, text, search:** run 1 complete (15:46–15:55). Run 2 was interrupted.
+- **sort, matrix, gemm f32:** run 1 complete (15:55–16:04). Run 2 was not done.
+- **gemm f64:** not recorded. The run was interrupted and overlapped with a rebuild,
+  so its figures are unreliable and are left out.
+- **UTF-8:** rebuilt and measured twice after the change (below).
+
+Because the second runs are missing, treat the single-run rows as indicative. Rows
+that are within about 20% of 1.0 may be noise.
+
+### Hash, search, text (run 1)
+
+| Area | Operation | Size | tpt-simd | Incumbent | Ratio | Status |
+|---|---|---|---|---|---|---|
+| hash | CRC-32 | 64 B | 6.4 ns | crc32fast 6.7 ns | 0.95 | ahead |
+| hash | CRC-32 | 4 KB | 59.4 ns | crc32fast 59.4 ns | 1.00 | parity |
+| hash | CRC-32 | 1 MB | 18.3 µs | crc32fast 15.2 µs | 1.21 | behind |
+| hash | Adler-32 | 64 B | 7.3 ns | simd-adler32 5.0 ns | 1.47 | behind |
+| hash | Adler-32 | 4 KB | 68.6 ns | simd-adler32 70.2 ns | 0.98 | parity |
+| hash | Adler-32 | 1 MB | 19.9 µs | simd-adler32 17.8 µs | 1.12 | near parity |
+| search | find_byte | 64 B | 2.9 ns | memchr 3.6 ns | 0.79 | ahead |
+| search | find_byte | 4 KB | 26.5 ns | memchr 26.2 ns | 1.01 | parity |
+| search | find_byte | 1 MB | 8.1 µs | memchr 9.1 µs | 0.89 | ahead |
+| search | count_byte | 64 B / 4 KB / 1 MB | 3.0 / 51 ns / 11.0 µs | memchr_iter 6.4 / 83 ns / 21.2 µs | 0.47 / 0.62 / 0.52 | ahead |
+| search | substring | 64 B / 4 KB / 1 MB | 11.3 / 45 ns / 13.4 µs | memmem 25.4 / 82 ns / 24.2 µs | 0.44 / 0.55 / 0.55 | ahead* |
+| text | hex encode | 64 B | 4.4 ns | faster-hex 2.8 ns | 1.58 | behind |
+| text | hex encode | 4 KB | 91.7 ns | faster-hex 90.5 ns | 1.01 | parity |
+| text | hex encode | 256 KB | 9.1 µs | faster-hex 9.6 µs | 0.95 | ahead |
+| text | hex decode | 4 KB | 469 ns | faster-hex 280 ns | 1.68 | behind |
+| text | hex decode | 256 KB | 31.1 µs | faster-hex 18.2 µs | 1.71 | behind |
+
+\* Same caveat as the summary: the substring pattern is favourable.
+
+### Sort, select, matrix, gemm f32 (run 1)
+
+| Area | Operation | Size | tpt-simd | Incumbent | Ratio | Status |
+|---|---|---|---|---|---|---|
+| sort | `sort_unstable` (generic) | 1 K | 10.9 µs | std 5.0 µs | 2.2 | behind |
+| sort | `sort_unstable` (generic) | 100 K | 1.53 ms | std 1.00 ms | 1.54 | behind |
+| sort | `sort_unstable` (generic) | 1 M | 17.4 ms | std 11.7 ms | 1.48 | behind |
+| sort | `sort_u32` (LSD radix) | 1 K / 100 K / 1 M | 3.7 µs / 0.41 ms / 4.6 ms | std 5.0 µs / 1.00 ms / 11.7 ms | 0.75 / 0.41 / 0.39 | ahead |
+| sort | `select_nth` | 1 K / 100 K / 1 M | 1.36 / 137 µs / 1.45 ms | std 1.10 / 101 µs / 1.18 ms | 1.24 / 1.36 / 1.23 | behind |
+| sort | `argsort` | 1 K / 100 K / 1 M | 6.6 / 1.81 / 26.6 ms | std 7.2 / 1.97 / 28.5 ms | 0.91 / 0.92 / 0.93 | ahead |
+| matrix | mat4 mul | 4×4 | 3.7 ns | glam 3.3 ns | 1.10 | near parity |
+| matrix | mat4 transpose, by value | 4×4 | 1.7 ns | glam 1.1 ns | 1.5 | behind |
+| matrix | mat4 transpose, in place | 4×4 | 2.5 ns | glam 1.1 ns | 2.3 | behind |
+| matrix | mat3 inverse | 3×3 | 22.3 ns | glam 13.0 ns | 1.7 | behind |
+| gemm f32 | `tpt_workspace` | 64 / 256 / 512 | 5.7 µs / 262 µs / 2.05 ms | faer 4.2 µs / 242 µs / 2.02 ms | 1.36 / 1.09 / 1.02 | behind / near / parity |
+
+The generic `sort_unstable` at 1 K is 2.2× behind here, but the round 3 table recorded
+1.11×. Those are different runs and the gap is not explained yet. The 1 M and 100 K
+ratios agree with round 3 (1.46–1.55×).
+
+### UTF-8 validation: lookup-table validator
+
+The AVX2 validator in `tpt-simd-text` used about 70 vector range checks per 32-byte
+block. It now uses three `vpshufb` nibble lookups and one continuation check per block
+(the Keiser–Lemire approach, as in simdjson). The tail and the block-boundary rules are
+unchanged. The differential suite (exhaustive two-byte pairs, structured three- and
+four-byte sequences, every prefix and corruption, random bytes) passes with runtime
+dispatch and with `target-cpu=native`.
+
+Same-run timings against `simdutf8`, two runs each, after the change:
+
+| Size | Before (run 1, old validator) | After run 1 | After run 2 | simdutf8 (run 1 / run 2) | Ratio after |
+|---|---|---|---|---|---|
+| 64 B | 11.2 ns | 7.2 ns | 7.4 ns | 4.9 / 4.7 ns | ~1.5 |
+| 4 KB | 507 ns | 223 ns | 217 ns | 208 / 207 ns | ~1.05 |
+| 256 KB | 40.1 µs | 13.9 µs | 14.3 µs | 13.9 / 13.4 µs | ~1.05 |
+
+At 4 KB and 256 KB the validator is now within about 5% of `simdutf8`, so it meets the
+10% parity rule. At 64 B it is still about 1.5× behind: that size is dominated by
+per-call overhead, not the vector loop. Moving the lookup tables to constant loads
+made no difference at 64 B.
+
+Open items from this round:
+
+- UTF-8 at 64 B (above).
+- The harness: the todo item "fix the harness so inputs cannot be reused across
+  iterations" was checked. The benches reuse input buffers on purpose, and the sort
+  suites clone their input per iteration. No reuse bug was found, so the cause of the
+  earlier invalid quick-mode numbers is still unknown. The item stays open until the
+  full runs are repeated.
+- Run 2 for sort, matrix and gemm, and gemm f64.
