@@ -102,9 +102,10 @@ pub fn is_valid_utf8(bytes: &[u8]) -> bool {
 #[allow(unsafe_code)]
 mod utf8_avx2 {
     use core::arch::x86_64::{
-        __m256i, _mm256_alignr_epi8, _mm256_and_si256, _mm256_cmpeq_epi8, _mm256_loadu_si256,
-        _mm256_max_epu8, _mm256_min_epu8, _mm256_or_si256, _mm256_permute2x128_si256,
-        _mm256_set1_epi8, _mm256_setzero_si256, _mm256_testz_si256, _mm256_xor_si256,
+        __m128i, __m256i, _mm_loadu_si128, _mm256_alignr_epi8, _mm256_and_si256,
+        _mm256_broadcastsi128_si256, _mm256_cmpeq_epi8, _mm256_loadu_si256, _mm256_max_epu8,
+        _mm256_or_si256, _mm256_permute2x128_si256, _mm256_set1_epi8, _mm256_setzero_si256,
+        _mm256_shuffle_epi8, _mm256_srli_epi16, _mm256_testz_si256, _mm256_xor_si256,
     };
 
     /// `true` if the AVX2 validator may be called on this CPU.
@@ -168,20 +169,120 @@ mod utf8_avx2 {
     /// `true` if every 32-byte block of `data` passes the vector check.
     #[target_feature(enable = "avx2")]
     unsafe fn blocks_valid(data: &[u8]) -> bool {
+        let tables = Tables::new();
         let mut prev = _mm256_setzero_si256();
         let mut errors = _mm256_setzero_si256();
         for chunk in data.chunks_exact(32) {
             // SAFETY: `chunks_exact(32)` yields 32 readable bytes per chunk.
             let cur = unsafe { _mm256_loadu_si256(chunk.as_ptr().cast::<__m256i>()) };
-            errors = _mm256_or_si256(errors, block_errors(cur, prev));
+            errors = _mm256_or_si256(errors, block_errors(cur, prev, &tables));
             prev = cur;
         }
         _mm256_testz_si256(errors, errors) != 0
     }
 
-    /// Lanes that are wrong in `cur`, given the previous block `prev` (zeros before the input).
+    // Error bits for the lookup validator. A lane's bits are the set of errors that
+    // the (previous byte, current byte) pair could cause; ANDing the three lookups
+    // leaves a non-zero value only where a pair is invalid.
+    const TOO_SHORT: u8 = 1 << 0;
+    const TOO_LONG: u8 = 1 << 1;
+    const OVERLONG_3: u8 = 1 << 2;
+    const TOO_LARGE: u8 = 1 << 3;
+    const SURROGATE: u8 = 1 << 4;
+    const OVERLONG_2: u8 = 1 << 5;
+    const TOO_LARGE_1000: u8 = 1 << 6;
+    const OVERLONG_4: u8 = 1 << 6;
+    const TWO_CONTS: u8 = 1 << 7;
+    const CARRY: u8 = TOO_SHORT | TOO_LONG | TWO_CONTS;
+
+    /// Lookup by the high nibble of the previous byte.
+    const BYTE_1_HIGH: [u8; 16] = [
+        TOO_LONG,
+        TOO_LONG,
+        TOO_LONG,
+        TOO_LONG,
+        TOO_LONG,
+        TOO_LONG,
+        TOO_LONG,
+        TOO_LONG,
+        TWO_CONTS,
+        TWO_CONTS,
+        TWO_CONTS,
+        TWO_CONTS,
+        TOO_SHORT | OVERLONG_2,
+        TOO_SHORT,
+        TOO_SHORT | OVERLONG_3 | SURROGATE,
+        TOO_SHORT | TOO_LARGE | TOO_LARGE_1000 | OVERLONG_4,
+    ];
+
+    /// Lookup by the low nibble of the previous byte.
+    const BYTE_1_LOW: [u8; 16] = [
+        CARRY | OVERLONG_3 | OVERLONG_2 | OVERLONG_4,
+        CARRY | OVERLONG_2,
+        CARRY,
+        CARRY,
+        CARRY | TOO_LARGE,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | SURROGATE,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+    ];
+
+    /// Lookup by the high nibble of the current byte.
+    const BYTE_2_HIGH: [u8; 16] = [
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_LONG | OVERLONG_2 | TWO_CONTS | OVERLONG_3 | TOO_LARGE_1000 | OVERLONG_4,
+        TOO_LONG | OVERLONG_2 | TWO_CONTS | OVERLONG_3 | TOO_LARGE,
+        TOO_LONG | OVERLONG_2 | TWO_CONTS | SURROGATE | TOO_LARGE,
+        TOO_LONG | OVERLONG_2 | TWO_CONTS | SURROGATE | TOO_LARGE,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+    ];
+
+    /// The three lookup tables, each repeated in both 128-bit lanes for `vpshufb`.
+    struct Tables {
+        byte_1_high: __m256i,
+        byte_1_low: __m256i,
+        byte_2_high: __m256i,
+    }
+
+    impl Tables {
+        #[target_feature(enable = "avx2")]
+        fn new() -> Self {
+            Self {
+                byte_1_high: lanes(&BYTE_1_HIGH),
+                byte_1_low: lanes(&BYTE_1_LOW),
+                byte_2_high: lanes(&BYTE_2_HIGH),
+            }
+        }
+    }
+
     #[target_feature(enable = "avx2")]
-    fn block_errors(cur: __m256i, prev: __m256i) -> __m256i {
+    fn lanes(t: &[u8; 16]) -> __m256i {
+        // SAFETY: `t` is 16 readable bytes.
+        unsafe { _mm256_broadcastsi128_si256(_mm_loadu_si128(t.as_ptr().cast::<__m128i>())) }
+    }
+
+    /// Error bits in `cur`, given the previous block `prev` (zeros before the input).
+    /// A zero lane is valid. Non-zero lanes are errors.
+    #[target_feature(enable = "avx2")]
+    fn block_errors(cur: __m256i, prev: __m256i, t: &Tables) -> __m256i {
         // `joined` holds the previous block's upper half and the current block's lower half.
         // `alignr` then yields the bytes one, two and three positions before each byte.
         let joined = _mm256_permute2x128_si256::<0x21>(prev, cur);
@@ -189,55 +290,27 @@ mod utf8_avx2 {
         let p2 = _mm256_alignr_epi8::<14>(cur, joined);
         let p3 = _mm256_alignr_epi8::<13>(cur, joined);
 
-        // A continuation is needed at this byte if a lead byte one, two or three positions
-        // back still expects one.
-        // Two-byte leads expect one continuation, three-byte leads two, four-byte leads three.
-        let needed = _mm256_or_si256(
-            or3(
-                in_range(p1, 0xC2, 0xDF),
-                in_range(p1, 0xE0, 0xEF),
-                in_range(p2, 0xE0, 0xEF),
+        let nibble = _mm256_set1_epi8(0x0F);
+        let p1_high = _mm256_and_si256(_mm256_srli_epi16::<4>(p1), nibble);
+        let p1_low = _mm256_and_si256(p1, nibble);
+        let cur_high = _mm256_and_si256(_mm256_srli_epi16::<4>(cur), nibble);
+        let special = _mm256_and_si256(
+            _mm256_and_si256(
+                _mm256_shuffle_epi8(t.byte_1_high, p1_high),
+                _mm256_shuffle_epi8(t.byte_1_low, p1_low),
             ),
-            or3(
-                in_range(p1, 0xF0, 0xF4),
-                in_range(p2, 0xF0, 0xF4),
-                in_range(p3, 0xF0, 0xF4),
-            ),
+            _mm256_shuffle_epi8(t.byte_2_high, cur_high),
         );
-        let continuation = in_range(cur, 0x80, 0xBF);
-        let mismatch = _mm256_xor_si256(needed, continuation);
 
-        let bad_lead = _mm256_or_si256(in_range(cur, 0xC0, 0xC1), in_range(cur, 0xF5, 0xFF));
-        let special = or3(
-            _mm256_and_si256(eq(p1, 0xE0), in_range(cur, 0x80, 0x9F)),
-            _mm256_and_si256(eq(p1, 0xED), in_range(cur, 0xA0, 0xBF)),
-            or3(
-                _mm256_and_si256(eq(p1, 0xF0), in_range(cur, 0x80, 0x8F)),
-                _mm256_and_si256(eq(p1, 0xF4), in_range(cur, 0x90, 0xBF)),
-                bad_lead,
-            ),
+        // A 3- or 4-byte lead two bytes back, or a 4-byte lead three bytes back, needs
+        // a continuation here. Those leads are the bytes >= 0xE0 and >= 0xF0.
+        let third = _mm256_cmpeq_epi8(_mm256_max_epu8(p2, _mm256_set1_epi8(0xE0_u8 as i8)), p2);
+        let fourth = _mm256_cmpeq_epi8(_mm256_max_epu8(p3, _mm256_set1_epi8(0xF0_u8 as i8)), p3);
+        let must = _mm256_and_si256(
+            _mm256_or_si256(third, fourth),
+            _mm256_set1_epi8(TWO_CONTS as i8),
         );
-        _mm256_or_si256(mismatch, special)
-    }
-
-    /// Lanes whose unsigned value lies in `lo..=hi`.
-    #[target_feature(enable = "avx2")]
-    fn in_range(x: __m256i, lo: u8, hi: u8) -> __m256i {
-        let clamped = _mm256_min_epu8(
-            _mm256_max_epu8(x, _mm256_set1_epi8(lo as i8)),
-            _mm256_set1_epi8(hi as i8),
-        );
-        _mm256_cmpeq_epi8(clamped, x)
-    }
-
-    #[target_feature(enable = "avx2")]
-    fn eq(x: __m256i, value: u8) -> __m256i {
-        _mm256_cmpeq_epi8(x, _mm256_set1_epi8(value as i8))
-    }
-
-    #[target_feature(enable = "avx2")]
-    fn or3(a: __m256i, b: __m256i, c: __m256i) -> __m256i {
-        _mm256_or_si256(a, _mm256_or_si256(b, c))
+        _mm256_xor_si256(special, must)
     }
 }
 
