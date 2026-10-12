@@ -323,6 +323,12 @@ mod tests {
     fn peak_and_rms() {
         assert_eq!(peak(&[]), 0.0);
         assert_eq!(peak(&[0.5, -2.0, 1.0]), 2.0);
+    }
+
+    // libm::sqrt uses inline asm on x86, which Miri does not support.
+    #[test]
+    #[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
+    fn rms_matches_expected() {
         assert_eq!(rms(&[]), 0.0);
         assert!((rms(&[3.0, -3.0, 3.0, -3.0]) - 3.0).abs() < 1e-6);
     }

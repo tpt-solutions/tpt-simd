@@ -7,6 +7,7 @@
 //! * [`SimdVector`] / [`SimdOps`]: traits abstracting over the backend.
 //! * [`width`]: native vector width constants for the compile target.
 //! * [`detect`]: compile-time and (with `std`) runtime CPU feature detection.
+//! * [`dispatch`]: cached runtime checks for choosing a kernel path (ADR 0003).
 //! * [`ComplexSimd`]: split (SoA) complex vectors shared by the complex,
 //!   mul, butterfly and dot crates.
 //!
@@ -24,6 +25,7 @@ extern crate std;
 pub mod aliases;
 mod complex;
 pub mod detect;
+pub mod dispatch;
 mod traits;
 pub mod width;
 

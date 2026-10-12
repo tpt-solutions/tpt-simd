@@ -16,19 +16,7 @@ pub(crate) fn available() -> bool {
     }
     #[cfg(not(all(target_feature = "avx2", target_feature = "fma")))]
     {
-        use core::sync::atomic::{AtomicU8, Ordering};
-        // 0 = unknown, 1 = no, 2 = yes
-        static STATE: AtomicU8 = AtomicU8::new(0);
-        match STATE.load(Ordering::Relaxed) {
-            2 => true,
-            1 => false,
-            _ => {
-                let yes =
-                    std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma");
-                STATE.store(if yes { 2 } else { 1 }, Ordering::Relaxed);
-                yes
-            }
-        }
+        tpt_simd_core::dispatch::x86_avx2_fma()
     }
 }
 

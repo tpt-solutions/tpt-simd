@@ -458,7 +458,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] `chunks_exact_to_as_chunks` allow warned on clippy 1.97 (unknown lint) in every crate — `unknown_lints` now allowed in the workspace lints
 - [x] CONTRIBUTING linked a missing `CODE_OF_CONDUCT.md` — now links Contributor Covenant 2.1; **maintainers still need to add an enforcement contact**
 - [x] Adoption tooling: `cargo xtask {ci,no-std,msrv,cpu}` (no dependencies), umbrella examples (`quickstart`, `cpu_report`), bug/feature issue templates, Dependabot for cargo and actions
-- [ ] `cargo-msrv` run (the `cargo +1.95 check --workspace --all-targets` check passes)
+- [x] `cargo-msrv` run — `cargo msrv verify --rust-version 1.95 -- cargo check --workspace --all-targets` reports Rust 1.95.0 compatible (cargo-msrv 0.19.3); `cargo msrv find` (lowest passing version) not run, as it installs older toolchains
 
 ## Phase 12 — Review follow-ups and adoption
 
@@ -468,14 +468,14 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [ ] Confirm the `avx512` CI job actually executes tests on a hosted runner (first run after the change); adjust the CPU-flag check if the runner image lacks AVX-512 BW/VL
 
 ### Runtime dispatch and correctness
-- [ ] Move runtime CPU dispatch into `tpt-simd-core` (shared helper, cached result) so every kernel crate with an intrinsics path can select it, not only `tpt-simd-blas` (ADR 0003 follow-up)
+- [ ] Move runtime CPU dispatch into `tpt-simd-core` (shared helper, cached result) so every kernel crate with an intrinsics path can select it, not only `tpt-simd-blas` (ADR 0003 follow-up) — **partly done:** `tpt-simd-core::dispatch` (`Cache`, `x86_avx2_fma()`) added and used by blas; `hash`, `search` and `text` keep calling `is_x86_feature_detected!` directly: they are dependency-free by design, std already caches each query, and their checks differ (PCLMULQDQ/SSE4.1, AVX2 only), so a shared helper would add a dependency for no gain
 - [x] Add `cargo-hack --feature-powerset` to CI to catch feature-combination breakage — `feature-powerset` job in ci.yml runs `cargo hack check --workspace --feature-powerset` (514 combinations locally, all clean with `-D warnings`). The run found dead-code warnings in `tpt-simd-search` (memchr builds) and `tpt-simd-text` (simdutf8 builds); gated those helpers and re-ran the affected crates' tests
 - [x] Add a CI check that `cargo xtask no-std` target list matches the `no-std` job in ci.yml (avoid the two drifting apart) — unit test `no_std_targets_match_ci_workflow` in `xtask/src/main.rs`, runs under `cargo test --workspace`
 - [x] Remove the `scalar-only` and `nightly` no-op features or document them as reserved in one place — kept both (removing is a breaking change); only `nightly` is a no-op (reserved). `scalar-only` is not a no-op: it forces the portable path. Documented in the book's feature table (`docs/book/src/api.md`)
 
 ### Release readiness
 - [ ] Run `cargo-semver-checks` against the crate set before the 0.1.0 publish
-- [ ] Write the semver policy and release checklist (the per-crate CHANGELOGs exist; the policy document does not)
+- [x] Write the semver policy and release checklist — drafted in `docs/release.md` for maintainer review (the per-crate CHANGELOGs exist)
 - [ ] Run `cargo-msrv` and record the result in docs (see the housekeeping item above)
 
 ### Codegen and performance regression
