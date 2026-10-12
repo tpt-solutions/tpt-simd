@@ -22,7 +22,7 @@ tpt-simd-ntt = { path = "../tpt-simd-ntt", version = "0.1.0" }
 tpt-simd-half = { path = "../tpt-simd-half", version = "0.1.0" }
 tpt-simd-pixel = { path = "../tpt-simd-pixel", version = "0.1.0" }
 tpt-simd-audio = { path = "../tpt-simd-audio", version = "0.1.0" }
-glam = "0.30"
+glam = "0.34"
 ultraviolet = "0.10"
 gemm = "0.19"
 matrixmultiply = "0.3"
