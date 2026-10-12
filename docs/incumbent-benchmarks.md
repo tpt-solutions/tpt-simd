@@ -600,3 +600,32 @@ this machine. Only the decode rows (0.64–0.72) are clearly above that.
 
 Against `faster-hex` in the same session, hex decode at 64 B went from about 2.3× to about
 1.8×, and at 4 KB and 256 KB from about 1.6× to about 1.2×.
+
+## Round 7: uncovered crates (window, blend/shift, aligned, fixed)
+
+Four suites added in `bench-vs`: `window_vs`, `blend_shift_vs`, `aligned_vs`, `fixed_vs`. Two
+runs each, same session. Ratio = tpt-simd ÷ incumbent, run 1 / run 2.
+
+| Area | Operation | Size | Ratio (run 1 / run 2) | Status |
+|---|---|---|---|---|
+| window | hamming vs apodize | 1024 | 0.082 / 0.087 | ahead, ~11× |
+| window | hanning vs apodize | 1024 | 0.080 / 0.085 | ahead, ~12× |
+| window | blackman vs apodize | 1024 | 0.169 / 0.145 | ahead, ~6× |
+| blend | `blend_f32` vs wide | 4096 | 0.385 / 0.406 | ahead, ~2.5× |
+| shift | `shift_left_i32` vs wide | 4096 | 1.02 / 1.10 | parity (noise) |
+| fixed | `saturating_mul` 8-lane vs scalar `fixed` | 4096 | 0.168 / 0.158 | ahead, ~6× |
+| aligned | zeroed vs aligned-vec | 64 | 1.03 / 1.07 | parity |
+| aligned | zeroed vs aligned-vec | 4096 | 1.36 / 1.40 | behind |
+| aligned | from_slice vs aligned-vec | 4096 | 1.72 / 1.60 | behind |
+| aligned | zeroed vs aligned-vec | 256 KB | 0.94 / 0.92 | ahead |
+| aligned | from_slice vs aligned-vec | 256 KB | 1.03 / 0.87 | parity |
+
+Notes:
+
+- **Window:** apodize computes in `f64` and yields an iterator, so the window speed includes
+  the wider arithmetic. Both sides agree to 1e-5 for hamming; the bench asserts it before timing.
+- **Blend:** both sides load the lanes from arrays and store the result. `wide`'s `blend` is
+  deprecated in favour of `select`, which the bench uses.
+- **Fixed:** `fixed` has no SIMD. This measures the value of the 8-lane vector type over
+  scalar operations, which is the question the todo asks. It is not a same-kind comparison.
+- **Aligned:** the 4 KB `from_slice` gap is the open item. It is not yet profiled.
