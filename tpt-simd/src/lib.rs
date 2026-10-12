@@ -28,6 +28,8 @@ pub use tpt_simd_fixed as fixed;
 #[doc(inline)]
 pub use tpt_simd_gather as gather;
 #[doc(inline)]
+pub use tpt_simd_hash as hash;
+#[doc(inline)]
 pub use tpt_simd_horizontal as horizontal;
 #[doc(inline)]
 pub use tpt_simd_interpolate as interpolate;
@@ -57,3 +59,10 @@ pub use tpt_simd_shift as shift;
 pub use tpt_simd_sparse as sparse;
 #[doc(inline)]
 pub use tpt_simd_window as window;
+
+#[doc(inline)]
+pub use tpt_simd_search as search;
+#[doc(inline)]
+pub use tpt_simd_sort as sort;
+#[doc(inline)]
+pub use tpt_simd_text as text;

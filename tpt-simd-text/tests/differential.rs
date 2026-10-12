@@ -122,3 +122,133 @@ fn utf16_transcoding_matches_std_both_directions() {
         assert_eq!(&bytes[..m], s.as_bytes());
     }
 }
+
+#[test]
+fn hex_decode_rejects_invalid_byte_at_every_position_without_writing() {
+    // Each length crosses the 16-byte SIMD blocks, and the bad byte is placed in the blocks and
+    // in the scalar tail. Bytes near the digit ranges are the easiest to misclassify.
+    let bad_bytes = [
+        b'g', b'G', b'/', b':', b'`', b'@', b'Z', 0x00, 0x7F, 0x80, 0xFF,
+    ];
+    for n in (2..=70).step_by(2) {
+        for pos in 0..n {
+            for &bad in &bad_bytes {
+                let mut src: Vec<u8> = (0..n).map(|i| b"0aF9bE"[i % 6]).collect();
+                src[pos] = bad;
+                let mut out = vec![0xAAu8; n / 2];
+                assert_eq!(
+                    hex_decode(&src, &mut out),
+                    Err(TextError::InvalidHexDigit),
+                    "n={n} pos={pos} bad={bad:#x}"
+                );
+                assert!(
+                    out.iter().all(|&b| b == 0xAA),
+                    "partial write n={n} pos={pos}"
+                );
+            }
+        }
+    }
+}
+
+fn core_valid(bytes: &[u8]) -> bool {
+    core::str::from_utf8(bytes).is_ok()
+}
+
+#[test]
+fn utf8_validation_matches_core_for_all_two_byte_pairs() {
+    // Each pair sits inside a 96-byte ASCII buffer, at positions around the 32-byte blocks.
+    for a in 0..=255u8 {
+        for b in 0..=255u8 {
+            for pos in [0usize, 1, 30, 31, 32, 33, 62] {
+                let mut buf = vec![b'x'; 96];
+                buf[pos] = a;
+                buf[pos + 1] = b;
+                assert_eq!(
+                    is_valid_utf8(&buf),
+                    core_valid(&buf),
+                    "a={a:#x} b={b:#x} pos={pos}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn utf8_validation_matches_core_for_structured_three_and_four_byte_sequences() {
+    // Boundary bytes of every UTF-8 class: ASCII, stray continuations, all leads, and the
+    // second-byte limits of the overlong, surrogate and too-large ranges.
+    const INTERESTING: [u8; 21] = [
+        0x00, 0x41, 0x7F, 0x80, 0x8F, 0x90, 0x9F, 0xA0, 0xBF, 0xC0, 0xC1, 0xC2, 0xDF, 0xE0, 0xE1,
+        0xED, 0xEF, 0xF0, 0xF4, 0xF5, 0xFF,
+    ];
+    let n = INTERESTING.len();
+    for &pos in &[30usize, 31, 61] {
+        for i in 0..n {
+            for j in 0..n {
+                for k in 0..n {
+                    for l in 0..n {
+                        let seq = [
+                            INTERESTING[i],
+                            INTERESTING[j],
+                            INTERESTING[k],
+                            INTERESTING[l],
+                        ];
+                        let mut buf = vec![b'x'; 96];
+                        buf[pos..pos + 4].copy_from_slice(&seq);
+                        assert_eq!(is_valid_utf8(&buf), core_valid(&buf), "{seq:x?} pos={pos}");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn utf8_validation_matches_core_for_every_prefix_and_corruption() {
+    // Truncation at every length exercises the tail and the pending-lead check at block ends.
+    let text = "héllo wörld 😀 日本語テキスト ✓ ".repeat(8);
+    let bytes = text.as_bytes();
+    for len in 0..=bytes.len() {
+        assert_eq!(
+            is_valid_utf8(&bytes[..len]),
+            core_valid(&bytes[..len]),
+            "prefix {len}"
+        );
+    }
+    // Corrupting any single byte, with a few replacement values.
+    for pos in 0..bytes.len() {
+        for &value in &[0x80u8, 0xBF, 0xC0, 0xE0, 0xF4, 0xFF, b'a'] {
+            let mut bad = bytes.to_vec();
+            bad[pos] = value;
+            assert_eq!(
+                is_valid_utf8(&bad),
+                core_valid(&bad),
+                "pos {pos} value {value:#x}"
+            );
+        }
+    }
+}
+
+#[test]
+fn utf8_validation_matches_core_on_pseudo_random_bytes() {
+    let mut x = 0x2545_F491_4F6C_DD1Du64;
+    let mut next = || {
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        x
+    };
+    for _ in 0..20_000 {
+        let len = 64 + (next() % 300) as usize;
+        // Bias towards the multi-byte ranges so that many inputs are nearly valid.
+        let bytes: Vec<u8> = (0..len)
+            .map(|_| match next() % 4 {
+                0 => (next() % 256) as u8,
+                1 => 0x80 + (next() % 64) as u8,
+                2 => b"\xC2\xE0\xED\xF0\xF4"[(next() % 5) as usize],
+                _ => b'a' + (next() % 26) as u8,
+            })
+            .collect();
+        assert_eq!(is_valid_utf8(&bytes), core_valid(&bytes), "{bytes:x?}");
+    }
+}

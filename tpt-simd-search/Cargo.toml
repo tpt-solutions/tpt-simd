@@ -13,6 +13,9 @@ categories = ["algorithms", "text-processing", "no-std"]
 
 [features]
 default = []
+std = []
+# Detect CPU features once at runtime (x86_64) and select the fastest kernel. Implies `std`.
+runtime-dispatch = ["std"]
 # Delegate byte and substring search to memchr (optional runtime dependency).
 memchr = ["dep:memchr"]
 

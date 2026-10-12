@@ -44,6 +44,9 @@ fn bench(c: &mut Criterion) {
         let mut m = a;
         bn.iter(|| tpt_simd_matrix::mat4x4_transpose_f32(black_box(&mut m)))
     });
+    g.bench_function("tpt_by_value", |bn| {
+        bn.iter(|| tpt_simd_matrix::mat4x4_transposed_f32(black_box(a)))
+    });
     g.bench_function("glam", |bn| bn.iter(|| black_box(ga).transpose()));
     g.bench_function("ultraviolet", |bn| bn.iter(|| black_box(ua).transposed()));
     g.finish();

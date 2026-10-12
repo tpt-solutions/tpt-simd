@@ -158,6 +158,15 @@ pub fn mat8x8_mul_i16(a: [[i16; 8]; 8], b: [[i16; 8]; 8]) -> [[i16; 8]; 8] {
     out
 }
 
+/// Returns the transpose of a 4x4 `f32` matrix. Use this form when the caller has a value;
+/// [`mat4x4_transpose_f32`] avoids the copy when the matrix is already in place.
+#[must_use]
+#[inline(always)]
+pub fn mat4x4_transposed_f32(mut m: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
+    mat4x4_transpose_f32(&mut m);
+    m
+}
+
 /// In-place 4x4 `f32` transpose.
 pub fn mat4x4_transpose_f32(m: &mut [[f32; 4]; 4]) {
     tpt_simd_permute::transpose_4x4_f32(m);
@@ -177,21 +186,15 @@ pub fn mat8x8_transpose_i16(m: &mut [[i16; 8]; 8]) {
 /// assert_eq!(inv, [[0.5, 0.0, 0.0], [0.0, 0.25, 0.0], [0.0, 0.0, 0.125]]);
 /// assert!(tpt_simd_matrix::mat3x3_inverse_f32([[1.0; 3]; 3]).is_none());
 /// ```
+#[inline(always)]
 pub fn mat3x3_inverse_f32(m: [[f32; 3]; 3]) -> Option<[[f32; 3]; 3]> {
     let c00 = m[1][1] * m[2][2] - m[1][2] * m[2][1];
     let c01 = m[1][2] * m[2][0] - m[1][0] * m[2][2];
     let c02 = m[1][0] * m[2][1] - m[1][1] * m[2][0];
     let det = m[0][0] * c00 + m[0][1] * c01 + m[0][2] * c02;
-    let mut scale = 0.0f32;
-    for r in &m {
-        for &v in r {
-            let a = if v < 0.0 { -v } else { v };
-            if a > scale {
-                scale = a;
-            }
-        }
-    }
-    let abs_det = if det < 0.0 { -det } else { det };
+    // Largest magnitude in the matrix, branch-free.
+    let scale = m.iter().flatten().fold(0.0f32, |s, &v| s.max(v.abs()));
+    let abs_det = det.abs();
     if !det.is_finite() || abs_det <= SINGULAR_EPSILON * scale * scale * scale {
         return None;
     }

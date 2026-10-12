@@ -12,12 +12,12 @@ keywords = ["simd", "dsp", "codec", "fft", "no_std"]
 categories = ["algorithms", "no-std", "multimedia", "mathematics"]
 
 [features]
-default = []
+default = ["runtime-dispatch"]
 std = ["tpt-simd-core/std"]
 nightly = ["tpt-simd-core/nightly"]
 scalar-only = ["tpt-simd-core/scalar-only"]
 # Detect AVX2+FMA at runtime in kernel crates that have intrinsics paths (ADR 0003).
-runtime-dispatch = ["std", "tpt-simd-blas/runtime-dispatch"]
+runtime-dispatch = ["std", "tpt-simd-blas/runtime-dispatch", "tpt-simd-hash/runtime-dispatch", "tpt-simd-text/runtime-dispatch", "tpt-simd-search/runtime-dispatch"]
 
 [dependencies]
 tpt-simd-core.workspace = true
@@ -46,6 +46,10 @@ tpt-simd-reduce = { path = "../tpt-simd-reduce", version = "0.1.0" }
 tpt-simd-math = { path = "../tpt-simd-math", version = "0.1.0" }
 tpt-simd-rng = { path = "../tpt-simd-rng", version = "0.1.0" }
 tpt-simd-sparse = { path = "../tpt-simd-sparse", version = "0.1.0" }
+tpt-simd-hash = { path = "../tpt-simd-hash", version = "0.1.0" }
+tpt-simd-text = { path = "../tpt-simd-text", version = "0.1.0" }
+tpt-simd-search = { path = "../tpt-simd-search", version = "0.1.0" }
+tpt-simd-sort = { path = "../tpt-simd-sort", version = "0.1.0" }
 
 [lints]
 workspace = true

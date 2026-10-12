@@ -1522,6 +1522,7 @@ dependencies = [
  "tpt-simd-dot",
  "tpt-simd-fixed",
  "tpt-simd-gather",
+ "tpt-simd-hash",
  "tpt-simd-horizontal",
  "tpt-simd-interpolate",
  "tpt-simd-math",
@@ -1533,9 +1534,12 @@ dependencies = [
  "tpt-simd-rounding",
  "tpt-simd-saturate",
  "tpt-simd-scatter",
+ "tpt-simd-search",
  "tpt-simd-select",
  "tpt-simd-shift",
+ "tpt-simd-sort",
  "tpt-simd-sparse",
+ "tpt-simd-text",
  "tpt-simd-window",
 ]
 

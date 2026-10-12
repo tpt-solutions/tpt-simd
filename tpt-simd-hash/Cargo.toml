@@ -11,6 +11,13 @@ readme = "README.md"
 keywords = ["simd", "crc32", "adler32", "checksum", "hash"]
 categories = ["algorithms", "no-std"]
 
+[features]
+std = []
+# Detect PCLMULQDQ + SSE4.1 at runtime (x86_64) and use the folding CRC-32
+# kernel. Without it the portable slicing-by-8 kernel is used, unless the build
+# already enables the features with `-C target-cpu`.
+runtime-dispatch = ["std"]
+
 [dependencies]
 
 [dev-dependencies]

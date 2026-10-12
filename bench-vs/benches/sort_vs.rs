@@ -34,6 +34,24 @@ fn bench(c: &mut Criterion) {
         });
         g.finish();
 
+        let mut g = c.benchmark_group(format!("sort_u32_radix/{n}"));
+        let mut scratch = vec![0u32; n];
+        g.bench_function(BenchmarkId::new("tpt_radix", n), |b| {
+            b.iter_batched(
+                || v.clone(),
+                |mut w| tpt_simd_sort::sort_u32(black_box(&mut w), &mut scratch),
+                BatchSize::LargeInput,
+            )
+        });
+        g.bench_function(BenchmarkId::new("std", n), |b| {
+            b.iter_batched(
+                || v.clone(),
+                |mut w| black_box(&mut w).sort_unstable(),
+                BatchSize::LargeInput,
+            )
+        });
+        g.finish();
+
         let k = n / 10;
         let mut g = c.benchmark_group(format!("select_nth/{n}"));
         g.bench_function(BenchmarkId::new("tpt", n), |b| {

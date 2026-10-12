@@ -13,6 +13,9 @@ categories = ["encoding", "no-std"]
 
 [features]
 default = []
+std = []
+# Detect CPU features once at runtime (x86_64) and select the fastest kernel. Implies `std`.
+runtime-dispatch = ["std"]
 # Use the simdutf8 SIMD validator for is_valid_utf8 (optional runtime dependency).
 simdutf8 = ["dep:simdutf8"]
 

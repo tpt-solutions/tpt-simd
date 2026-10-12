@@ -6,7 +6,9 @@ Umbrella crate re-exporting every tpt-simd crate: portable SIMD vectors and DSP/
 
 `tpt-simd` is a single dependency that gives access to the whole workspace. It is `#![no_std]` and `#![forbid(unsafe_code)]` itself. The core types (`Simd`, `SimdMask`, the `F32x8`-style aliases, `ComplexSimd`, `detect`, `width`) are re-exported at the crate root from `tpt-simd-core`; each other crate is available as a module.
 
-Scalar versus SIMD: the vector backend is stable, array-backed lane loops that LLVM lowers to SSE/AVX/AVX-512/NEON when the build allows. Some kernel crates add `cfg(target_feature)`-gated x86 intrinsics paths, with a portable scalar reference used for tests and as the fallback. Dispatch is compile-time by default. An opt-in `runtime-dispatch` feature adds one-time AVX2+FMA detection in the kernel crates that support it (currently `tpt-simd-blas`); see `docs/adr/0001-backend-and-dispatch.md` and `docs/adr/0003-runtime-dispatch-and-float-tolerance.md`.
+Scalar versus SIMD: the vector backend is stable, array-backed lane loops that LLVM lowers to SSE/AVX/AVX-512/NEON when the build allows. Some kernel crates add `cfg(target_feature)`-gated x86 intrinsics paths, with a portable scalar reference used for tests and as the fallback.
+
+Dispatch: the `tpt-simd` umbrella enables `runtime-dispatch` by default. That feature detects CPU features once at runtime (x86_64) and selects the fastest kernel, so a plain build gets the same kernels as an `-C target-cpu=native` build without any flags. It requires `std`. To keep `no_std` (with the compile-time kernels only), depend on `tpt-simd` with `default-features = false`. The individual crates default to no runtime dispatch; enable their `runtime-dispatch` feature to get it. See `docs/adr/0001-backend-and-dispatch.md` and `docs/adr/0003-runtime-dispatch-and-float-tolerance.md`.
 
 ## Installation
 

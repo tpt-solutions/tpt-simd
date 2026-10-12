@@ -8,10 +8,10 @@ publish = false
 
 [dev-dependencies]
 tpt-simd-matrix = { path = "../tpt-simd-matrix", version = "0.1.0" }
-tpt-simd-blas = { path = "../tpt-simd-blas", version = "0.1.0" }
-tpt-simd-hash = { path = "../tpt-simd-hash", version = "0.1.0" }
-tpt-simd-text = { path = "../tpt-simd-text", version = "0.1.0" }
-tpt-simd-search = { path = "../tpt-simd-search", version = "0.1.0" }
+tpt-simd-blas = { path = "../tpt-simd-blas", version = "0.1.0", features = ["runtime-dispatch"] }
+tpt-simd-hash = { path = "../tpt-simd-hash", version = "0.1.0", features = ["runtime-dispatch"] }
+tpt-simd-text = { path = "../tpt-simd-text", version = "0.1.0", features = ["runtime-dispatch"] }
+tpt-simd-search = { path = "../tpt-simd-search", version = "0.1.0", features = ["runtime-dispatch"] }
 tpt-simd-sort = { path = "../tpt-simd-sort", version = "0.1.0" }
 tpt-simd-distance = { path = "../tpt-simd-distance", version = "0.1.0" }
 tpt-simd-bits = { path = "../tpt-simd-bits", version = "0.1.0" }

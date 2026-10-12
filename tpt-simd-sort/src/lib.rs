@@ -116,6 +116,10 @@ fn depth_limit(n: usize) -> u32 {
 }
 
 fn introsort<T: Copy, F: Fn(&T, &T) -> bool>(mut v: &mut [T], less: &F, mut depth: u32) {
+    // `pred` is the pivot of the partition that produced `v` as its upper side, if any.
+    // Elements of `v` are all at least `pred`, so if the next pivot is not greater than `pred`
+    // the input has many equal keys, and those are split off first (as in pdqsort).
+    let mut pred: Option<T> = None;
     loop {
         if v.len() <= INSERTION_LIMIT {
             insertion_sort(v, less);
@@ -126,18 +130,40 @@ fn introsort<T: Copy, F: Fn(&T, &T) -> bool>(mut v: &mut [T], less: &F, mut dept
             return;
         }
         depth -= 1;
-        let (lt, gt) = three_way_partition(v, less);
-        let (left, rest) = v.split_at_mut(lt);
-        let right = &mut rest[gt - lt..];
+        let pivot = choose_pivot(v, less);
+        if let Some(p) = pred.filter(|p| !less(p, &pivot)) {
+            let equal = partition_branchless(v, |x| !less(&p, x));
+            v = &mut v[equal..];
+            pred = None;
+            continue;
+        }
+        let lt = partition_branchless(v, |x| less(x, &pivot));
+        let (left, right) = v.split_at_mut(lt);
         // Recurse into the smaller side, loop on the larger one.
         if left.len() < right.len() {
             introsort(left, less, depth);
             v = right;
+            pred = Some(pivot);
         } else {
             introsort(right, less, depth);
             v = left;
+            pred = None;
         }
     }
+}
+
+/// Median of three samples, or the ninther (median of three medians of three) for long slices.
+fn choose_pivot<T: Copy, F: Fn(&T, &T) -> bool>(v: &[T], less: &F) -> T {
+    let n = v.len();
+    let mid = n / 2;
+    if n < 128 {
+        return median_of_three(v[0], v[mid], v[n - 1], less);
+    }
+    let step = n / 8;
+    let a = median_of_three(v[0], v[step], v[2 * step], less);
+    let b = median_of_three(v[mid - step], v[mid], v[mid + step], less);
+    let c = median_of_three(v[n - 1 - 2 * step], v[n - 1 - step], v[n - 1], less);
+    median_of_three(a, b, c, less)
 }
 
 fn select<T: Copy, F: Fn(&T, &T) -> bool>(mut v: &mut [T], mut k: usize, less: &F, mut depth: u32) {
@@ -170,22 +196,24 @@ fn three_way_partition<T: Copy, F: Fn(&T, &T) -> bool>(v: &mut [T], less: &F) ->
     let n = v.len();
     let mid = n / 2;
     let pivot = median_of_three(v[0], v[mid], v[n - 1], less);
-    let mut lt = 0;
-    let mut i = 0;
-    let mut gt = n;
-    while i < gt {
-        if less(&v[i], &pivot) {
-            v.swap(lt, i);
-            lt += 1;
-            i += 1;
-        } else if less(&pivot, &v[i]) {
-            gt -= 1;
-            v.swap(i, gt);
-        } else {
-            i += 1;
-        }
+    // Two branch-free passes: first move the elements below the pivot to the front, then move
+    // the elements equal to the pivot (not above it) to the front of the rest.
+    let lt = partition_branchless(v, |x| less(x, &pivot));
+    let eq = partition_branchless(&mut v[lt..], |x| !less(&pivot, x));
+    (lt, lt + eq)
+}
+
+/// Lomuto partition with no data-dependent branch: every element is swapped into place
+/// unconditionally, so random inputs do not pay a misprediction per element. Returns the
+/// number of elements for which `pred` holds, which are moved to the front.
+fn partition_branchless<T: Copy, P: Fn(&T) -> bool>(v: &mut [T], pred: P) -> usize {
+    let mut lo = 0;
+    for i in 0..v.len() {
+        let hit = pred(&v[i]);
+        v.swap(lo, i);
+        lo += usize::from(hit);
     }
-    (lt, gt)
+    lo
 }
 
 fn median_of_three<T: Copy, F: Fn(&T, &T) -> bool>(a: T, b: T, c: T, less: &F) -> T {
@@ -243,6 +271,78 @@ fn sift_down<T: Copy, F: Fn(&T, &T) -> bool>(v: &mut [T], mut root: usize, end: 
         }
         v.swap(root, child);
         root = child;
+    }
+}
+
+/// Sorts `v` in ascending order with an LSD radix sort: one histogram pass over all four
+/// bytes, then up to four stable scatter passes, skipping any byte that is constant.
+///
+/// `scratch` is caller-provided working space (the crate does not allocate). It must be at
+/// least `v.len()` long, and its contents are unspecified afterwards.
+///
+/// # Panics
+///
+/// Panics if `scratch.len() < v.len()`.
+///
+/// # Examples
+///
+/// ```
+/// let mut v = [5u32, 1, 4_000_000_000, 3, 1];
+/// let mut scratch = [0u32; 5];
+/// tpt_simd_sort::sort_u32(&mut v, &mut scratch);
+/// assert_eq!(v, [1, 1, 3, 5, 4_000_000_000]);
+/// ```
+pub fn sort_u32(v: &mut [u32], scratch: &mut [u32]) {
+    let n = v.len();
+    assert!(
+        scratch.len() >= n,
+        "sort_u32: scratch length {} is shorter than input length {n}",
+        scratch.len()
+    );
+    if n < 2 {
+        return;
+    }
+    let scratch = &mut scratch[..n];
+
+    let mut counts = [[0usize; 256]; 4];
+    for &x in v.iter() {
+        for (digit, column) in counts.iter_mut().enumerate() {
+            column[((x >> (8 * digit)) & 0xFF) as usize] += 1;
+        }
+    }
+
+    let mut in_v = true;
+    for (digit, column) in counts.iter().enumerate() {
+        // A digit that is the same for every element does not change the order.
+        if column.contains(&n) {
+            continue;
+        }
+        let shift = 8 * digit;
+        let mut offsets = [0usize; 256];
+        let mut sum = 0;
+        for (offset, &count) in offsets.iter_mut().zip(column.iter()) {
+            *offset = sum;
+            sum += count;
+        }
+        if in_v {
+            radix_scatter(v, scratch, shift, &mut offsets);
+        } else {
+            radix_scatter(scratch, v, shift, &mut offsets);
+        }
+        in_v = !in_v;
+    }
+    if !in_v {
+        v.copy_from_slice(scratch);
+    }
+}
+
+/// One stable counting-sort pass on the byte at `shift`: writes `src` into `dst` in order of
+/// that byte, using `offsets` as the running write position of each bucket.
+fn radix_scatter(src: &[u32], dst: &mut [u32], shift: usize, offsets: &mut [usize; 256]) {
+    for &x in src {
+        let bucket = ((x >> shift) & 0xFF) as usize;
+        dst[offsets[bucket]] = x;
+        offsets[bucket] += 1;
     }
 }
 
@@ -358,5 +458,55 @@ mod tests {
     #[should_panic(expected = "argsort: output length 2 does not match key length 3")]
     fn argsort_length_mismatch_panics() {
         argsort(&[1u32, 2, 3], &mut [0usize; 2]);
+    }
+}
+
+#[cfg(test)]
+mod radix_tests {
+    extern crate std;
+    use super::sort_u32;
+    use std::vec::Vec;
+
+    fn check(input: &[u32]) {
+        let mut want = input.to_vec();
+        want.sort_unstable();
+        let mut got = input.to_vec();
+        let mut scratch = std::vec![0u32; input.len()];
+        sort_u32(&mut got, &mut scratch);
+        assert_eq!(got, want, "len {}", input.len());
+    }
+
+    #[test]
+    fn radix_matches_std_over_sizes_and_shapes() {
+        let mut x = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = || {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            x
+        };
+        for n in (0..70).chain([127, 128, 129, 1000, 4096, 65_537]) {
+            let random: Vec<u32> = (0..n).map(|_| next() as u32).collect();
+            check(&random);
+            // Few distinct values, so most digits are constant or repeated.
+            let few: Vec<u32> = (0..n).map(|_| (next() % 5) as u32 * 0x0101_0101).collect();
+            check(&few);
+            // Values that differ only in the top byte: three digits are constant.
+            let top: Vec<u32> = (0..n).map(|_| (next() as u32) & 0xFF00_0000).collect();
+            check(&top);
+        }
+        check(&[]);
+        check(&[u32::MAX, 0, u32::MAX, 0]);
+        let sorted: Vec<u32> = (0..5000).collect();
+        check(&sorted);
+        let reversed: Vec<u32> = (0..5000).rev().collect();
+        check(&reversed);
+        check(&std::vec![7u32; 5000]);
+    }
+
+    #[test]
+    #[should_panic(expected = "sort_u32: scratch length 2 is shorter than input length 3")]
+    fn short_scratch_panics() {
+        sort_u32(&mut [1u32, 2, 3], &mut [0u32; 2]);
     }
 }
