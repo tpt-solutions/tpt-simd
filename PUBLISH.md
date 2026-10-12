@@ -9,10 +9,12 @@ Written for: the maintainer doing the release.
 
 | Check | Result |
 | --- | --- |
-| `cargo check --workspace --all-targets` | Pass |
-| `cargo test --workspace --features std` | Pass: 890 passed, 0 failed, 2 ignored |
-| `cargo publish --workspace --dry-run` | Pass: 41 of 41 crates packaged and verified, no errors. Run with `--allow-dirty`, see below. |
-| crates.io name availability (41 names) | All free (HTTP 404 from the crates.io API) |
+| `cargo check --workspace --all-targets` | Pass (last recorded run) |
+| `cargo test --workspace --features std` | Pass: 890 passed, 0 failed, 2 ignored (last recorded run, not re-run for the 0857dce dry run) |
+| `cargo publish --workspace --dry-run` | Pass at `0857dce`, without `--allow-dirty`: 41 of 41 crates packaged and verified, no errors or warnings |
+| crates.io name availability (41 names) | All free (HTTP 404 from the crates.io API, re-checked at `0857dce`) |
+| Working tree | Clean at `0857dce` |
+| Release tag | `v0.1.0` does not exist yet |
 | Per-crate docs | Every publishable crate has a README, a CHANGELOG, keywords, categories and an `examples/` program |
 
 Publishable crates: 41 (the `tpt-simd` umbrella plus 40 focused crates).
@@ -28,15 +30,11 @@ published manifests. No normal (non-dev) dependency on `testutil` exists.
 
 ## Before you publish
 
-- [ ] Working tree is clean and committed. It is not yet: about 100 paths are modified or untracked,
-      including this release's README, CHANGELOG and example files. Two modified files are not part of
-      this release work and should be reviewed before committing: `.github/workflows/bench.yml` and
-      `tpt-simd-text/src/lib.rs` (`#[inline]` attributes added).
-- [ ] The dry run above was run with `--allow-dirty`. Re-run it without that flag from the commit you
-      will publish.
+- [x] Working tree is clean and committed (`0857dce`).
+- [x] Dry run passes without `--allow-dirty` from `0857dce`.
 - [ ] Decide the version. Everything is `0.1.0` via `[workspace.package]`.
 - [ ] `cargo login` with a crates.io API token (token scope: `publish-new` and `publish-update`).
-- [ ] Re-run the dry run from the commit you will publish:
+- [ ] If any commit lands before publishing, re-run the dry run from the new commit:
       `cargo publish --workspace --dry-run`
 - [ ] Optional but recommended: add per-crate `LICENSE-MIT` and `LICENSE-APACHE` files. The READMEs link to the
       root license files (`../LICENSE-APACHE`), and those are not in the `.crate` tarballs, so the tarballs
