@@ -98,7 +98,7 @@ pub fn is_valid_utf8(bytes: &[u8]) -> bool {
 ///
 /// Whole 32-byte blocks go through the vector check. The tail starts at a character
 /// boundary, so `core::str::from_utf8` can validate it on its own.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(feature = "simdutf8")))]
 #[allow(unsafe_code)]
 mod utf8_avx2 {
     use core::arch::x86_64::{

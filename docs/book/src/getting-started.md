@@ -47,6 +47,34 @@ to the compiler, not by a runtime probe inside the library:
 See [ADR 0001](crate-overview.md#backend-dispatch) for the full decision
 record.
 
+### Check which path your machine takes
+
+`cargo xtask cpu` (run from the repository) prints which ISA extensions this
+build was compiled with and which the CPU reports. The output below is from a
+Windows x86_64 machine built with plain `cargo xtask cpu`, so the SSE2 path is
+compiled and the AVX2 path is available but not used:
+
+```text
+tpt-simd CPU report
+  native vector width: 128 bits (4 x f32 lanes)
+  x86 / x86_64:
+  sse2     compiled + available
+  sse4.1   available, not compiled (portable path)
+  avx      available, not compiled (portable path)
+  avx2     available, not compiled (portable path)
+  fma      available, not compiled (portable path)
+  avx512f  -
+  aarch64:
+  neon     -
+  sve      -
+  riscv:
+  rvv      -
+```
+
+Rebuild with `RUSTFLAGS="-C target-cpu=native"` and the same machine reports
+a 256-bit native width, with `sse4.1`, `avx`, `avx2` and `fma` moving to
+`compiled + available`.
+
 ## Try the examples
 
 The crate READMEs and the [cookbook](cookbook/index.md) contain runnable

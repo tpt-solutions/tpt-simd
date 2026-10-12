@@ -413,7 +413,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] LAPACK-style `getrf`/`getrs`/`trsm`/`potrf`/`potrs` (f32/f64, blocked on gemm) — LU only 1.2–2x vs naive reference (panel factor/row swaps dominate), Cholesky 2–14.5x; see docs/benchmarks.md
 - [ ] Tests vs scalar reference (tails, NaN/inf, non-multiple sizes), proptest, criterion bench, `cargo-show-asm` — tests and criterion benches exist (incl. lapack); show-asm not done
 - [x] Target: gemm >= 3x scalar f32 on AVX2 — 5.5–32x vs naive strided loop (28–43 GFLOP/s), see docs/benchmarks.md
-- [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd` — **re-wired in this pass** (tpt-math working tree, uncommitted): `tpt-math-linalg-dense` features `simd` / `simd-runtime` route f32/f64 `DMatrix * DMatrix`, `DMatrix * DVector` (move-based, no copy, needs `T: 'static`) and f64 `solve`/`inverse` (getrf/getrs) to tpt-simd-blas. NOT wired: `dot`/`norm` (take `&self`; a safe route needs a copy, and tpt-math forbids `unsafe`); no Cholesky/QR in dense; `tpt-math-linalg-complex` (its `Vec<Complex<T>>` needs an O(n²) copy into planes, and blas has no complex getrf/potrf/trsm). **Correction:** the previous entry claimed this wiring was already done, but tpt-math at the time had no tpt-simd dependency and no `simd` feature anywhere (clean tree, no stash/branch). The previous `tpt-math-stats`/`tpt-math-linalg-sparse` "wired" claims (lines below) are not present in the repo either; re-verify before relying on them.
+- [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd` — **wired and verified** (tpt-math commit `91e0aaf`; dense tests pass with `simd` and `simd-runtime`, 20 unit tests + doctest each): `tpt-math-linalg-dense` features `simd` / `simd-runtime` route f32/f64 `DMatrix * DMatrix`, `DMatrix * DVector` (move-based, no copy, needs `T: 'static`) and f64 `solve`/`inverse` (getrf/getrs) to tpt-simd-blas. NOT wired: `dot`/`norm` (take `&self`; a safe route needs a copy, and tpt-math forbids `unsafe`); no Cholesky/QR in dense; `tpt-math-linalg-complex` (its `Vec<Complex<T>>` needs an O(n²) copy into planes, and blas has no complex getrf/potrf/trsm). **Correction:** the previous entry claimed this wiring was already done, but tpt-math at the time had no tpt-simd dependency and no `simd` feature anywhere (clean tree, no stash/branch). The previous `tpt-math-stats`/`tpt-math-linalg-sparse` "wired" claims (lines below) are not present in the repo either; re-verify before relying on them.
 
 ### tpt-simd-math
 - [x] Vector `exp`, `ln`, `sin`, `cos`, `tanh`, `erf` (polynomial approximations, documented max ULP error) — f32 only; max ULP 0.8–3.4 (docs in crate)
@@ -471,7 +471,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [ ] Move runtime CPU dispatch into `tpt-simd-core` (shared helper, cached result) so every kernel crate with an intrinsics path can select it, not only `tpt-simd-blas` (ADR 0003 follow-up)
 - [ ] Add `cargo-hack --feature-powerset` (over `std`, `scalar-only`, `nightly`, `runtime-dispatch`) to CI to catch feature-combination breakage
 - [x] Add a CI check that `cargo xtask no-std` target list matches the `no-std` job in ci.yml (avoid the two drifting apart) — unit test `no_std_targets_match_ci_workflow` in `xtask/src/main.rs`, runs under `cargo test --workspace`
-- [ ] Remove the `scalar-only` and `nightly` no-op features or document them as reserved in one place (currently listed as features that do nothing)
+- [x] Remove the `scalar-only` and `nightly` no-op features or document them as reserved in one place — kept both (removing is a breaking change); only `nightly` is a no-op (reserved). `scalar-only` is not a no-op: it forces the portable path. Documented in the book's feature table (`docs/book/src/api.md`)
 
 ### Release readiness
 - [ ] Run `cargo-semver-checks` against the crate set before the 0.1.0 publish
@@ -483,10 +483,10 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [ ] Publish criterion baseline comparisons from `bench.yml` on `master` pushes and keep the history under `docs/`
 
 ### Adoption
-- [ ] Add a scalar-to-tpt-simd porting table to the mdBook migration section (the migration pages exist; the table does not)
+- [x] Add a scalar-to-tpt-simd porting table to the mdBook migration section (`docs/book/src/migration/scalar-code.md`)
 - [ ] Add a `cargo generate` (or copyable) starter template for a codec or DSP crate that depends on tpt-simd with the recommended feature set
 - [x] Add a "which crate do I need?" decision table to the README, mapping common tasks (FIR, FFT, dot, matmul, RNG) to crates — also added the Phase 11 crates to the crate table and corrected the crate count (40 published + testutil)
-- [ ] Show `cargo xtask cpu` output in the getting-started book page so users can see which path their machine takes
+- [x] Show `cargo xtask cpu` output in the getting-started book page so users can see which path their machine takes (output checked against a `-C target-cpu=native` rebuild)
 
 ---
 

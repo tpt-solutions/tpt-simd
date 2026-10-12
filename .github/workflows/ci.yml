@@ -67,6 +67,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --features std,scalar-only
 
+  feature-powerset:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-hack
+      # Every combination of each crate's features (std, alloc, scalar-only,
+      # nightly, runtime-dispatch, ...) must compile. Lib targets only.
+      - run: cargo hack check --workspace --exclude xtask --exclude tpt-simd-testutil --feature-powerset --no-dev-deps
+        env:
+          RUSTFLAGS: -D warnings
+
   no-std:
     runs-on: ubuntu-latest
     steps:

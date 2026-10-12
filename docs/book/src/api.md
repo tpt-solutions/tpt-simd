@@ -70,13 +70,13 @@ per-crate policies that apply across the workspace.
 | Crate | Public API |
 | --- | --- |
 | `tpt-simd-matrix` | `mat4x4_mul_f32`, `mat8x8_mul_i16`, `mat4x4_transpose_f32`, `mat8x8_transpose_i16`, `mat3x3_inverse_f32` |
-| `tpt-simd-blas` | `gemm_f32`, `gemm_f64`, `gemv_f32`, `gemv_f64`, `syrk_f32`, `syrk_f64`, `omatmul_f32` |
-| `tpt-simd-sparse` | `spmv_csr_f32`, `cg_update` |
+| `tpt-simd-blas` | `gemm_f32`, `gemm_f64`, `gemv_f32`, `gemv_f64`, `dot_f32`, `dot_f64`, `getrf_f64`, `potrf_f64` |
+| `tpt-simd-sparse` | `spmv_csr`, `cg_update` |
 
 ## Feature flags
 
 | Crate | Features |
 | --- | --- |
-| all | `std`, `alloc`, `nightly`, `scalar-only`, `runtime-dispatch` (kernel crates only) |
+| all | `std`, `alloc`, `scalar-only` (forces the portable path), `runtime-dispatch` (kernel crates only), `nightly` (reserved, no-op: `core::simd` backend not yet implemented) |
 
 See each crate's README for the full feature table.

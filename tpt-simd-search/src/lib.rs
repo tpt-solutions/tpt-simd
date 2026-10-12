@@ -382,6 +382,7 @@ fn prefiltered_find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 /// Maximal suffix of `arr` under the normal order (or the reversed order when
 /// `reversed`), returned as `(start, period)`. Helper for [`critical_factorisation`].
+#[cfg(not(feature = "memchr"))]
 fn maximal_suffix(arr: &[u8], reversed: bool) -> (usize, usize) {
     let (mut left, mut right, mut offset, mut period) = (0usize, 1usize, 0usize, 1usize);
     while let (Some(&a), Some(&b)) = (arr.get(right + offset), arr.get(left + offset)) {
@@ -412,6 +413,7 @@ fn maximal_suffix(arr: &[u8], reversed: bool) -> (usize, usize) {
 /// Returns `(crit, period, long_period)`. When `long_period` is false the
 /// needle is periodic with `period` and the searcher keeps a memory of matched
 /// bytes between windows; otherwise the shift is `max(crit, m - crit) + 1`.
+#[cfg(not(feature = "memchr"))]
 fn critical_factorisation(needle: &[u8]) -> (usize, usize, bool) {
     let (crit_f, period_f) = maximal_suffix(needle, false);
     let (crit_r, period_r) = maximal_suffix(needle, true);
@@ -429,6 +431,7 @@ fn critical_factorisation(needle: &[u8]) -> (usize, usize, bool) {
 }
 
 /// Two-Way substring search: linear in the haystack length for any needle.
+#[cfg(not(feature = "memchr"))]
 fn two_way_find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     let m = needle.len();
     if m == 0 {
