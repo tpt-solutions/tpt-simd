@@ -13,7 +13,7 @@ horizontal reductions, transposes, saturating arithmetic and more.
 
 ## Goals
 
-- 39 focused crates plus a `tpt-simd` umbrella (and the unpublished `testutil`), each solving one common SIMD problem
+- 40 focused crates plus a `tpt-simd` umbrella (and the unpublished `testutil`), each solving one common SIMD problem
 - `no_std` + `alloc` (`std` optional)
 - Targets: x86_64 (SSE2/AVX2, AVX-512 where a kernel has a path), aarch64 (via LLVM lowering of the portable backend), and a portable fallback everywhere else
 - Stable backend via `tpt-simd-vector`; the `nightly` feature is reserved for a future `core::simd` backend and is currently a no-op

@@ -83,6 +83,10 @@ No benchmarks are included in this crate.
 
 Depends on `tpt-simd-core` and `tpt-simd-permute` (transposes). Siblings: `tpt-simd-blas` (general matrix routines), `tpt-simd-mul`. Umbrella: `tpt-simd`.
 
+## Example
+
+Runnable example: [examples/matrix.rs](examples/matrix.rs). Run it with `cargo run -p tpt-simd-matrix --example matrix`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

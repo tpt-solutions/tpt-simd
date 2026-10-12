@@ -118,6 +118,10 @@ See also [docs/benchmarks.md](../docs/benchmarks.md).
 - [`tpt-simd-complex`](../tpt-simd-complex): fused complex helpers and an FMA-rounded `fft_butterfly`.
 - [`tpt-simd-saturate`](../tpt-simd-saturate), [`tpt-simd-fixed`](../tpt-simd-fixed): sibling crates for saturating and fixed-point arithmetic.
 
+## Example
+
+Runnable example: [examples/butterfly.rs](examples/butterfly.rs). Run it with `cargo run -p tpt-simd-butterfly --example butterfly`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

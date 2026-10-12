@@ -114,6 +114,10 @@ Benchmarks live in `benches/compare.rs`; run `cargo bench -p tpt-simd-compare`, 
 - `tpt-simd-blend`: consumes masks to select between vectors, and offers fused `blend_gt_*` helpers.
 - `tpt-simd`: umbrella crate re-exporting the workspace.
 
+## Example
+
+Runnable example: [examples/compare.rs](examples/compare.rs). Run it with `cargo run -p tpt-simd-compare --example compare`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

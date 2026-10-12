@@ -92,6 +92,10 @@ Benchmarks live in `benches/rounding.rs`; run `cargo bench -p tpt-simd-rounding`
 - `tpt-simd-shift`: `shift_with_rounding_i32` for fixed-point descaling.
 - `tpt-simd`: umbrella crate re-exporting the workspace.
 
+## Example
+
+Runnable example: [examples/rounding.rs](examples/rounding.rs). Run it with `cargo run -p tpt-simd-rounding --example rounding`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

@@ -95,6 +95,10 @@ Benchmarks live in `benches/gather.rs`; run `cargo bench -p tpt-simd-gather`, pr
 - `tpt-simd-select`: uses `gather_checked_i32` / `try_gather_i32` for slice selection by index.
 - `tpt-simd`: umbrella crate re-exporting the workspace.
 
+## Example
+
+Runnable example: [examples/gather.rs](examples/gather.rs). Run it with `cargo run -p tpt-simd-gather --example gather`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

@@ -81,6 +81,10 @@ This crate has no benchmarks of its own. For the underlying operations see `carg
 - `tpt-simd-permute`: general lane permutation (`permute_f32`, `permute_i32`, `permute`).
 - `tpt-simd`: umbrella crate re-exporting the workspace.
 
+## Example
+
+Runnable example: [examples/select.rs](examples/select.rs). Run it with `cargo run -p tpt-simd-select --example select`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

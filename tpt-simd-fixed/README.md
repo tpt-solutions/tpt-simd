@@ -105,6 +105,10 @@ Benchmarks against manual scalar fixed-point loops: `cargo bench -p tpt-simd-fix
 
 Depends on `tpt-simd-core`. Siblings: `tpt-simd-mul`, `tpt-simd-saturate`. Umbrella: `tpt-simd`.
 
+## Example
+
+Runnable example: [examples/fixed.rs](examples/fixed.rs). Run it with `cargo run -p tpt-simd-fixed --example fixed`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

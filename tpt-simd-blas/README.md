@@ -142,6 +142,10 @@ Benchmarks live in `benches/blas.rs` (gemm, gemv and dot against the naive `refe
 - [`tpt-simd-reduce`](../tpt-simd-reduce), [`tpt-simd-dot`](../tpt-simd-dot): slice reductions and dot products with different accumulation contracts.
 - [`tpt-simd-matrix`](../tpt-simd-matrix): small fixed-size matrix operations.
 
+## Example
+
+Runnable example: [examples/blas.rs](examples/blas.rs). Run it with `cargo run -p tpt-simd-blas --example blas`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

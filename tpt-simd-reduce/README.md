@@ -82,6 +82,10 @@ Benchmarks live in `benches/reduce.rs`; run them with `cargo bench -p tpt-simd-r
 - [`tpt-simd-horizontal`](../tpt-simd-horizontal): the halving-tree lane reduction used by every kernel.
 - [`tpt-simd-blas`](../tpt-simd-blas), [`tpt-simd-dot`](../tpt-simd-dot): related numeric kernels (dot products, norms).
 
+## Example
+
+Runnable example: [examples/reduce.rs](examples/reduce.rs). Run it with `cargo run -p tpt-simd-reduce --example reduce`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

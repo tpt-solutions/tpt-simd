@@ -89,6 +89,10 @@ Benchmarks live in `benches/math.rs` and compare against scalar `libm` and `std`
 - [`tpt-simd-rng`](../tpt-simd-rng): random number generation whose normal/uniform transforms also use documented approximations.
 - [`tpt-simd-blas`](../tpt-simd-blas), [`tpt-simd-reduce`](../tpt-simd-reduce): other Tier 2 numeric kernel crates.
 
+## Example
+
+Runnable example: [examples/math.rs](examples/math.rs). Run it with `cargo run -p tpt-simd-math --example math`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

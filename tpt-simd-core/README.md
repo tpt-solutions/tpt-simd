@@ -84,6 +84,10 @@ println!("avx2 = {}, native f32 lanes = {}", f.avx2, NATIVE_F32_LANES);
 - `tpt-simd-aligned`, `tpt-simd-complex`, `tpt-simd-mul`, `tpt-simd-butterfly`, `tpt-simd-dot` and the rest of the workspace depend on this crate.
 - `tpt-simd`: umbrella crate.
 
+## Example
+
+Runnable example: [examples/core.rs](examples/core.rs). Run it with `cargo run -p tpt-simd-core --example core`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

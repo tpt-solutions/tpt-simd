@@ -111,6 +111,10 @@ See also [docs/benchmarks.md](../docs/benchmarks.md).
 - [`tpt-simd-window`](../tpt-simd-window): window functions commonly applied before filtering or FFT.
 - [`tpt-simd-interpolate`](../tpt-simd-interpolate), [`tpt-simd-fixed`](../tpt-simd-fixed): sibling signal-processing and fixed-point crates.
 
+## Example
+
+Runnable example: [examples/convolve.rs](examples/convolve.rs). Run it with `cargo run -p tpt-simd-convolve --example convolve`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

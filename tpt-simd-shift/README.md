@@ -109,6 +109,10 @@ Benchmarks live in `benches/shift.rs`; run `cargo bench -p tpt-simd-shift`, pref
 - `tpt-simd-saturate`: saturating arithmetic and narrowing.
 - `tpt-simd`: umbrella crate re-exporting the workspace.
 
+## Example
+
+Runnable example: [examples/shift.rs](examples/shift.rs). Run it with `cargo run -p tpt-simd-shift --example shift`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

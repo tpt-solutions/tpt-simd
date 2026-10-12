@@ -110,6 +110,10 @@ Benchmarks live in `benches/blend.rs`; run `cargo bench -p tpt-simd-blend`, pref
 - `tpt-simd-select`: re-exports `select_f32` and adds index-based lane selection.
 - `tpt-simd`: umbrella crate re-exporting the workspace.
 
+## Example
+
+Runnable example: [examples/blend.rs](examples/blend.rs). Run it with `cargo run -p tpt-simd-blend --example blend`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

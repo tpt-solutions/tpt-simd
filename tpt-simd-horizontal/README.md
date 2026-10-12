@@ -92,6 +92,10 @@ Benchmarks live in `benches/horizontal.rs`; run them with `cargo bench -p tpt-si
 - [`tpt-simd-reduce`](../tpt-simd-reduce): slice-level reductions built on the halving tree of this crate.
 - [`tpt-simd-dot`](../tpt-simd-dot): dot products that finish with `horizontal_sum_f32`.
 
+## Example
+
+Runnable example: [examples/horizontal.rs](examples/horizontal.rs). Run it with `cargo run -p tpt-simd-horizontal --example horizontal`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

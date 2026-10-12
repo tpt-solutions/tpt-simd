@@ -91,6 +91,10 @@ Benchmarks live in `benches/scatter.rs`; run `cargo bench -p tpt-simd-scatter`, 
 - `tpt-simd-gather`: the load counterpart.
 - `tpt-simd`: umbrella crate re-exporting the workspace.
 
+## Example
+
+Runnable example: [examples/scatter.rs](examples/scatter.rs). Run it with `cargo run -p tpt-simd-scatter --example scatter`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

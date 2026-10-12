@@ -87,6 +87,10 @@ For an allocation-free build use `default-features = false`; the wrappers and sl
 - `tpt-simd-testutil` (unpublished): dev-dependency for the property tests.
 - `tpt-simd`: umbrella crate.
 
+## Example
+
+Runnable example: [examples/aligned.rs](examples/aligned.rs). Run it with `cargo run -p tpt-simd-aligned --example aligned`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

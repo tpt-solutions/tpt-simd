@@ -112,6 +112,10 @@ See also [docs/benchmarks.md](../docs/benchmarks.md).
 - [`tpt-simd-core`](../tpt-simd-core): the `Simd` vector type; the only workspace dependency.
 - [`tpt-simd-convolve`](../tpt-simd-convolve), [`tpt-simd-interpolate`](../tpt-simd-interpolate): sibling signal-processing crates.
 
+## Example
+
+Runnable example: [examples/window.rs](examples/window.rs). Run it with `cargo run -p tpt-simd-window --example window`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

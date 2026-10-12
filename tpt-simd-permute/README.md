@@ -115,6 +115,10 @@ Benchmarks live in `benches/permute.rs`; run `cargo bench -p tpt-simd-permute`, 
 - `tpt-simd-gather`, `tpt-simd-scatter`: non-contiguous loads and stores.
 - `tpt-simd`: umbrella crate re-exporting the workspace.
 
+## Example
+
+Runnable example: [examples/permute.rs](examples/permute.rs). Run it with `cargo run -p tpt-simd-permute --example permute`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

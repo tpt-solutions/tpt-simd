@@ -132,6 +132,10 @@ See also [docs/benchmarks.md](../docs/benchmarks.md).
 - [`tpt-simd-mul`](../tpt-simd-mul): `complex_mul_f32`, the fused 8-lane complex multiply used here.
 - [`tpt-simd-butterfly`](../tpt-simd-butterfly): unfused radix-2 butterflies.
 
+## Example
+
+Runnable example: [examples/complex.rs](examples/complex.rs). Run it with `cargo run -p tpt-simd-complex --example complex`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

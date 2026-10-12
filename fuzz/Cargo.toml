@@ -3,6 +3,9 @@ name = "tpt-simd-fuzz"
 version = "0.0.0"
 edition = "2024"
 publish = false
+readme = "README.md"
+keywords = ["fuzz", "libfuzzer", "simd", "testing", "differential"]
+categories = ["development-tools::testing"]
 
 [package.metadata]
 cargo-fuzz = true

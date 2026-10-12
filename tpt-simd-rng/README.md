@@ -100,6 +100,10 @@ Benchmarks compare against a scalar xoshiro256++ loop and a libm Box-Muller: `ca
 
 Depends on `tpt-simd-core`. Siblings: `tpt-simd-math`, `tpt-simd-sparse`, `tpt-simd-blas`. Umbrella: `tpt-simd`.
 
+## Example
+
+Runnable example: [examples/rng.rs](examples/rng.rs). Run it with `cargo run -p tpt-simd-rng --example rng`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

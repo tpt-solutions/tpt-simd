@@ -99,6 +99,10 @@ Benchmarks live in `benches/saturate.rs`; run `cargo bench -p tpt-simd-saturate`
 - `tpt-simd-rounding`: float rounding and conversion.
 - `tpt-simd`: umbrella crate re-exporting the workspace.
 
+## Example
+
+Runnable example: [examples/saturate.rs](examples/saturate.rs). Run it with `cargo run -p tpt-simd-saturate --example saturate`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

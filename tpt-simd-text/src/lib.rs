@@ -314,6 +314,7 @@ mod utf8_avx2 {
     }
 }
 
+#[inline]
 fn check_size(needed: usize, got: usize) -> Result<(), TextError> {
     if needed > got {
         Err(TextError::BufferTooSmall { needed, got })
@@ -389,6 +390,7 @@ pub fn utf16_to_utf8(src: &[u16], dst: &mut [u8]) -> Result<usize, TextError> {
 /// # Errors
 ///
 /// Returns [`TextError::BufferTooSmall`] if `dst` is too short.
+#[inline]
 pub fn hex_encode_lower(src: &[u8], dst: &mut [u8]) -> Result<usize, TextError> {
     let needed = src.len() * 2;
     check_size(needed, dst.len())?;
@@ -405,6 +407,7 @@ pub fn hex_encode_lower(src: &[u8], dst: &mut [u8]) -> Result<usize, TextError> 
 /// written. AVX2 takes the 32-byte blocks when available; SSE2 takes the remaining 16-byte
 /// blocks.
 #[cfg(target_arch = "x86_64")]
+#[inline]
 fn hex_encode_blocks(src: &[u8], dst: &mut [u8]) -> usize {
     let wide = src.len() / 32 * 32;
     if wide > 0 && hex_avx2::available() {
@@ -418,6 +421,7 @@ fn hex_encode_blocks(src: &[u8], dst: &mut [u8]) -> usize {
 /// bytes written. SSE2 is part of the x86_64 baseline, so no detection is needed.
 #[cfg(target_arch = "x86_64")]
 #[allow(unsafe_code)]
+#[inline]
 fn hex_encode_sse2(src: &[u8], dst: &mut [u8]) -> usize {
     use core::arch::x86_64::{
         _mm_add_epi8, _mm_and_si128, _mm_cmpgt_epi8, _mm_loadu_si128, _mm_set1_epi8,

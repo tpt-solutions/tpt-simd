@@ -79,6 +79,10 @@ No benchmarks are included in this crate.
 
 Depends on `tpt-simd-core` (which provides `Simd` and `ComplexSimd`). Siblings: `tpt-simd-fixed`, `tpt-simd-matrix`. Umbrella: `tpt-simd`.
 
+## Example
+
+Runnable example: [examples/mul.rs](examples/mul.rs). Run it with `cargo run -p tpt-simd-mul --example mul`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

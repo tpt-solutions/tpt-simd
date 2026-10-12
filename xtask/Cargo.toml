@@ -7,6 +7,9 @@ license.workspace = true
 authors.workspace = true
 rust-version.workspace = true
 publish = false
+readme = "README.md"
+keywords = ["xtask", "ci", "workspace", "tooling", "cargo"]
+categories = ["development-tools"]
 
 [dependencies]
 

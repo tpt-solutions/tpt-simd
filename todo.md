@@ -352,7 +352,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 ### Release
 - [ ] Full benchmark report vs scalar / manual intrinsics / `wide` / `simba` / `rustfft`
 - [ ] Performance-regression guard in CI
-- [x] Per-crate READMEs, keywords, categories, `rust-version`, license fields — all 28 crates have README + CHANGELOG
+- [x] Per-crate READMEs, keywords, categories, `rust-version`, license fields — all 41 publishable crates have README, CHANGELOG and an example
 - [ ] CHANGELOG, semver policy, release process — per-crate changelogs written; semver policy and release process not
 - [ ] `cargo publish --dry-run` for all crates; publish in dependency order
 - [ ] Tag v0.1.0, GitHub release, announce (r/rust, users.rust-lang.org, This Week in Rust)

@@ -98,6 +98,10 @@ assert_eq!(x.sat_add(Simd::splat(1))[0], i16::MAX);
 - `tpt-simd`: umbrella crate re-exporting every tpt-simd crate.
 - Every kernel crate in the workspace (`tpt-simd-dot`, `tpt-simd-blas`, ...) builds on this backend, via `tpt-simd-core`.
 
+## Example
+
+Runnable example: [examples/vector.rs](examples/vector.rs). Run it with `cargo run -p tpt-simd-vector --example vector`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.

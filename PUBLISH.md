@@ -10,11 +10,13 @@ Written for: the maintainer doing the release.
 | Check | Result |
 | --- | --- |
 | `cargo check --workspace --all-targets` | Pass |
-| `cargo test --workspace --features std` | Pass: 729 passed, 0 failed |
-| `cargo publish --workspace --dry-run` | Pass: 28 of 28 crates packaged and verified, no warnings |
-| crates.io name availability (28 names) | All free (HTTP 404 from the crates.io API) |
+| `cargo test --workspace --features std` | Pass: 890 passed, 0 failed, 2 ignored |
+| `cargo publish --workspace --dry-run` | Pass: 41 of 41 crates packaged and verified, no errors. Run with `--allow-dirty`, see below. |
+| crates.io name availability (41 names) | All free (HTTP 404 from the crates.io API) |
+| Per-crate docs | Every publishable crate has a README, a CHANGELOG, keywords, categories and an `examples/` program |
 
-Publishable crates: 28. Unpublished: `tpt-simd-testutil` (`publish = false`, dev-dependency only).
+Publishable crates: 41 (the `tpt-simd` umbrella plus 40 focused crates).
+Unpublished (`publish = false`): `tpt-simd-testutil` (dev-dependency only), `xtask`, `tpt-simd-fuzz` (`fuzz/`), and `bench-vs`.
 
 ### Fix made while preparing
 
@@ -26,48 +28,70 @@ published manifests. No normal (non-dev) dependency on `testutil` exists.
 
 ## Before you publish
 
-- [ ] Working tree is clean and committed (the `Cargo.toml` change above is not yet committed).
+- [ ] Working tree is clean and committed. It is not yet: about 100 paths are modified or untracked,
+      including this release's README, CHANGELOG and example files. Two modified files are not part of
+      this release work and should be reviewed before committing: `.github/workflows/bench.yml` and
+      `tpt-simd-text/src/lib.rs` (`#[inline]` attributes added).
+- [ ] The dry run above was run with `--allow-dirty`. Re-run it without that flag from the commit you
+      will publish.
 - [ ] Decide the version. Everything is `0.1.0` via `[workspace.package]`.
 - [ ] `cargo login` with a crates.io API token (token scope: `publish-new` and `publish-update`).
 - [ ] Re-run the dry run from the commit you will publish:
       `cargo publish --workspace --dry-run`
-- [ ] Optional but recommended: add per-crate `LICENSE-MIT` and `LICENSE-APACHE` files (currently only at
-      the repo root, so the `.crate` tarballs contain only the SPDX `license` field, not the license text).
-- [ ] Open items in `todo.md` under "Release": CHANGELOG/semver policy and release process are not written.
+- [ ] Optional but recommended: add per-crate `LICENSE-MIT` and `LICENSE-APACHE` files. The READMEs link to the
+      root license files (`../LICENSE-APACHE`), and those are not in the `.crate` tarballs, so the tarballs
+      carry only the SPDX `license` field, not the license text.
+- [ ] Semver policy and release process are drafted in `docs/release.md`. Maintainer review is still
+      needed; see `todo.md` under "Release".
 
 ## Publish order
 
-Dependency order, as Cargo itself computed it during the dry run. Publish one crate at a time, and wait
-for each to appear in the index before the next (`cargo publish` does this automatically for each call).
+Dependency order, computed from the normal (non-dev) dependencies between the 41 publishable crates. Dev-dependencies
+are not part of the order. Publish one crate at a time, and wait for each to appear in the index before the next
+(`cargo publish` does this automatically for each call). The umbrella `tpt-simd` is last because it depends on
+almost everything else.
 
- 1. tpt-simd-vector
- 2. tpt-simd-core
- 3. tpt-simd-aligned
- 4. tpt-simd-blas
- 5. tpt-simd-blend
- 6. tpt-simd-butterfly
- 7. tpt-simd-compare
- 8. tpt-simd-convolve
- 9. tpt-simd-fixed
-10. tpt-simd-gather
-11. tpt-simd-horizontal
-12. tpt-simd-interpolate
-13. tpt-simd-math
-14. tpt-simd-mul
-15. tpt-simd-rng
-16. tpt-simd-rounding
-17. tpt-simd-saturate
-18. tpt-simd-scatter
-19. tpt-simd-shift
-20. tpt-simd-window
-21. tpt-simd-complex
-22. tpt-simd-dot
-23. tpt-simd-permute
-24. tpt-simd-reduce
-25. tpt-simd-select
-26. tpt-simd-sparse
-27. tpt-simd-matrix
-28. tpt-simd
+ 1. tpt-simd-audio
+ 2. tpt-simd-bits
+ 3. tpt-simd-dct
+ 4. tpt-simd-distance
+ 5. tpt-simd-geom
+ 6. tpt-simd-half
+ 7. tpt-simd-hash
+ 8. tpt-simd-ntt
+ 9. tpt-simd-pixel
+10. tpt-simd-search
+11. tpt-simd-sort
+12. tpt-simd-text
+13. tpt-simd-transpose
+14. tpt-simd-vector
+15. tpt-simd-core
+16. tpt-simd-aligned
+17. tpt-simd-blas
+18. tpt-simd-blend
+19. tpt-simd-butterfly
+20. tpt-simd-compare
+21. tpt-simd-convolve
+22. tpt-simd-fixed
+23. tpt-simd-gather
+24. tpt-simd-horizontal
+25. tpt-simd-interpolate
+26. tpt-simd-math
+27. tpt-simd-mul
+28. tpt-simd-rng
+29. tpt-simd-rounding
+30. tpt-simd-saturate
+31. tpt-simd-scatter
+32. tpt-simd-shift
+33. tpt-simd-sparse
+34. tpt-simd-window
+35. tpt-simd-complex
+36. tpt-simd-dot
+37. tpt-simd-permute
+38. tpt-simd-reduce
+39. tpt-simd-select
+40. tpt-simd-matrix
+41. tpt-simd
 
 ## Commands
 
@@ -86,8 +110,8 @@ cargo publish --workspace
 Or publish one crate at a time, if you prefer to stop between steps:
 
 ```sh
-cargo publish -p tpt-simd-vector
-cargo publish -p tpt-simd-core
+cargo publish -p tpt-simd-audio
+cargo publish -p tpt-simd-bits
 # ... continue down the list above
 ```
 
@@ -99,7 +123,7 @@ crates from the list. Do not republish a version that already exists; bump the v
 - [ ] Verify each crate page on crates.io and that `docs.rs` builds (docs.rs builds run after upload).
 - [ ] Tag the release: `git tag v0.1.0 && git push origin v0.1.0`. This triggers `release.yml`, which
       re-runs the test and package checks against the tagged commit.
-- [ ] Create the GitHub release from the tag.
+- [ ] Create the GitHub release from the tag, using the CHANGELOG entries as the notes.
 - [ ] Tick the publish items in `todo.md`.
 
 ## Rollback

@@ -90,6 +90,10 @@ Benchmarks live in `benches/dot.rs`; run them with `cargo bench -p tpt-simd-dot`
 - [`tpt-simd-horizontal`](../tpt-simd-horizontal): the lane reduction tree used by the `f32` and saturating kernels.
 - [`tpt-simd-reduce`](../tpt-simd-reduce), [`tpt-simd-blas`](../tpt-simd-blas): slice reductions and BLAS-style `f32`/`f64` dot products.
 
+## Example
+
+Runnable example: [examples/dot.rs](examples/dot.rs). Run it with `cargo run -p tpt-simd-dot --example dot`.
+
 ## MSRV
 
 Rust 1.95, edition 2024.
