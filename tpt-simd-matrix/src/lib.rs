@@ -189,8 +189,30 @@ pub fn mat8x8_transpose_i16(m: &mut [[i16; 8]; 8]) {
 /// assert_eq!(inv, [[0.5, 0.0, 0.0], [0.0, 0.25, 0.0], [0.0, 0.0, 0.125]]);
 /// assert!(tpt_simd_matrix::mat3x3_inverse_f32([[1.0; 3]; 3]).is_none());
 /// ```
-#[inline(always)]
+#[inline]
 pub fn mat3x3_inverse_f32(m: [[f32; 3]; 3]) -> Option<[[f32; 3]; 3]> {
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "sse2"
+    ))]
+    {
+        register::inverse3_array(m)
+    }
+    #[cfg(not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "sse2"
+    )))]
+    {
+        mat3x3_inverse_scalar_f32(m)
+    }
+}
+
+/// Scalar reference for [`mat3x3_inverse_f32`]: the adjugate formula with the same threshold.
+/// The SIMD path computes the same operations in the same order, so the two agree bit for bit.
+#[inline(always)]
+pub fn mat3x3_inverse_scalar_f32(m: [[f32; 3]; 3]) -> Option<[[f32; 3]; 3]> {
     let c00 = m[1][1] * m[2][2] - m[1][2] * m[2][1];
     let c01 = m[1][2] * m[2][0] - m[1][0] * m[2][2];
     let c02 = m[1][0] * m[2][1] - m[1][1] * m[2][0];
@@ -297,5 +319,48 @@ mod tests {
     #[test]
     fn nan_inverse_none() {
         assert!(mat3x3_inverse_f32([[f32::NAN; 3]; 3]).is_none());
+    }
+
+    fn same_inverse(x: Option<[[f32; 3]; 3]>, y: Option<[[f32; 3]; 3]>) -> bool {
+        match (x, y) {
+            (None, None) => true,
+            (Some(a), Some(b)) => a.iter().flatten().zip(b.iter().flatten()).all(|(p, q)| p.to_bits() == q.to_bits()),
+            _ => false,
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn inverse3_simd_bit_identical_to_scalar(
+            m in proptest::array::uniform3(proptest::array::uniform3(-1e3f32..1e3)),
+        ) {
+            prop_assert!(same_inverse(mat3x3_inverse_f32(m), mat3x3_inverse_scalar_f32(m)));
+        }
+
+        #[test]
+        fn inverse3_simd_matches_scalar_on_singular_and_special(
+            m in proptest::array::uniform3(proptest::array::uniform3(
+                prop_oneof![
+                    Just(0.0f32), Just(-0.0), Just(1.0), Just(f32::INFINITY),
+                    Just(f32::NEG_INFINITY), Just(f32::NAN), Just(1e-30), Just(1e30),
+                    -10.0f32..10.0,
+                ],
+            )),
+        ) {
+            prop_assert!(same_inverse(mat3x3_inverse_f32(m), mat3x3_inverse_scalar_f32(m)));
+        }
+    }
+
+    #[test]
+    fn inverse3_rows_are_reordered_cofactors() {
+        // Row-by-row check of the cross-product layout on a non-symmetric matrix.
+        let m = [[1.0f32, 2.0, 3.0], [0.0, 1.0, 4.0], [5.0, 6.0, 0.0]];
+        let inv = mat3x3_inverse_f32(m).unwrap();
+        let want = [[-24.0, 18.0, 5.0], [20.0, -15.0, -4.0], [-5.0, 4.0, 1.0]];
+        for i in 0..3 {
+            for j in 0..3 {
+                assert!((inv[i][j] - want[i][j]).abs() < 1e-5, "inv[{i}][{j}] = {}", inv[i][j]);
+            }
+        }
     }
 }

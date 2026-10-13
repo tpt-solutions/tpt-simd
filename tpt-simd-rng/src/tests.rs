@@ -542,6 +542,11 @@ fn ulp64(exact: f64) -> f64 {
     f64::from_bits(bits + 1) - f64::from_bits(bits)
 }
 
+/// Iteration count for the accuracy sweeps: the full count normally, 1/400th under Miri.
+fn sweep(n: u64) -> u64 {
+    if cfg!(miri) { n / 400 } else { n }
+}
+
 fn lcg(s: &mut u64) -> u64 {
     *s = s
         .wrapping_mul(6364136223846793005)
@@ -553,7 +558,7 @@ fn lcg(s: &mut u64) -> u64 {
 fn ln_f32_accuracy() {
     let mut s = 1u64;
     let mut worst = 0.0f64;
-    for _ in 0..200_000 {
+    for _ in 0..sweep(200_000) {
         let mut x = [0.0f32; 8];
         for v in &mut x {
             // Mix of (0,1], and the full normal range through random exponents.
@@ -579,7 +584,7 @@ fn ln_f32_accuracy() {
 fn sincos_f32_accuracy() {
     let mut s = 2u64;
     let mut worst = 0.0f64;
-    for k in 0..200_000 {
+    for k in 0..sweep(200_000) {
         let mut t = [0.0f32; 8];
         for v in &mut t {
             *v = if k % 4 == 0 {
@@ -617,7 +622,7 @@ fn sincos_f32_accuracy() {
 fn sqrt_f32_accuracy() {
     let mut s = 3u64;
     let mut worst = 0.0f64;
-    for _ in 0..200_000 {
+    for _ in 0..sweep(200_000) {
         let mut x = [0.0f32; 8];
         for v in &mut x {
             *v = if lcg(&mut s).is_multiple_of(2) {
@@ -641,7 +646,7 @@ fn sqrt_f32_accuracy() {
 fn ln_f64_accuracy() {
     let mut s = 4u64;
     let mut worst = 0.0f64;
-    for _ in 0..100_000 {
+    for _ in 0..sweep(100_000) {
         let mut x = [0.0f64; 8];
         for v in &mut x {
             *v = match lcg(&mut s) % 3 {
@@ -668,7 +673,7 @@ fn ln_f64_accuracy() {
 fn sincos_f64_accuracy() {
     let mut s = 5u64;
     let mut worst = 0.0f64;
-    for k in 0..100_000 {
+    for k in 0..sweep(100_000) {
         let mut t = [0.0f64; 8];
         for v in &mut t {
             *v = if k % 2 == 0 {
@@ -694,7 +699,7 @@ fn sincos_f64_accuracy() {
 fn sqrt_f64_accuracy() {
     let mut s = 6u64;
     let mut worst = 0.0f64;
-    for _ in 0..100_000 {
+    for _ in 0..sweep(100_000) {
         let mut x = [0.0f64; 8];
         for v in &mut x {
             *v = if lcg(&mut s).is_multiple_of(2) {

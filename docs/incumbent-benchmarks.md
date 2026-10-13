@@ -7,6 +7,8 @@ within about 10% of the fastest incumbent measured in the same run, or faster.
 The `bench-vs` crate (unpublished) holds the benches. Per-crate kernel history
 is in [benchmarks.md](benchmarks.md).
 
+Latest full status run: **Round 10** (2026-10-13), at the end of this file.
+
 ## How to read the numbers
 
 - **Compare ratios within one run, not absolute times across runs.** On this
@@ -861,3 +863,145 @@ gap (about 1.4–1.6×) is ADR 0005 item 4, and it is unchanged.
 5. Matrix 4×4 transpose by register (about 1.6×): the remaining cost is in the shuffle sequence
    and the 64-byte return, and is not resolved by the register type alone.
 6. gemm at 64: ADR 0005 item 4, unchanged.
+
+## Round 10: full status run (2026-10-13)
+
+Every `bench-vs` suite with an incumbent, run in full Criterion mode, each suite run twice
+back to back, following the recipe in [bench-vs/README.md](../bench-vs/README.md). Commit
+`1c55498`, no code changes. This is a status snapshot, not a same-session A/B: ratios are
+tpt-simd ÷ the fastest incumbent in the same run, and they are shown as run 1 / run 2.
+
+Machine: Intel Core i5-13500 (same as Round 5 onward). Eleven suites: `matrix_vs_glam`,
+`gemm_vs`, `gemm_f64_vs`, `hash_vs`, `text_vs`, `search_vs`, `sort_vs`, and the four Round 7
+suites (`window_vs`, `blend_shift_vs`, `aligned_vs`, `fixed_vs`). All 22 runs exited 0.
+
+Status uses the Round 5 rules: **ahead** = both runs below 0.95; **parity** = worst run at most
+1.10; **near** = worst run at most 1.15; **behind** = both runs above 1.15; **noisy** = the runs
+disagree by more than 20% across a boundary, so neither ratio is reliable on its own.
+
+### Where we are behind now
+
+| Area | Operation | Size | Ratio (run 1 / run 2) | Status | Decision or open |
+|---|---|---|---|---|---|
+| matrix | mat4 transpose, in place (array) | 4×4 | 2.09 / 2.15 | behind | ADR 0005 item 3 |
+| matrix | mat4 transpose, by value (array) | 4×4 | 1.64 / 1.59 | behind | ADR 0005 item 3 |
+| matrix | mat4 transpose (register) | 4×4 | 1.49 / 1.57 | behind | open (ADR 0005 item 3 partly) |
+| matrix | mat3 inverse (array) | 3×3 | 1.73 / 1.90 | behind | ADR 0005 item 3 |
+| matrix | mat4 mul (array) | 4×4 | 1.11 / 1.20 | behind (small) | open |
+| sort | `sort_unstable` (generic) | 1 K | 1.12 / 1.22 | behind | open |
+| sort | `sort_unstable` (generic) | 100 K | 1.51 / 1.68 | behind | ADR 0005 item 2 |
+| sort | `sort_unstable` (generic) | 1 M | 1.19 / 1.39 | behind | ADR 0005 item 2 |
+| sort | `select_nth` | 1 K | 1.20 / 1.41 | behind | open |
+| sort | `select_nth` | 100 K | 1.28 / 1.09 | behind | open (Round 9 had 1.05) |
+| text | hex decode | 64 B | 1.46 / 1.44 | behind | ADR 0005 item 1 |
+| text | hex decode | 4 KB | 1.22 / 1.20 | behind | ADR 0005 item 1 |
+| text | hex decode | 256 KB | 1.18 / 1.19 | behind | ADR 0005 item 1 |
+| text | UTF-8 validate vs simdutf8 | 64 B | 1.48 / 1.70 | behind | open |
+| hash | Adler-32 vs simd-adler32 | 64 B | 1.50 / 1.53 | behind | open |
+| blas | f32 gemm, `tpt` (allocating) | 64 | 1.46 / 1.55 | behind | ADR 0005 item 4 |
+| blas | f32 gemm, `tpt` (allocating) | 512 | 1.27 / 1.34 | behind | open |
+| blas | f64 gemm, `tpt_workspace` | 64 | 1.37 / 1.32 | behind | ADR 0005 item 4 |
+| blas | f64 gemm, `tpt_workspace` | 512 | 1.18 / 1.08 | near to behind | open |
+| aligned | `from_slice` vs aligned-vec | 4 KB | 1.65 / 1.80 | behind | open (Round 7 also behind) |
+
+Behind by a smaller margin, or within noise, so not listed above: hex encode 64 B (1.10 / 1.12,
+near); f32 gemm 256 `tpt` (1.15 / 1.11, near); f64 gemm 256 `tpt_workspace` (1.10 / 1.10,
+parity); register mat4 mul (1.10 / 1.07, near).
+
+### Ahead or at parity
+
+- **Ahead, both runs:** CRC-32 at 64 B (0.93 / 0.87); `find_byte` at 64 B and 1 MB; all
+  `count_byte` and `substring` rows; `sort_u32` radix at 100 K and 1 M (0.39–0.50);
+  register 3×3 inverse (0.69–0.71); fixed `saturating_mul` vs scalar `fixed` (0.15–0.17); all
+  window rows vs `apodize` (ratios 0.03–0.36, very noisy in absolute terms but ahead in every run);
+  blend `f32` 4 KB vs `wide` (0.67 / 0.41, noisy).
+- **Parity:** CRC-32 at 4 KB and 1 MB; Adler-32 at 4 KB and 1 MB (1.03–1.08); hex encode at 4 KB
+  and 256 KB; UTF-8 validate at 4 KB and 256 KB (1.04–1.08); `argsort`
+  at 1 K (0.90 / 1.03); `shift_left` i32 (0.92–0.96); f32 gemm 512 workspace (1.03–1.08).
+- **Noisy, not decided:** `select_nth` 1 M; `argsort` 100 K and 1 M (the two runs disagree by
+  more than 2×); `aligned` `zeroed` at 64 B and 4 KB; `aligned` `from_slice` at 64 B and 256 KB;
+  `find_byte` at 4 KB (0.97 / 1.20); radix `sort_u32` at 1 K (1.13 / 0.85); f32 gemm 64 and 256
+  `tpt_workspace`. The tpt side moved by up to 2× between runs on several of these rows, so a
+  new number needs a same-session A/B before it can be called a change.
+
+### Compared with Round 9
+
+Rows that Round 9 measured against the same incumbent agree within about 0.05 this run: register
+mat4 mul (1.06–1.09 then, 1.07–1.10 now), register mat4 transpose (1.56–1.59 then, 1.49–1.57
+now), register 3×3 inverse (0.70 then, 0.69–0.71 now), hex decode at 64 B (1.48 then, 1.44–1.46
+now), hex decode at 4 KB and 256 KB (about 1.2 then, 1.18–1.22 now), `sort_unstable` at 1 K
+(1.10 then, 1.12–1.22 now), `sort_unstable` at 100 K (about 1.48 then, 1.51–1.68 now), and f32
+gemm 512 workspace (1.05 then, 1.03–1.08 now).
+
+The exception is `select_nth` at 100 K. Round 9 recorded 1.05 and the change was counted as a
+gain. This run has 1.28 and 1.09, so either the gain was noise or the change is not holding.
+It has not been investigated. The matching `select_nth` 1 K row is also worse than Round 9
+(1.20 / 1.41 against 1.19).
+
+### Open gaps, largest first
+
+1. **`aligned` `from_slice` at 4 KB** (1.65–1.80×, unchanged since Round 7). Not an ADR decision,
+   not yet profiled.
+2. **`select_nth` at 1 K and 100 K** (1.1–1.4×). Round 9 said the 100 K row was closed; this run
+   says it is not, or the Round 9 measurement was noise. Needs a same-session A/B.
+3. **UTF-8 validate at 64 B** (1.5–1.7×, widened from about 1.5 in Round 9). Per-call cost, not
+   yet located.
+4. **Matrix transpose** (1.5–2.2×, all variants). Partly resolved by the register API (ADR 0005
+   item 3), not closed.
+5. **Adler-32 at 64 B** (1.5×). Unprofiled since Round 5.
+6. **f32 gemm at 512, `tpt` (allocating)** (1.27–1.34×). The workspace variant is at parity, so the
+   gap is the per-call allocation on this path, not the kernel. Worth a note on the public API doc
+   or a fix in the allocating wrapper.
+7. Decided, not gaps to close: generic `sort_unstable` at 100 K and above (ADR 0005 item 2),
+   hex decode validation cost (item 1), gemm at 64 (item 4), array-typed matrix API (item 3).
+
+## Round 11: matrix transposes and SIMD 3x3 inverse
+
+Changes, found by reading the generated assembly and by isolated probes:
+
+- **Transposes.** `tpt-simd-matrix::register::Mat4::transpose` and `tpt-simd-permute::transpose_4x4_f32`
+  (the array API) now use the DirectXMath ordering of eight `shufps`, as glam does, instead of four
+  `unpck` plus four `movlh`/`movhl`. The disassembly showed both loops doing the same work; the
+  shuffle choice was the difference.
+- **3x3 inverse.** `mat3x3_inverse_f32` and `Mat3::try_inverse` now run a SSE2 path: three cross
+  products, a transpose, and a multiply by `1/det`. The old formula is kept as the public reference
+  `mat3x3_inverse_scalar_f32`. The SIMD path performs the same operations in the same order, and
+  tests check bit identity on random, singular and non-finite inputs. The portable build keeps the
+  scalar formula.
+
+### Same-session A/B, `matrix_vs_glam` (`ab_compare.py`, HEAD against working tree, two runs per side)
+
+| Benchmark | A median (ns) | B median (ns) | B / A | Note |
+|---|---|---|---|---|
+| mat4_transpose/tpt_reg | 2.14 | 1.52 | 0.71 | |
+| mat4_transpose/tpt | 3.44 | 2.99 | 0.87 | array, in place |
+| mat4_transpose/tpt_by_value | 2.82 | 2.51 | 0.89 | array |
+| mat3_inverse/tpt_reg | 12.01 | 9.58 | 0.80 | by value |
+| mat3_inverse/tpt | 29.15 | 20.99 | 0.72 | by value |
+| mat4_mul/tpt | 5.71 | 4.72 | 0.83 | run-to-run spread on A is large |
+| mat4_mul/tpt_reg | 5.19 | 5.32 | 1.03 | unchanged code |
+| glam control, transpose | 1.46 | 1.89 | 1.30 | control moved by about 30%, so the transpose gains are indicative |
+
+The criterion harness passes 36- and 64-byte inputs by value through `black_box`, which penalises
+the array types. So the by-value rows above understate the kernel change. The by-reference
+comparison below isolates it.
+
+### Same-session, by reference, 3x3 inverse (temporary probe, not committed)
+
+| Variant | Time (two matrices) |
+|---|---|
+| scalar reference (previous formula) | 9.2 / 9.5 ns |
+| SIMD, array API | 6.4 / 6.3 ns |
+| SIMD, `Mat3::try_inverse` | 4.9 / 5.2 ns |
+| glam `Mat3::inverse` | 3.6 / 3.7 ns |
+
+So the SIMD path is about 1.45x faster than the scalar formula on the array API and about 1.9x on
+the register type. The register inverse is about 1.4x slower than glam, down from about 2.7x.
+
+### Still open
+
+- The bench still passes by value, so the criterion rows for the array types mix harness and kernel
+  cost. A by-reference row is needed for every matrix operation.
+- `mat4_mul` is 1.07-1.20x against glam. Not profiled in this round.
+- ADR 0005 item 3 quotes Round 9 transpose and inverse numbers. The decision is unchanged, but those
+  figures are now stale and the ADR should be refreshed from this round.

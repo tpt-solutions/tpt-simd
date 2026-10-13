@@ -140,8 +140,12 @@ macro_rules! suite {
             #[test]
             fn getrf_reconstruction_all_sizes() {
                 let mut rng = Rng(11);
-                let mut sizes: Vec<usize> = (0..=70).collect();
-                sizes.push(200);
+                // Under Miri: the tails and block edges up to 65, without the 200-sized case.
+                let sizes: Vec<usize> = if cfg!(miri) {
+                    vec![0, 1, 2, 3, 5, 8, 17, 31, 32, 33, 34, 65]
+                } else {
+                    (0..=70).chain([200]).collect()
+                };
                 for &n in &sizes {
                     let (orig, lda) = rand_mat(&mut rng, n, n, (n % 3) + 1);
                     let mut a = orig.clone();
@@ -156,7 +160,7 @@ macro_rules! suite {
             #[test]
             fn getrf_rectangular() {
                 let mut rng = Rng(12);
-                for &(m, n) in &[
+                let mut shapes = vec![
                     (70usize, 33usize),
                     (33, 70),
                     (100, 1),
@@ -165,11 +169,14 @@ macro_rules! suite {
                     (64, 65),
                     (0, 5),
                     (5, 0),
-                    (130, 97),
-                    (97, 130),
                     (3, 40),
                     (40, 3),
-                ] {
+                ];
+                // The 130 x 97 pair is slow under Miri; the 65 x 64 pair covers the block edge.
+                if !cfg!(miri) {
+                    shapes.extend([(130, 97), (97, 130)]);
+                }
+                for &(m, n) in &shapes {
                     let (orig, lda) = rand_mat(&mut rng, m, n, 2);
                     let mut a = orig.clone();
                     let mut ipiv = vec![0usize; m.min(n)];
@@ -244,8 +251,12 @@ macro_rules! suite {
             #[test]
             fn getrs_residuals_many_sizes() {
                 let mut seed = 100;
-                let mut sizes: Vec<usize> = (0..=70).collect();
-                sizes.push(200);
+                // Under Miri: the tails and block edges up to 65, without the 200-sized case.
+                let sizes: Vec<usize> = if cfg!(miri) {
+                    vec![0, 1, 2, 3, 5, 8, 17, 31, 32, 33, 34, 65]
+                } else {
+                    (0..=70).chain([200]).collect()
+                };
                 for &n in &sizes {
                     for &nrhs in &[1usize, 3] {
                         seed += 1;
@@ -256,8 +267,13 @@ macro_rules! suite {
 
             #[test]
             fn getrs_multiple_rhs_and_blocks() {
-                for &n in &[33usize, 64, 65, 100, 130] {
-                    for &nrhs in &[2usize, 5, 64, 90] {
+                let (ns, nrhss): (&[usize], &[usize]) = if cfg!(miri) {
+                    (&[33, 65], &[2, 5, 64])
+                } else {
+                    (&[33, 64, 65, 100, 130], &[2, 5, 64, 90])
+                };
+                for &n in ns {
+                    for &nrhs in nrhss {
                         check_solve_lu(n, nrhs, 2, (n * 1000 + nrhs) as u64, false);
                     }
                 }
@@ -265,7 +281,12 @@ macro_rules! suite {
 
             #[test]
             fn pivoting_exercised_zero_diagonal() {
-                for &n in &[2usize, 3, 5, 31, 32, 33, 64, 70, 100] {
+                let ns: &[usize] = if cfg!(miri) {
+                    &[2, 3, 5, 31, 32, 33]
+                } else {
+                    &[2, 3, 5, 31, 32, 33, 64, 70, 100]
+                };
+                for &n in ns {
                     check_solve_lu(n, 2, 1, 900 + n as u64, true);
                 }
                 // [[0, 1], [1, 0]] needs a swap and gives an exact answer.
@@ -281,7 +302,12 @@ macro_rules! suite {
             #[test]
             fn getrf_detects_singular() {
                 let mut rng = Rng(77);
-                for &n in &[1usize, 2, 5, 31, 33, 40, 70, 100] {
+                let ns: &[usize] = if cfg!(miri) {
+                    &[1, 2, 5, 31, 33, 40]
+                } else {
+                    &[1, 2, 5, 31, 33, 40, 70, 100]
+                };
+                for &n in ns {
                     for k in [0, n / 2, n - 1] {
                         let (mut a, lda) = rand_mat(&mut rng, n, n, 1);
                         for i in 0..n {
@@ -469,12 +495,18 @@ macro_rules! suite {
 
             #[test]
             fn trsm_all_variants_and_sizes() {
+                // Under Miri, keep the block edges (63-65, 129-130) and drop the largest sizes.
+                let (ms, ns): (&[usize], &[usize]) = if cfg!(miri) {
+                    (&[0, 1, 2, 31, 63, 64, 65, 130], &[1, 2, 5])
+                } else {
+                    (&[0, 1, 2, 31, 63, 64, 65, 100, 129, 130, 200], &[1, 2, 5, 40])
+                };
                 let mut seed = 5000;
                 for &uplo in &[Uplo::Lower, Uplo::Upper] {
                     for &trans in &[Trans::NoTrans, Trans::Trans] {
                         for &diag in &[Diag::NonUnit, Diag::Unit] {
-                            for &m in &[0usize, 1, 2, 31, 63, 64, 65, 100, 129, 130, 200] {
-                                for &n in &[1usize, 2, 5, 40] {
+                            for &m in ms {
+                                for &n in ns {
                                     seed += 1;
                                     let alpha = if seed % 2 == 0 { 1.0 } else { 0.5 };
                                     check_trsm(m, n, uplo, trans, diag, alpha, seed);
@@ -612,15 +644,21 @@ macro_rules! suite {
             }
 
             #[test]
+            #[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
             fn potrf_potrs_all_sizes() {
-                let mut sizes: Vec<usize> = (0..=70).collect();
-                sizes.push(200);
+                // Under Miri: the tails and block edges up to 65, without the 200-sized case.
+                let sizes: Vec<usize> = if cfg!(miri) {
+                    vec![0, 1, 2, 3, 5, 8, 17, 31, 32, 33, 34, 65]
+                } else {
+                    (0..=70).chain([200]).collect()
+                };
                 for &n in &sizes {
                     check_chol(n, 1 + (n % 3), n % 3, 300 + n as u64);
                 }
             }
 
             #[test]
+            #[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
             fn potrs_multiple_rhs_blocks() {
                 for &n in &[33usize, 64, 65, 130] {
                     for &nrhs in &[2usize, 7, 70] {
@@ -630,6 +668,7 @@ macro_rules! suite {
             }
 
             #[test]
+            #[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
             fn potrf_detects_non_spd() {
                 let mut rng = Rng(8);
                 for &n in &[1usize, 2, 5, 31, 33, 40, 70, 100] {
@@ -657,6 +696,7 @@ macro_rules! suite {
             }
 
             #[test]
+            #[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
             fn potrf_workspace_variant_matches() {
                 let n = 100;
                 let mut rng = Rng(31);
@@ -814,7 +854,7 @@ suite!(
 );
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(48))]
+    #![proptest_config(ProptestConfig::with_cases(if cfg!(miri) { 8 } else { 48 }))]
 
     #[test]
     fn prop_lu_solve_f64(n in 0usize..80, nrhs in 1usize..6, pad in 0usize..3, seed in any::<u64>()) {

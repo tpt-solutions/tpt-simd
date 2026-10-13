@@ -261,7 +261,8 @@ fn utf8_validation_matches_core_on_pseudo_random_bytes() {
         x ^= x << 17;
         x
     };
-    for _ in 0..20_000 {
+    let cases = if cfg!(miri) { 200 } else { 20_000 };
+    for _ in 0..cases {
         let len = 64 + (next() % 300) as usize;
         // Bias towards the multi-byte ranges so that many inputs are nearly valid.
         let bytes: Vec<u8> = (0..len)

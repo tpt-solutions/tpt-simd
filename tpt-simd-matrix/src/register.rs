@@ -2,7 +2,7 @@
 //!
 //! The array functions in this crate take and return `[[f32; N]; N]` by value, which the ABI
 //! passes through memory. These types hold each row as one 128-bit lane value (`__m128` on
-//! x86_64 with SSE2, [`Simd`] elsewhere). Chained operations such as `a * b * c` or
+//! x86_64 with SSE2, `tpt_simd_core::Simd` elsewhere). Chained operations such as `a * b * c` or
 //! `(a * b).transpose()` therefore stay in vector registers, and rows are only stored when the
 //! caller asks for them with `to_rows`.
 //!
@@ -83,21 +83,38 @@ mod lane {
         }
     }
 
-    /// Transposes four rows held in registers (4 unpacks and 4 moves, no memory round trip).
+    /// Transposes four rows held in registers (8 `shufps`, no memory round trip).
+    ///
+    /// The `shufps` ordering matches glam and DirectXMath. The unpck/movlh ordering computes the
+    /// same values but measured about 1.5x slower on this CPU (docs/incumbent-benchmarks.md, Round 11).
     #[inline(always)]
     pub fn transpose4(r: [F4; 4]) -> [F4; 4] {
         // SAFETY: SSE2 is enabled at compile time for this module.
         unsafe {
-            let t0 = _mm_unpacklo_ps(r[0], r[1]);
-            let t1 = _mm_unpackhi_ps(r[0], r[1]);
-            let t2 = _mm_unpacklo_ps(r[2], r[3]);
-            let t3 = _mm_unpackhi_ps(r[2], r[3]);
+            let t0 = _mm_shuffle_ps::<0x44>(r[0], r[1]);
+            let t1 = _mm_shuffle_ps::<0xEE>(r[0], r[1]);
+            let t2 = _mm_shuffle_ps::<0x44>(r[2], r[3]);
+            let t3 = _mm_shuffle_ps::<0xEE>(r[2], r[3]);
             [
-                _mm_movelh_ps(t0, t2),
-                _mm_movehl_ps(t2, t0),
-                _mm_movelh_ps(t1, t3),
-                _mm_movehl_ps(t3, t1),
+                _mm_shuffle_ps::<0x88>(t0, t2),
+                _mm_shuffle_ps::<0xDD>(t0, t2),
+                _mm_shuffle_ps::<0x88>(t1, t3),
+                _mm_shuffle_ps::<0xDD>(t1, t3),
             ]
+        }
+    }
+
+    /// Cross product of the first three lanes; lane 3 is zero when both inputs have zero lane 3.
+    #[inline(always)]
+    pub fn cross(a: F4, b: F4) -> F4 {
+        // SAFETY: SSE2 is enabled at compile time for this module.
+        unsafe {
+            // yzx and zxy permutations (lane 3 unchanged).
+            let a_yzx = _mm_shuffle_ps::<0xC9>(a, a);
+            let a_zxy = _mm_shuffle_ps::<0xD2>(a, a);
+            let b_yzx = _mm_shuffle_ps::<0xC9>(b, b);
+            let b_zxy = _mm_shuffle_ps::<0xD2>(b, b);
+            _mm_sub_ps(_mm_mul_ps(a_yzx, b_zxy), _mm_mul_ps(a_zxy, b_yzx))
         }
     }
 }
@@ -161,6 +178,72 @@ mod lane {
 }
 
 use lane::F4;
+
+/// SIMD 3x3 inverse on zero-padded rows (lane 3 of each row is zero).
+///
+/// The inverse's column `j` is `cross(row_{j+1}, row_{j+2}) / det`, so the three cross products
+/// are transposed into rows. Each operation has the same operands and order as the scalar
+/// formula in [`mat3x3_inverse_scalar_f32`](crate::mat3x3_inverse_scalar_f32), so the results are
+/// bit-identical to it.
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "sse2"
+))]
+#[inline(always)]
+pub(crate) fn inverse3_rows(r: [F4; 3]) -> Option<[F4; 3]> {
+    use core::arch::x86_64::*;
+    // SAFETY: SSE2 is enabled at compile time for this module; all operands are register values.
+    unsafe {
+        let abs_mask = _mm_castsi128_ps(_mm_set1_epi32(0x7fff_ffff));
+        // Largest magnitude over the nine entries (lane 3 is zero, so it cannot win).
+        let a = _mm_max_ps(
+            _mm_max_ps(_mm_and_ps(r[0], abs_mask), _mm_and_ps(r[1], abs_mask)),
+            _mm_and_ps(r[2], abs_mask),
+        );
+        let a = _mm_max_ps(a, _mm_movehl_ps(a, a));
+        let a = _mm_max_ss(a, _mm_shuffle_ps::<0x55>(a, a));
+        let scale = _mm_cvtss_f32(a);
+
+        let c0 = lane::cross(r[1], r[2]);
+        let c1 = lane::cross(r[2], r[0]);
+        let c2 = lane::cross(r[0], r[1]);
+
+        // det = (m00*c00 + m01*c01) + m02*c02, summed in the scalar formula's order.
+        let p = _mm_mul_ps(r[0], c0);
+        let s = _mm_add_ss(p, _mm_shuffle_ps::<0x55>(p, p));
+        let det = _mm_cvtss_f32(_mm_add_ss(s, _mm_movehl_ps(p, p)));
+
+        if !det.is_finite() || det.abs() <= crate::SINGULAR_EPSILON * scale * scale * scale {
+            return None;
+        }
+        let inv = _mm_set1_ps(1.0 / det);
+        // Row i of the inverse is (c0[i], c1[i], c2[i]) * inv.
+        let t = lane::transpose4([c0, c1, c2, _mm_setzero_ps()]);
+        Some([
+            _mm_mul_ps(t[0], inv),
+            _mm_mul_ps(t[1], inv),
+            _mm_mul_ps(t[2], inv),
+        ])
+    }
+}
+
+/// Array-typed wrapper over [`inverse3_rows`].
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "sse2"
+))]
+#[inline]
+pub(crate) fn inverse3_array(m: [[f32; 3]; 3]) -> Option<[[f32; 3]; 3]> {
+    let rows = m.map(|r| lane::load([r[0], r[1], r[2], 0.0]));
+    inverse3_rows(rows).map(|rows| {
+        rows.map(|r| {
+            let a = lane::store(r);
+            [a[0], a[1], a[2]]
+        })
+    })
+}
 
 /// A 4x4 `f32` matrix with each row held as a 128-bit lane value. Row-major, as in the array API.
 #[derive(Clone, Copy)]
@@ -253,12 +336,27 @@ impl Mat3 {
         })
     }
 
-    /// Inverse, or `None` if (nearly) singular. Same formula and threshold as
+    /// Inverse, or `None` if (nearly) singular. Same results and threshold as
     /// [`mat3x3_inverse_f32`](crate::mat3x3_inverse_f32).
     #[inline]
     #[must_use]
     pub fn try_inverse(self) -> Option<Mat3> {
-        crate::mat3x3_inverse_f32(self.to_rows()).map(Mat3::from_rows)
+        #[cfg(all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "sse2"
+        ))]
+        {
+            inverse3_rows(self.rows).map(|rows| Mat3 { rows })
+        }
+        #[cfg(not(all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "sse2"
+        )))]
+        {
+            crate::mat3x3_inverse_scalar_f32(self.to_rows()).map(Mat3::from_rows)
+        }
     }
 }
 

@@ -251,12 +251,19 @@ macro_rules! csuite {
                 let mut rng = Rng(33);
                 let shapes = [
                     (0usize, 4usize, 4usize), (4, 0, 4), (4, 4, 0), (1, 1, 1), (3, 5, 7), (17, 9, 13),
-                    (16, 4, 8), (33, 31, 19), (20, 7, 300), (65, 3, 2),
+                    (16, 4, 8), (33, 31, 19), (20, 7, if cfg!(miri) { 40 } else { 300 }), (65, 3, 2),
                 ];
-                for &(m, n, k) in &shapes {
+                // Under Miri, keep 1, 0 and -0.5+0.75i: 3x3 pairs instead of 5x5.
+                let scalars: Vec<[$t; 2]> = if cfg!(miri) {
+                    vec![SCALARS[0], SCALARS[1], SCALARS[3]]
+                } else {
+                    SCALARS.to_vec()
+                };
+                // Under Miri, skip the shapes with m * n * k above 2000 (the 33 x 31 x 19 and 20 x 7 x 40 cases).
+                for &(m, n, k) in shapes.iter().filter(|&&(m, n, k)| !cfg!(miri) || m * n * k <= 2000) {
                     for pad in [0usize, 2] {
-                        for &alpha in &SCALARS {
-                            for &beta in &SCALARS {
+                        for &alpha in &scalars {
+                            for &beta in &scalars {
                                 check_gemm(&mut rng, m, n, k, pad, alpha, beta);
                             }
                         }
@@ -369,7 +376,7 @@ macro_rules! csuite {
             }
 
             proptest! {
-                #![proptest_config(ProptestConfig::with_cases(48))]
+                #![proptest_config(ProptestConfig::with_cases(if cfg!(miri) { 8 } else { 48 }))]
                 #[test]
                 fn prop_gemm(m in 0usize..24, n in 0usize..12, k in 0usize..40, pad in 0usize..3,
                              ar in -2.0f64..2.0, ai in -2.0f64..2.0, br in -2.0f64..2.0, bi in -2.0f64..2.0,

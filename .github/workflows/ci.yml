@@ -135,14 +135,29 @@ jobs:
 
   miri:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        # Tests are split across shards by nextest; each shard runs in its own process.
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@nightly
         with:
-          components: miri
+          components: miri, rust-src
+      - uses: taiki-e/install-action@nextest
       - uses: Swatinem/rust-cache@v2
+      # Miri's sysroot lives outside target/ and is otherwise rebuilt on every run.
+      - id: date
+        run: echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/miri
+          key: miri-sysroot-${{ steps.date.outputs.date }}
+      - run: cargo +nightly miri setup
       # rust-toolchain.toml pins stable, which overrides the nightly installed above; +nightly forces it.
-      - run: cargo +nightly miri test --workspace --features std,scalar-only
+      - run: cargo +nightly miri nextest run --workspace --features std,scalar-only --partition count:${{ matrix.shard }}/4
         env:
           PROPTEST_CASES: "8"
           MIRIFLAGS: -Zmiri-disable-isolation

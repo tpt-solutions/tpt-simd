@@ -345,14 +345,16 @@ pub fn transpose_4x4_f32(data: &mut [[f32; 4]; 4]) {
             let r1 = _mm_loadu_ps(p.add(4));
             let r2 = _mm_loadu_ps(p.add(8));
             let r3 = _mm_loadu_ps(p.add(12));
-            let t0 = _mm_unpacklo_ps(r0, r1);
-            let t1 = _mm_unpackhi_ps(r0, r1);
-            let t2 = _mm_unpacklo_ps(r2, r3);
-            let t3 = _mm_unpackhi_ps(r2, r3);
-            _mm_storeu_ps(p, _mm_movelh_ps(t0, t2));
-            _mm_storeu_ps(p.add(4), _mm_movehl_ps(t2, t0));
-            _mm_storeu_ps(p.add(8), _mm_movelh_ps(t1, t3));
-            _mm_storeu_ps(p.add(12), _mm_movehl_ps(t3, t1));
+            // DirectXMath-style: eight `shufps`. On Raptor Lake this ordering is
+            // about 1.5x faster than the unpck/movlh form (see docs/incumbent-benchmarks.md, Round 11).
+            let t0 = _mm_shuffle_ps::<0x44>(r0, r1);
+            let t1 = _mm_shuffle_ps::<0xEE>(r0, r1);
+            let t2 = _mm_shuffle_ps::<0x44>(r2, r3);
+            let t3 = _mm_shuffle_ps::<0xEE>(r2, r3);
+            _mm_storeu_ps(p, _mm_shuffle_ps::<0x88>(t0, t2));
+            _mm_storeu_ps(p.add(4), _mm_shuffle_ps::<0xDD>(t0, t2));
+            _mm_storeu_ps(p.add(8), _mm_shuffle_ps::<0x88>(t1, t3));
+            _mm_storeu_ps(p.add(12), _mm_shuffle_ps::<0xDD>(t1, t3));
         }
     }
     #[cfg(not(all(

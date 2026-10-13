@@ -479,7 +479,7 @@ fn slice_length_mismatch_panics() {
 // ---------------------------------------------------------------------------
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(2000))]
+    #![proptest_config(ProptestConfig::with_cases(if cfg!(miri) { 8 } else { 2000 }))]
 
     #[test]
     fn prop_exp(x in -87.3f32..88.72) {

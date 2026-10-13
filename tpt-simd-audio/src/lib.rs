@@ -368,6 +368,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "4800-sample sinc sweep takes ~75s under Miri; numeric check, not UB-relevant")]
     fn resample_preserves_sine_amplitude_and_frequency() {
         let fs_in = 48_000.0;
         let fs_out = 24_000.0;

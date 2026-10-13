@@ -100,7 +100,9 @@ fn signal(n: usize, seed: u64) -> Vec<f32> {
 
 #[test]
 fn fft_matches_rustfft() {
-    for n in [16usize, 32, 64, 256, 1024] {
+    // Under Miri, stop at 256: the 1024-point transform dominates the test's runtime.
+    let sizes: &[usize] = if cfg!(miri) { &[16, 32, 64, 256] } else { &[16, 32, 64, 256, 1024] };
+    for &n in sizes {
         let x = signal(n, n as u64);
         let y = signal(n, n as u64 + 1);
         let mut re = x.clone();

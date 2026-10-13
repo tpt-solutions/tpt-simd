@@ -30,7 +30,13 @@ fn frame(w: usize, h: usize, seed: u32) -> (Vec<u8>, Vec<u8>, Vec<u8>) {
 
 #[test]
 fn yuv420_interleave_matches_documented_layout() {
-    for (w, h) in [(16usize, 8usize), (64, 48), (352, 288)] {
+    // CIF (352x288) is ~100k pixels; skip it under Miri, the smaller frames cover the layout.
+    let sizes: &[(usize, usize)] = if cfg!(miri) {
+        &[(16, 8), (64, 48)]
+    } else {
+        &[(16, 8), (64, 48), (352, 288)]
+    };
+    for &(w, h) in sizes {
         let (y, u, v) = frame(w, h, (w * h) as u32);
         let mut out = vec![0u8; y.len() + 2 * u.len()];
         interleave_yuv420(&y, &u, &v, &mut out);

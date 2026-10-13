@@ -96,13 +96,24 @@ macro_rules! suite {
 
             #[test]
             fn gemm_sizes_and_tails() {
-                let dims = [
-                    0usize, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 33, 64, 67, 130,
-                ];
+                // Under Miri, drop the large dimensions: the tails below 34 are what matter.
+                let (dims, ns, ks): (&[usize], &[usize], &[usize]) = if cfg!(miri) {
+                    (
+                        &[0, 1, 2, 3, 5, 9, 17, 33],
+                        &[0, 1, 4, 9],
+                        &[0, 1, 2, 7, 33],
+                    )
+                } else {
+                    (
+                        &[0, 1, 2, 3, 4, 5, 7, 8, 9, 15, 16, 17, 31, 33, 64, 67, 130],
+                        &[0, 1, 3, 4, 5, 9, 70],
+                        &[0, 1, 2, 7, 33, 300],
+                    )
+                };
                 let mut seed = 1;
-                for &m in &dims {
-                    for &n in &[0usize, 1, 3, 4, 5, 9, 70] {
-                        for &k in &[0usize, 1, 2, 7, 33, 300] {
+                for &m in dims {
+                    for &n in ns {
+                        for &k in ks {
                             seed += 1;
                             check_gemm(m, n, k, 0, 0, 0, 1.0, 0.0, seed);
                         }
@@ -113,8 +124,15 @@ macro_rules! suite {
             #[test]
             fn gemm_block_boundaries() {
                 // Larger than MC/KC/NC so every blocking loop iterates more than once.
-                check_gemm(150, 40, 520, 0, 0, 0, 1.0, 0.0, 99);
-                check_gemm(37, 530, 20, 0, 0, 0, 1.0, 0.0, 98);
+                if cfg!(miri) {
+                    // MC = 128, KC = NC = 512: the smallest shapes that still cross each
+                    // boundary. The full shapes take about 20 minutes under Miri.
+                    check_gemm(129, 2, 513, 0, 0, 0, 1.0, 0.0, 99);
+                    check_gemm(37, 513, 2, 0, 0, 0, 1.0, 0.0, 98);
+                } else {
+                    check_gemm(150, 40, 520, 0, 0, 0, 1.0, 0.0, 99);
+                    check_gemm(37, 530, 20, 0, 0, 0, 1.0, 0.0, 98);
+                }
             }
 
             #[test]
@@ -318,7 +336,9 @@ macro_rules! suite {
             #[test]
             fn gemv_sizes() {
                 let mut seed = 40;
-                for m in [0usize, 1, 3, 8, 17, 64, 100] {
+                // Under Miri, stop at m = 17: the 64- and 100-row cases dominate the runtime.
+                let ms: &[usize] = if cfg!(miri) { &[0, 1, 3, 8, 17] } else { &[0, 1, 3, 8, 17, 64, 100] };
+                for &m in ms {
                     for n in [0usize, 1, 2, 4, 5, 9, 33] {
                         for &(alpha, beta) in &[(1.0, 0.0), (2.0, 0.5), (0.0, 2.0), (-1.0, 1.0)] {
                             seed += 1;
@@ -374,7 +394,7 @@ suite!(
 );
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(64))]
+    #![proptest_config(ProptestConfig::with_cases(if cfg!(miri) { 8 } else { 64 }))]
 
     #[test]
     fn prop_gemm_f32(
@@ -547,7 +567,9 @@ fn level1_matches_documented_order_bit_exact() {
 fn axpy_scal_bit_exact_elementwise() {
     // Elementwise: each output is one product and one sum (or one product), so
     // the reference is the per-element expression itself.
-    for n in 0..=130usize {
+    // Under Miri, 0..=40 still covers every tail below one 16-lane f32 block and several full blocks.
+    let max_n = if cfg!(miri) { 40 } else { 130 };
+    for n in 0..=max_n {
         for &alpha in &[2.5f32, -0.75, 1.0e-3] {
             let x: Vec<f32> = (0..n)
                 .map(|i| (i as f32 * 0.37 - 5.0) * 1e3 + 0.1)
