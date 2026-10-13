@@ -487,6 +487,7 @@ const HEX_VALUE: [u8; 256] = {
 ///
 /// Returns [`TextError::OddHexLength`], [`TextError::InvalidHexDigit`], or
 /// [`TextError::BufferTooSmall`].
+#[inline]
 pub fn hex_decode(src: &[u8], dst: &mut [u8]) -> Result<usize, TextError> {
     if !src.len().is_multiple_of(2) {
         return Err(TextError::OddHexLength);
