@@ -36,9 +36,6 @@ published manifests. No normal (non-dev) dependency on `testutil` exists.
 - [ ] `cargo login` with a crates.io API token (token scope: `publish-new` and `publish-update`).
 - [ ] If any commit lands before publishing, re-run the dry run from the new commit:
       `cargo publish --workspace --dry-run`
-- [ ] Optional but recommended: add per-crate `LICENSE-MIT` and `LICENSE-APACHE` files. The READMEs link to the
-      root license files (`../LICENSE-APACHE`), and those are not in the `.crate` tarballs, so the tarballs
-      carry only the SPDX `license` field, not the license text.
 - [ ] Semver policy and release process are drafted in `docs/release.md`. Maintainer review is still
       needed; see `todo.md` under "Release".
 
@@ -123,10 +120,14 @@ crates from the list. Do not republish a version that already exists; bump the v
 
 ## After publishing
 
-- [ ] Verify each crate page on crates.io and that `docs.rs` builds (docs.rs builds run after upload).
-- [ ] Tag the release: `git tag v0.1.0 && git push origin v0.1.0`. This triggers `release.yml`, which
-      re-runs the test and package checks against the tagged commit.
-- [ ] Create the GitHub release from the tag, using the CHANGELOG entries as the notes.
+- [x] Crates live: all 41 return HTTP 200 at version 0.1.0 on the crates.io API (checked 2026-10-13).
+- [ ] Verify docs.rs builds for each crate (not yet checked).
+- [x] Tagged `v0.1.0` at `1369dea`, the commit whose source is in the published tarballs (checked against
+      `tpt-simd-sort` and `tpt-simd-text`). Pushed to origin, which triggers `release.yml`. Later commits
+      (through `7440c7c`) change `tpt-simd-matrix`, `tpt-simd-sort`, `tpt-simd-text` and `tpt-simd-blas` and are
+      unreleased; they belong in 0.1.1.
+- [ ] Create the GitHub release from `v0.1.0`. Notes are in the scratchpad file `release-notes-v0.1.0.md`.
+      `gh` is not installed here, so create it at https://github.com/tpt-solutions/tpt-simd/releases/new?tag=v0.1.0.
 - [ ] Tick the publish items in `todo.md`.
 
 ## Rollback
