@@ -13,5 +13,11 @@ categories = ["development-tools"]
 
 [dependencies]
 
+# Keep xtask's unit tests out of `cargo bench --benches`, which runs them with libtest and rejects criterion flags.
+[[bin]]
+name = "xtask"
+path = "src/main.rs"
+bench = false
+
 [lints]
 workspace = true
