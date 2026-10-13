@@ -49,47 +49,52 @@ are not part of the order. Publish one crate at a time, and wait for each to app
 (`cargo publish` does this automatically for each call). The umbrella `tpt-simd` is last because it depends on
 almost everything else.
 
- 1. tpt-simd-audio
- 2. tpt-simd-bits
- 3. tpt-simd-dct
- 4. tpt-simd-distance
- 5. tpt-simd-geom
- 6. tpt-simd-half
- 7. tpt-simd-hash
- 8. tpt-simd-ntt
- 9. tpt-simd-pixel
-10. tpt-simd-search
-11. tpt-simd-sort
-12. tpt-simd-text
-13. tpt-simd-transpose
-14. tpt-simd-vector
-15. tpt-simd-core
-16. tpt-simd-aligned
-17. tpt-simd-blas
-18. tpt-simd-blend
-19. tpt-simd-butterfly
-20. tpt-simd-compare
-21. tpt-simd-convolve
-22. tpt-simd-fixed
-23. tpt-simd-gather
-24. tpt-simd-horizontal
-25. tpt-simd-interpolate
-26. tpt-simd-math
-27. tpt-simd-mul
-28. tpt-simd-rng
-29. tpt-simd-rounding
-30. tpt-simd-saturate
-31. tpt-simd-scatter
-32. tpt-simd-shift
-33. tpt-simd-sparse
-34. tpt-simd-window
-35. tpt-simd-complex
-36. tpt-simd-dot
-37. tpt-simd-permute
-38. tpt-simd-reduce
-39. tpt-simd-select
-40. tpt-simd-matrix
-41. tpt-simd
+Tick a box once the crate is live on crates.io (check with `https://crates.io/api/v1/crates/<name>`, which returns
+HTTP 200 when the crate exists). Update this list as you go.
+
+Progress as of 2026-10-12 (41 of 41 live):
+
+- [x] 1. tpt-simd-audio
+- [x] 2. tpt-simd-bits
+- [x] 3. tpt-simd-dct
+- [x] 4. tpt-simd-distance
+- [x] 5. tpt-simd-geom
+- [x] 6. tpt-simd-half
+- [x] 7. tpt-simd-hash
+- [x] 8. tpt-simd-ntt
+- [x] 9. tpt-simd-pixel
+- [x] 10. tpt-simd-search
+- [x] 11. tpt-simd-sort
+- [x] 12. tpt-simd-text
+- [x] 13. tpt-simd-transpose
+- [x] 14. tpt-simd-vector
+- [x] 15. tpt-simd-core
+- [x] 16. tpt-simd-aligned
+- [x] 17. tpt-simd-blas
+- [x] 18. tpt-simd-blend
+- [x] 19. tpt-simd-butterfly
+- [x] 20. tpt-simd-compare
+- [x] 21. tpt-simd-convolve
+- [x] 22. tpt-simd-fixed
+- [x] 23. tpt-simd-gather
+- [x] 24. tpt-simd-horizontal
+- [x] 25. tpt-simd-interpolate
+- [x] 26. tpt-simd-math
+- [x] 27. tpt-simd-mul
+- [x] 28. tpt-simd-rng
+- [x] 29. tpt-simd-rounding
+- [x] 30. tpt-simd-saturate
+- [x] 31. tpt-simd-scatter
+- [x] 32. tpt-simd-shift
+- [x] 33. tpt-simd-sparse
+- [x] 34. tpt-simd-window
+- [x] 35. tpt-simd-complex
+- [x] 36. tpt-simd-dot
+- [x] 37. tpt-simd-permute
+- [x] 38. tpt-simd-reduce
+- [x] 39. tpt-simd-select
+- [x] 40. tpt-simd-matrix
+- [x] 41. tpt-simd
 
 ## Commands
 

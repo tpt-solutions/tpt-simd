@@ -218,7 +218,9 @@ macro_rules! suite {
                 $gemm(4, 4, 4, 1.0, &a, 4, &a, 4, 0.0, &mut c, 4);
             }
 
+            // nrm2 ends in libm::sqrt, which uses inline asm on x86 and which Miri does not support.
             #[test]
+            #[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
             fn level1_all_lengths() {
                 let mut rng = Rng(3);
                 for n in (0..140).chain([255, 256, 257, 1000, 1023]) {
@@ -242,6 +244,7 @@ macro_rules! suite {
             }
 
             #[test]
+            #[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
             fn level1_special_values() {
                 assert_eq!($dot(&[], &[]), 0.0);
                 assert_eq!($nrm2(&[]), 0.0);
@@ -495,6 +498,7 @@ fn level1_ref64(x: &[f64], y: &[f64], op: u8) -> f64 {
 }
 
 #[test]
+#[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
 fn level1_matches_documented_order_bit_exact() {
     for n in 0..=130usize {
         let x32: Vec<f32> = (0..n)

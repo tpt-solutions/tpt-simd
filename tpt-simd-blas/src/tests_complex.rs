@@ -60,6 +60,7 @@ macro_rules! csuite {
             }
 
             #[test]
+            #[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
             fn level1_matches_reference() {
                 let mut rng = Rng(7);
                 for &n in &SIZES {
@@ -94,6 +95,7 @@ macro_rules! csuite {
             }
 
             #[test]
+            #[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
             fn conjugation_semantics() {
                 // conj(x).y with x = i, y = 1: conj(i) * 1 = -i; unconjugated: i.
                 assert_eq!($dotc(&[0.0], &[1.0], &[1.0], &[0.0]), [0.0, -1.0]);
@@ -115,6 +117,7 @@ macro_rules! csuite {
             }
 
             #[test]
+            #[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
             fn special_values() {
                 for &n in &[1usize, 5, 9, 40] {
                     for pos in [0, n / 2, n - 1] {
@@ -294,6 +297,7 @@ macro_rules! csuite {
             }
 
             #[test]
+            #[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
             fn interleaved_level1_and_gemv_match_split() {
                 let mut rng = Rng(55);
                 for &n in &SIZES {
