@@ -34,6 +34,13 @@ fn bench(c: &mut Criterion) {
         bn.iter(|| tpt_simd_matrix::mat4x4_mul_f32(black_box(a), black_box(b)))
     });
     g.bench_function("glam", |bn| bn.iter(|| black_box(ga) * black_box(gb)));
+    g.bench_function("tpt_reg", |bn| {
+        let (ra, rb) = (
+            tpt_simd_matrix::Mat4::from_rows(a),
+            tpt_simd_matrix::Mat4::from_rows(b),
+        );
+        bn.iter(|| black_box(ra) * black_box(rb))
+    });
     g.bench_function("ultraviolet", |bn| {
         bn.iter(|| black_box(ua) * black_box(ub))
     });
@@ -46,6 +53,10 @@ fn bench(c: &mut Criterion) {
     });
     g.bench_function("tpt_by_value", |bn| {
         bn.iter(|| tpt_simd_matrix::mat4x4_transposed_f32(black_box(a)))
+    });
+    g.bench_function("tpt_reg", |bn| {
+        let ra = tpt_simd_matrix::Mat4::from_rows(a);
+        bn.iter(|| black_box(ra).transpose())
     });
     g.bench_function("glam", |bn| bn.iter(|| black_box(ga).transpose()));
     g.bench_function("ultraviolet", |bn| bn.iter(|| black_box(ua).transposed()));
@@ -61,6 +72,10 @@ fn bench(c: &mut Criterion) {
     let mut g = c.benchmark_group("mat3_inverse");
     g.bench_function("tpt", |bn| {
         bn.iter(|| tpt_simd_matrix::mat3x3_inverse_f32(black_box(m3)))
+    });
+    g.bench_function("tpt_reg", |bn| {
+        let r3 = tpt_simd_matrix::Mat3::from_rows(m3);
+        bn.iter(|| black_box(r3).try_inverse())
     });
     g.bench_function("glam", |bn| bn.iter(|| black_box(g3).inverse()));
     g.bench_function("ultraviolet", |bn| bn.iter(|| black_box(u3).inversed()));

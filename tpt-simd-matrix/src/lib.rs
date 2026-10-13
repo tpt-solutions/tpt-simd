@@ -21,6 +21,9 @@ extern crate std;
 
 use tpt_simd_core::Simd;
 
+pub mod register;
+pub use register::{Mat3, Mat4};
+
 /// Relative threshold under which a 3x3 determinant is treated as singular.
 pub const SINGULAR_EPSILON: f32 = 1e-6;
 
