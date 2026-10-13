@@ -26,10 +26,13 @@ recorded as decisions, so that nobody reopens them by accident.
    safe policy and document the generic gap. This decision should be revisited if the sort
    becomes a bottleneck for a real user.
 
-3. **`tpt-simd-matrix` keeps the array-typed API.** `[[f32; N]; N]` is returned through memory,
-   which costs 1.5–2.3× against `glam` on transpose and 1.7× on the 3×3 inverse. Matching `glam`
-   needs a register-typed matrix, which is a public API change. That is a separate decision,
-   to be made when a user needs the speed, and is not part of this ADR.
+3. **`tpt-simd-matrix` keeps the array-typed API, and adds a register-typed one.** `[[f32; N]; N]`
+   is returned through memory, which cost 1.5–2.3× against `glam` on transpose and 1.7× on the
+   3×3 inverse. The maintainer chose to add `Mat4` and `Mat3` (rows held as 128-bit lane values)
+   alongside the array functions, not to replace them. The array functions and their results
+   are unchanged. Round 9 in [incumbent-benchmarks.md](../incumbent-benchmarks.md) has the
+   measurements: the register 3×3 inverse is ahead of `glam`, the register 4×4 multiply is
+   about 1.07×, and the register 4×4 transpose is still about 1.6× behind.
 
 4. **`tpt-simd-blas` gemm at very small sizes is not a goal yet.** At 64 the gap is about
    1.4× to `faer`, which comes from packing overhead. Closing it means changing the packing

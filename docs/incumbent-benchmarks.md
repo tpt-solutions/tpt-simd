@@ -769,3 +769,95 @@ hex encode 256 KB at 1.13–1.16, where the `faster-hex` control moved the same 
 | gemm_f64_vs | gemm_f64_512/faer | 4400850.00 | 4408850.00 | 1.00 | 4481700.0 / 4320000.0 | 4373500.0 / 4444200.0 |
 
 </details>
+
+## Round 9: closing gaps in sort, text, matrix and gemm
+
+Goal: improve the four crates that were still behind (`tpt-simd-text`, `tpt-simd-sort`,
+`tpt-simd-matrix`, `tpt-simd-blas`), keeping the ADR 0005 decisions unless the maintainer
+changed them. Changes were measured with `bench-vs/ab_compare.py` (same session, two
+interleaved runs per side, `HEAD` against the working tree). Ratios are B / A, where B is the
+working tree. Each change is read against its control row (`std` or `faster-hex`, which was
+not changed). The controls moved by up to about 8% in the final run (hex encode at 4 KB), so a
+ratio is only counted as a change when it moves by more than about 10% and the control does not
+move the same way.
+
+### What changed
+
+- **sort: `select_nth`.** The partition now runs only on the side that holds `k`. The
+  equal-to-pivot pass runs only when `k` lands on the upper side, and the pivot comes from the
+  same chooser as the sort (ninther for long slices). The control (`std` `select_nth_unstable`)
+  stayed flat.
+- **text: `hex_decode`.** `#[inline]` on the public entry point. The change is small, but the
+  64 B row is call-bound, so inlining removes a real part of the fixed cost. The 4 KB and
+  256 KB rows did not move.
+- **matrix: register-typed API.** `Mat4` (`from_rows`, `to_rows`, `transpose`, `Mul`) and
+  `Mat3` (`from_rows`, `to_rows`, `try_inverse`) in `tpt-simd-matrix::register`. Rows are held
+  as `__m128` on x86_64 with SSE2, and as `Simd<f32, 4>` elsewhere. `Mat4` multiplication is
+  bit-identical to `mat4x4_mul_scalar_f32`, and `Mat3::try_inverse` uses the array function's
+  formula. Both are checked by property tests.
+
+### Tried and not kept
+
+- **Block partition for `sort_unstable`** (safe offset-buffer partition in the style of
+  BlockQuicksort): about 2× slower than the Lomuto loop at 100 K, both before and after a
+  fix that advanced finished blocks. Removed.
+- **`#[inline(always)]` on the in-place transpose:** no change (2.97 → 2.92 ns).
+- **`#[inline]` on the UTF-8 entry points:** no change beyond noise.
+
+### Same-session A/B: sort and text (final)
+
+| Suite | Benchmark | A median | B median | B / A | Control B / A |
+|---|---|---|---|---|---|
+| sort_vs | select_nth 1 K (tpt) | 1503 ns | 1390 ns | 0.92 | std 0.97 |
+| sort_vs | select_nth 100 K (tpt) | 169 µs | 116 µs | 0.68 | std 0.99 |
+| sort_vs | select_nth 1 M (tpt) | 1.71 ms | 1.16 ms | 0.67 | std 1.00 |
+| sort_vs | sort_unstable 1 K / 100 K / 1 M (tpt) | 6.32 / 1.77 / 19.8 ms | 6.18 / 1.67 / 19.5 ms | 0.98 / 0.95 / 0.99 | std 1.00 / 0.98 / 0.98 |
+| text_vs | hex_decode 64 B (tpt) | 9.53 ns | 7.84 ns | 0.82 | faster-hex 1.02 |
+| text_vs | hex_decode 4 KB / 256 KB (tpt) | 365 ns / 23.5 µs | 367 ns / 23.8 µs | 1.01 / 1.01 | faster-hex 1.01 / 0.97 |
+| text_vs | hex_encode 64 B / 4 KB / 256 KB | 3.49 / 100 ns / 10.7 µs | 3.47 / 107 ns / 9.9 µs | 1.00 / 1.07 / 0.93 | faster-hex 1.00 / 1.08 / 0.92 |
+| text_vs | UTF-8 validate 64 B / 4 KB / 256 KB | 8.36 / 238 ns / 15.3 µs | 8.52 / 242 ns / 15.5 µs | 1.02 / 1.02 / 1.01 | simdutf8 0.98 / 1.01 / 0.99 |
+
+Current ratios, tpt-simd ÷ incumbent in the same run (B side):
+
+- `select_nth`: 1 K 1.19×, 100 K 1.05×, 1 M 0.84× (ahead). Previously 1.24×, 1.51×, 1.24×.
+- `hex_decode`: 64 B 1.48× (was 1.84×). 4 KB and 256 KB still about 1.2×, as ADR 0005 item 1 records.
+- `sort_unstable` (generic): still 1.10× at 1 K and about 1.48× at 100 K and 1 M. ADR 0005 item 2.
+- `hex_encode` and UTF-8 validate at 64 B: unchanged, about 1.1× and 1.5×.
+
+### Register-typed matrix API
+
+Same process, `matrix_vs_glam`, two full runs (values agree within about 2%):
+
+| Operation | array API (`tpt`) | register API (`tpt_reg`) | glam | register / glam |
+|---|---|---|---|---|
+| 4×4 multiply | 4.32 ns | 4.10 ns | 3.82 ns | 1.06–1.09 |
+| 4×4 transpose, in place (array) / by value (array) | 2.68 / 2.01 ns | — / — | 1.23 ns | — |
+| 4×4 transpose (register) | — | 1.94 ns | 1.23 ns | 1.56–1.59 |
+| 3×3 inverse | 24.7 ns | 9.9 ns | 14.2 ns | 0.70 |
+
+- The register transpose is about 1.4× faster than the in-place array transpose, and removes most
+  of the store-and-reload cost. It is still about 1.6× behind `glam`, so ADR 0005 item 3 is only
+  partly resolved for transpose.
+- The register 3×3 inverse is about 2.5× faster than the array version and now ahead of
+  `glam`. Both call the same scalar formula, so the gap comes from how the inputs and output
+  move, not from different arithmetic. The mechanism is not isolated; it is measured, and it
+  holds across both runs.
+
+### gemm at 512
+
+One filtered run, `gemm_vs` at 512 (f32, same process): `tpt_workspace` 2.28 ms, `gemm` 2.17 ms,
+`faer` 2.18 ms, `matrixmultiply` 2.59 ms. The ratio to the fastest incumbent is 1.05, so
+the 1.13 in Round 8 was noise and gemm at 512 is at parity. No gemm change was made. The 64 B
+gap (about 1.4–1.6×) is ADR 0005 item 4, and it is unchanged.
+
+### Open gaps after Round 9
+
+1. `sort_unstable` generic at 100 K and above (about 1.48×): ADR 0005 item 2, needs unchecked
+   indexing in the partition.
+2. `hex_decode` at 4 KB and 256 KB (about 1.2×) and at 64 B (1.48×): ADR 0005 item 1.
+3. `select_nth` at 1 K (1.19×): not profiled; the partition's per-call cost is the likely
+   cause, and no decision is recorded for it.
+4. UTF-8 validate and hex encode at 64 B (about 1.5× and 1.1×): per-call cost, not yet located.
+5. Matrix 4×4 transpose by register (about 1.6×): the remaining cost is in the shuffle sequence
+   and the 64-byte return, and is not resolved by the register type alone.
+6. gemm at 64: ADR 0005 item 4, unchanged.
