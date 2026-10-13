@@ -177,30 +177,25 @@ fn select<T: Copy, F: Fn(&T, &T) -> bool>(mut v: &mut [T], mut k: usize, less: &
             return;
         }
         depth -= 1;
-        let (lt, gt) = three_way_partition(v, less);
+        let pivot = choose_pivot(v, less);
+        // Split off the elements below the pivot. The side that does not hold `k` is never
+        // read again, so the equal-to-pivot pass only runs when `k` is on the upper side.
+        let lt = partition_branchless(v, |x| less(x, &pivot));
         if k < lt {
             v = &mut v[..lt];
-        } else if k < gt {
+            continue;
+        }
+        let (_, upper) = v.split_at_mut(lt);
+        let eq = partition_branchless(upper, |x| !less(&pivot, x));
+        // `k` is now an index into `upper`.
+        let rel = k - lt;
+        if rel < eq {
             // Equal to the pivot: already in its final place.
             return;
-        } else {
-            k -= gt;
-            v = &mut v[gt..];
         }
+        k = rel - eq;
+        v = &mut upper[eq..];
     }
-}
-
-/// Partitions `v` into `[< pivot | == pivot | > pivot]` and returns the
-/// boundaries `(lt, gt)`. The pivot is the median of three samples.
-fn three_way_partition<T: Copy, F: Fn(&T, &T) -> bool>(v: &mut [T], less: &F) -> (usize, usize) {
-    let n = v.len();
-    let mid = n / 2;
-    let pivot = median_of_three(v[0], v[mid], v[n - 1], less);
-    // Two branch-free passes: first move the elements below the pivot to the front, then move
-    // the elements equal to the pivot (not above it) to the front of the rest.
-    let lt = partition_branchless(v, |x| less(x, &pivot));
-    let eq = partition_branchless(&mut v[lt..], |x| !less(&pivot, x));
-    (lt, lt + eq)
 }
 
 /// Lomuto partition with no data-dependent branch: every element is swapped into place
