@@ -910,3 +910,64 @@ The cache-resident case is slower and the memory-bound case is inside the noise,
 so the kernels were reverted. The autovectorised loop stays for `axpy` and `scal`.
 `scal` was not benchmarked on its own. The bit-exact test stays because it is
 still a valid check of the portable path.
+
+
+## Phase 11 crates: criterion baseline (2026-10-15)
+
+Benches: `tpt-simd-*/benches/kernels.rs` for the 13 Phase 11 crates, run with
+`cargo bench -p <crate> --bench kernels` on the development host (Windows 11,
+i5-1135G7, default `x86_64` target, so SSE2 only: no `target-cpu`, no explicit
+SIMD paths in these crates). Figures are criterion medians from one run and are
+noisy at the 10 to 20 per cent level. Treat them as a baseline, not a claim.
+
+None of these crates has an explicit SIMD path yet (see the Phase 11 section in
+`todo.md`). The `tpt` column is the crate's public kernel, which the compiler
+autovectorises. The comparison is against a naive loop, `std`, or `format!`, as
+noted per row. Read the rows where the crate is slower as findings, not as
+regressions.
+
+| crate | bench | median |
+|---|---|---|
+| bits | `popcount_u64` naive / tpt | 2.20 µs / 2.22 µs |
+| bits | `prefix_sum_u32` naive / tpt | 1.16 µs / 1.16 µs |
+| sort | `sort_u32` 1 000, std / tpt | 5.53 µs / 4.42 µs |
+| sort | `sort_u32` 100 000, std / tpt | 1.24 ms / 0.47 ms |
+| ntt | `modmul` `%` / Barrett / Montgomery | 3.14 µs / 2.96 µs / 10.85 µs |
+| transpose | `u32` 64x64, naive / tpt | 1.91 µs / 2.13 µs |
+| transpose | `u32` 512x512, naive / tpt | 675 µs / 148 µs |
+| pixel | `rgb8_to_rgba8` 256K px, naive / tpt | 121 µs / 152 µs |
+| pixel | `histogram_u8` 768 KiB, naive / tpt | 177 µs / 175 µs |
+| hash | `adler32` 1 MiB, naive / tpt | 2.35 ms / 65 µs |
+| hash | `crc32` 1 MiB, tpt | 475 µs |
+| text | `utf8` validate ~1.1 MB, std / tpt | 330 µs / 324 µs |
+| text | hex encode 256 KiB, format / tpt | 12.8 ms / 16.9 µs |
+| search | `find_byte` 1 MiB, iter / tpt | 243 µs / 13.4 µs |
+| search | `count_byte` 1 MiB, iter / tpt | 310 µs / 14.2 µs |
+| search | `find` substring 1 MiB, windows / tpt | 433 µs / 15.3 µs |
+| geom | `distance_sq` 16K points, AoS naive / SoA tpt | 8.46 µs / 2.81 µs |
+| dct | DCT-II N=256, table matvec / tpt | 21.7 µs / 21.4 µs |
+| distance | inner product f32 1024, iter / tpt | 428 ns / 120 ns |
+| distance | L2 squared f32 1024, iter / tpt | 459 ns / 147 ns |
+| audio | FIR 32 taps, 64K samples, naive / tpt | 1.06 ms / 0.92 ms |
+| audio | `mix_into` 64K samples, naive / tpt | 5.46 µs / 5.41 µs |
+| half | f32 to f16 64K, `half` per element / tpt | 65.5 µs / 66.0 µs |
+
+Where the crate is slower or level, and the reason as far as it is known:
+
+* **`ntt` Montgomery `mul`** is 3.5x slower than `%` in this loop. `mul` converts
+  `b` into Montgomery form on every call (`mul_mont(a, to_mont(b))`, a second
+  reduction), and the modulus is a runtime value. Barrett is level
+  with `%`. For fixed multipliers (twiddles) use `mul_mont`, which is the one-reduction
+  path the crate documents; this bench does not measure it.
+* **`transpose` 64x64** is slightly slower than the naive loop, which the compiler
+  handles well at that size. The gap reverses at 512x512 (4.6x faster).
+* **`pixel` `rgb8_to_rgba8`** is slower than the naive per-pixel copy. The compiler
+  vectorises the naive loop, and the crate's version is not better. Candidate for a
+  real SIMD path, or for removing the claim.
+* **`pixel` `histogram_u8`** and **`text` UTF-8 validation** are level with the
+  baseline. Their gains would come from explicit paths, not from autovectorisation.
+* **`crc32`** has no baseline in the bench (a bitwise reference is far too slow to
+  time usefully). Compare against `crc32fast` when the oracle decision is made.
+
+The bench workflow (`.github/workflows/bench.yml`) uploads its criterion output as a
+workflow artifact. Nothing commits these numbers automatically, so this table is updated by hand.

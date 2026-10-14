@@ -498,7 +498,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 
 ## Phase 11 — New crate candidates
 
-Decision (recommended, applied 2026-10-15): the Phase 11 crates ship in 0.1 on autovectorised code. Explicit SIMD paths and asm audits move to post-0.1 work. Reference property tests were added for all 13 crates (see Definition-of-done gaps). The open items below stay open as that post-0.1 list.
+Decision (recommended, applied 2026-10-15): the Phase 11 crates ship in 0.1 on autovectorised code. Explicit SIMD paths and asm audits move to post-0.1 work. Reference property tests and criterion benches were added for all 13 crates (see Definition-of-done gaps). asm audits and explicit SIMD paths remain open as the post-0.1 list.
 
 Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and a doctest, and each passes clippy with `-D warnings` and the `thumbv7em-none-eabihf` no_std check. **No crate has an explicit SIMD path yet**; all rely on autovectorisation. Policy is in `docs/adr/0004-no-runtime-wrapping.md`: own implementation by default, no runtime dependencies. Incumbents are dev-dependency oracles only, or sit behind a default-off feature. The one exception is `tpt-simd-half`, which keeps `half` for f16/bf16 interop.
 
@@ -597,7 +597,7 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 - [x] Bench suites exist in `bench-vs/benches/`: `hash_vs`, `text_vs`, `search_vs`, `sort_vs` (head-to-head against incumbents) and `kernels` (absolute timings and scalar baselines for the rest). All compile.
 - [x] A first run in `--quick` mode completed. Its numbers are not valid yet: (1) quick mode has too few samples; (2) some output lines were interleaved; (3) the incumbent throughput is implausible (`crc32fast` reports about 65 GiB/s on one core), so the harness must be fixed before results are trusted.
 - [x] Fix the harness so inputs cannot be reused across iterations, then rerun in full mode, one suite at a time — full-mode reruns done 2026-10-12 (Round 5, two passes per suite, all passed); no input-reuse bug found (docs/incumbent-benchmarks.md, Round 4 and Round 5)
-- [ ] Record validated results in `docs/benchmarks.md`, including the crates where we are slower than the incumbent — the head-to-head results are in `docs/incumbent-benchmarks.md` (Rounds 5–6d) and the accepted gaps are in ADR 0005; `docs/benchmarks.md` itself is not yet updated
+- [x] Record validated results in `docs/benchmarks.md`, including the crates where we are slower than the incumbent — Phase 11 criterion baseline recorded (2026-10-15, one host, noisy; slower rows listed with reasons). Incumbent head-to-head results are in `docs/incumbent-benchmarks.md` — the head-to-head results are in `docs/incumbent-benchmarks.md` (Rounds 5–6d) and the accepted gaps are in ADR 0005; `docs/benchmarks.md` itself is not yet updated
 
 ### Definition-of-done gaps (apply to every crate above)
 
