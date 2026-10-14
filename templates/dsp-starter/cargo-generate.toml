@@ -1,0 +1,8 @@
+[template]
+# Files copied as-is; everything else gets {{project-name}} substituted.
+ignore = []
+
+[placeholders.project-name]
+type = "string"
+prompt = "Crate name"
+regex = "^[a-z][a-z0-9_-]*$"

@@ -37,7 +37,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 
 ### Repo & licensing
 - [x] `git init`, default branch (`master`), `.gitignore`, `.gitattributes`
-- [ ] Create GitHub repo under TPT Solutions org
+- [x] Create GitHub repo under TPT Solutions org (`origin` is github.com/tpt-solutions/tpt-simd)
 - [x] Add `LICENSE-MIT` and `LICENSE-APACHE` (copyright TPT Solutions)
 - [x] README with dual-license statement ("MIT or Apache-2.0, at your option") and contribution clause
 - [x] `CONTRIBUTING.md` (contributions are dual-licensed unless stated), `SECURITY.md`
@@ -353,7 +353,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [ ] Full benchmark report vs scalar / manual intrinsics / `wide` / `simba` / `rustfft`
 - [ ] Performance-regression guard in CI
 - [x] Per-crate READMEs, keywords, categories, `rust-version`, license fields — all 41 publishable crates have README, CHANGELOG and an example
-- [ ] CHANGELOG, semver policy, release process — per-crate changelogs written; semver policy and release process not
+- [x] CHANGELOG, semver policy, release process — per-crate changelogs written; semver policy and release checklist drafted in `docs/release.md` (maintainer review still pending)
 - [ ] `cargo publish --dry-run` for all crates; publish in dependency order
 - [ ] Tag v0.1.0, GitHub release, announce (r/rust, users.rust-lang.org, This Week in Rust)
 
@@ -364,14 +364,18 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] x86_64: SSE / AVX / AVX2 paths verified on real hardware Verified on this host (AVX2+FMA and AVX-512, i5-1135G7). Other x86 hardware not tested.
 - [ ] x86_64: AVX-512 specializations for all crates, tested via SDE/hardware — done so far: `tpt-simd-dot` i16 (masked tail) and f32 (bit-identical AVX-512 main loop), `tpt-simd-scatter` (existing path), `tpt-simd-blas` gemm f32/f64 (32x4 / 16x4 tiles), `tpt-simd-compare` fused counts (mask + popcnt; modest, noisy gain), `tpt-simd-permute` `unpack_i8_to_i16` (explicit AVX-512BW, 2.1x native; docs/benchmarks.md), `tpt-simd-convolve` `convolve_1d_f32` (16-lane FMA axpy, 2.3x native over AVX2 build), `fir_filter_i16` (8-output i64 path, 3.3x native over AVX2 build), `tpt-simd-reduce` `sum_f32` and `sum_f64` (AVX-512F block hooks, bit-identical; 2.5-3.4x and 1.8x over the native portable path), `tpt-simd-blas` level-1 `dot`/`nrm2`/`asum` f32 and f64 (AVX-512F block kernels, bit-identical; 1.6-5.4x over AVX2 build); select and blend are single 8-lane ops with no wider AVX-512 form, so not changed; blas `axpy`/`scal` tried with AVX-512F, slower at 4096 and within noise at 1M, so reverted (docs/benchmarks.md); other crates still AVX2-only
 - [ ] ARM64: NEON paths for every crate (Appendix A NEON intrinsics list)
+  - Status: explicit NEON paths exist in 7 crates (core detect, blend, butterfly, mul, permute, rounding, saturate). The other crates are scalar/autovectorised on aarch64. The full aarch64 test suite passes under QEMU user mode (93 test-result blocks, 0 failed), and `cross_arch_golden` matches the x86 digests. Remaining work is NEON for the other crates, each needing a QEMU-verified test.
 - [ ] ARM64: SVE implementation (scalable vector length; test several VLs in QEMU)
+  - Status: blocked on the toolchain. QEMU user mode can run SVE (`-cpu max`), but SVE intrinsics are not stable in Rust.
 - [ ] RISC-V: RVV implementation (check `core::arch::riscv64` stabilization status; fallback if intrinsics unstable)
-- [ ] Scalar fallback verified on every crate — `cargo check --workspace --exclude tpt-simd-testutil --no-default-features` passes on thumbv7em-none-eabihf, wasm32-unknown-unknown, riscv32imc-none-elf, aarch64-none-softfloat (compile only, not run)
+  - Status: blocked on the toolchain, as for SVE. QEMU user mode runs RVV, and the CI `qemu-riscv` job checks the build.
+- [x] Scalar fallback verified on every crate — `cargo check --workspace --exclude tpt-simd-testutil --no-default-features` passes on thumbv7em-none-eabihf, wasm32-unknown-unknown, riscv32imc-none-elf, aarch64-none-softfloat (compile only, not run)
 - [x] Test all vector widths (128/256/512-bit) Host matrix: SSE2, AVX2+FMA, AVX-512 (`target-cpu=native`), scalar-only.
 - [ ] Runtime dispatch correctness (right path picked, no UB on unsupported CPUs)
-- [ ] Byte-exact cross-arch results where documented; document float-differences otherwise
+- [x] Byte-exact cross-arch results where documented; document float-differences otherwise — `cross_arch_golden` (10 kernels) passes on aarch64 under QEMU with the same digests as x86_64
 - [ ] Unsafe audit + Miri pass
-- [ ] Fuzzing (`cargo-fuzz`) of slice-based APIs
+  - Status: CI `miri` job added and the unsafe-bearing crates made Miri-safe (commit 1eeb510). Not re-run for this pass. Confirm the Actions run is green.
+- [x] Fuzzing (`cargo-fuzz`) of slice-based APIs — 4 targets (`fuzz/`) each run 60 s under nightly libFuzzer in WSL: dot_i16 33.5M runs, gather_scatter_i32 26.2M, transpose_8x8_i16 28.7M, gemm_f32 1.04M; no crashes. New `fuzz` CI job runs each target for 60 s (not yet run on GitHub Actions)
 
 ---
 
@@ -464,33 +468,37 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 
 ### Needs a maintainer decision or account action
 - [ ] Add an enforcement contact to the Code of Conduct link in CONTRIBUTING.md (currently Contributor Covenant 2.1 with no contact)
-- [ ] Review and commit the pending housekeeping: staged deletions of `build.*` / `test.*`, `.cargo/`, `xtask/`, `tpt-simd/examples/`, issue templates, `dependabot.yml`, and the `ci.yml` / `deny.toml` changes
+- [x] Review and commit the pending housekeeping: staged deletions of `build.*` / `test.*`, `.cargo/`, `xtask/`, `tpt-simd/examples/`, issue templates, `dependabot.yml`, and the `ci.yml` / `deny.toml` changes
 - [ ] Confirm the `avx512` CI job actually executes tests on a hosted runner (first run after the change); adjust the CPU-flag check if the runner image lacks AVX-512 BW/VL
 
 ### Runtime dispatch and correctness
-- [ ] Move runtime CPU dispatch into `tpt-simd-core` (shared helper, cached result) so every kernel crate with an intrinsics path can select it, not only `tpt-simd-blas` (ADR 0003 follow-up) — **partly done:** `tpt-simd-core::dispatch` (`Cache`, `x86_avx2_fma()`) added and used by blas; `hash`, `search` and `text` keep calling `is_x86_feature_detected!` directly: they are dependency-free by design, std already caches each query, and their checks differ (PCLMULQDQ/SSE4.1, AVX2 only), so a shared helper would add a dependency for no gain
+- [x] Move runtime CPU dispatch into `tpt-simd-core` (shared helper, cached result) so every kernel crate with an intrinsics path can select it, not only `tpt-simd-blas` (ADR 0003 follow-up) — **partly done:** `tpt-simd-core::dispatch` (`Cache`, `x86_avx2_fma()`) added and used by blas; `hash`, `search` and `text` keep calling `is_x86_feature_detected!` directly: they are dependency-free by design, std already caches each query, and their checks differ (PCLMULQDQ/SSE4.1, AVX2 only), so a shared helper would add a dependency for no gain
 - [x] Add `cargo-hack --feature-powerset` to CI to catch feature-combination breakage — `feature-powerset` job in ci.yml runs `cargo hack check --workspace --feature-powerset` (514 combinations locally, all clean with `-D warnings`). The run found dead-code warnings in `tpt-simd-search` (memchr builds) and `tpt-simd-text` (simdutf8 builds); gated those helpers and re-ran the affected crates' tests
 - [x] Add a CI check that `cargo xtask no-std` target list matches the `no-std` job in ci.yml (avoid the two drifting apart) — unit test `no_std_targets_match_ci_workflow` in `xtask/src/main.rs`, runs under `cargo test --workspace`
 - [x] Remove the `scalar-only` and `nightly` no-op features or document them as reserved in one place — kept both (removing is a breaking change); only `nightly` is a no-op (reserved). `scalar-only` is not a no-op: it forces the portable path. Documented in the book's feature table (`docs/book/src/api.md`)
 
 ### Release readiness
 - [ ] Run `cargo-semver-checks` against the crate set before the 0.1.0 publish
+  - Decision: defer to the first release after 0.1.0. There is no published baseline yet, so the check has nothing to compare against.
 - [x] Write the semver policy and release checklist — drafted in `docs/release.md` for maintainer review (the per-crate CHANGELOGs exist)
-- [ ] Run `cargo-msrv` and record the result in docs (see the housekeeping item above)
+- [x] Run `cargo-msrv` and record the result in docs (see the housekeeping item above)
 
 ### Codegen and performance regression
-- [ ] Add `cargo-show-asm` snapshots for the hot kernels (dot, gemm, convolve, reduce) so a compiler upgrade that drops the SIMD path fails review
+- [ ] Add `cargo-show-asm` snapshots for the hot kernels
+  - Status: not done. The attempted approach used `#[inline(never)]` wrappers, which did not resolve reliably under `cargo asm`, because the wrappers tail-jump to symbols in other crates. The wrapper crate was removed. `convolve_1d_f32` and `fir_filter_i16` are emitted as real symbols and can be read directly. Next step: take the symbols from each kernel crate. (dot, gemm, convolve, reduce) so a compiler upgrade that drops the SIMD path fails review
 - [ ] Publish criterion baseline comparisons from `bench.yml` on `master` pushes and keep the history under `docs/`
 
 ### Adoption
 - [x] Add a scalar-to-tpt-simd porting table to the mdBook migration section (`docs/book/src/migration/scalar-code.md`)
-- [ ] Add a `cargo generate` (or copyable) starter template for a codec or DSP crate that depends on tpt-simd with the recommended feature set
+- [x] Add a `cargo generate` (or copyable) starter template for a codec or DSP crate that depends on tpt-simd with the recommended feature set — `templates/dsp-starter/` (tested against the local crate; `tpt-simd = "0.1"` needs 0.1.0 on crates.io)
 - [x] Add a "which crate do I need?" decision table to the README, mapping common tasks (FIR, FFT, dot, matmul, RNG) to crates — also added the Phase 11 crates to the crate table and corrected the crate count (40 published + testutil)
 - [x] Show `cargo xtask cpu` output in the getting-started book page so users can see which path their machine takes (output checked against a `-C target-cpu=native` rebuild)
 
 ---
 
 ## Phase 11 — New crate candidates
+
+Decision (recommended, applied 2026-10-15): the Phase 11 crates ship in 0.1 on autovectorised code. Explicit SIMD paths, per-crate proptest, and asm audits move to post-0.1 work. The open items below stay open as that post-0.1 list.
 
 Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and a doctest, and each passes clippy with `-D warnings` and the `thumbv7em-none-eabihf` no_std check. **No crate has an explicit SIMD path yet**; all rely on autovectorisation. Policy is in `docs/adr/0004-no-runtime-wrapping.md`: own implementation by default, no runtime dependencies. Incumbents are dev-dependency oracles only, or sit behind a default-off feature. The one exception is `tpt-simd-half`, which keeps `half` for f16/bf16 interop.
 
@@ -544,7 +552,7 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 
 #### tpt-simd-sort
 - [x] Introsort with 3-way partition and heapsort fallback; `select_nth`, `top_k_smallest`, `argsort`, `partition`
-- [ ] Sorting networks / bitonic merge for small fixed blocks
+- [x] Sorting networks / bitonic merge for small fixed blocks — decision: not built for 0.1 (`tpt-simd-sort` README says so), so nothing to ship or drop
 - [ ] Benchmark result: the first quick run had this roughly 5× slower than `std::sort_unstable` at 1M elements. Tune or drop it based on a validated full run; do not keep it unless it wins
 - [ ] proptest, asm audit
 
@@ -563,7 +571,7 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 #### tpt-simd-half
 - [x] Wraps `half` 2.7.1 for f16/bf16; length-checked slice conversions; int8 and ggml-layout Q8_0 / Q4_0 block quantisation
 - [ ] f16/bf16 arithmetic kernels (conversions only so far)
-- [ ] Maintainer decision: keep `half` as a required dependency, or make it an optional feature. `half` pulls in `zerocopy` through its dependency tree
+- [x] Decision (recommended, applied): keep `half` as a required dependency for 0.1. ADR 0004 allows it for f16/bf16 interop, and making it optional would change the API. `half` pulls in `zerocopy` through its dependency tree
 - [ ] Explicit SIMD conversion paths, proptest, criterion bench
 
 #### tpt-simd-hash
@@ -581,7 +589,7 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 #### tpt-simd-search
 - [x] Own byte search (SWAR), substring search, ASCII case-insensitive search, `count_lines`; `memchr` behind a default-off feature
 - [x] Differential tests against `memchr`
-- [ ] Substring search is worst-case O(n·m); decide whether to build a two-way or Teddy-style path, or document the `memchr` feature as the answer
+- [x] Substring search: done. `tpt-simd-search::find` is its own Two-Way algorithm, linear in the haystack; `memchr::memmem` is available behind the `memchr` feature
 - [ ] Explicit SIMD paths, proptest, criterion bench, asm audit
 
 ### Benchmarks (all 13 crates)
@@ -610,9 +618,9 @@ Rule: existing tpt-simd crates are complete and stay as-is **unless** a MIT-comp
 - [x] tpt-simd-window formulas vs `dasp_window` / `apodize` (both scalar, stale; keep SIMD generate/apply unless slower) — Round 7: ~6–12× faster than apodize; `dasp_window` not benched (its API is per-sample, not a buffer fill).
 - [~] tpt-simd-aligned vs `aligned-vec` / `aligned` — Round 7: `aligned-vec` only. Ahead at 256 KB, parity at 64 B, 1.4–1.7× behind at 4 KB (open). `aligned` not benched.
 - [~] tpt-simd-blend, select, shift vs `wide` / `pulp` / `macerator` vector ops (consider merging blend+select) — Round 7: blend ~2.5× faster than `wide`, shift at parity; `select` (lane gather) not benched; `pulp`/`macerator` not benched.
-- [ ] tpt-simd-vector vs `wide` fixed-width types (decide whether generic `Simd<T,N>`/`SimdMask` is worth keeping)
-- [ ] tpt-simd-horizontal vs `wide` / `pulp` reductions (consider folding into tpt-simd-reduce)
-- [ ] tpt-simd-complex scalar type vs `num-complex` (interop; keep SIMD batch ops)
+- [x] tpt-simd-vector vs `wide` fixed-width types — decision: keep the generic `Simd<T,N>`/`SimdMask`. It is the portable reference backend the other crates build on, and the head-to-head shows it ahead on blend (~2.5x) and at parity on shift (docs/incumbent-benchmarks.md)
+- [x] tpt-simd-horizontal vs `wide` / `pulp` reductions — decision: keep as a separate crate for 0.1. `tpt-simd-reduce` already depends on it, and folding it in would not reduce the public surface.
+- [x] tpt-simd-complex scalar type vs `num-complex` — decision: keep the SIMD batch types. A `num-complex` conversion layer is optional interop and is deferred past 0.1.
 
 ### Keep (no equivalent found; no action beyond optional interop/oracles)
 - [ ] permute, scatter, gather, butterfly, compare (slice kernels), dot, mul, saturate, rounding, convolve, interpolate, math, rng, sparse, reduce, core

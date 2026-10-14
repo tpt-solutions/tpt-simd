@@ -86,10 +86,12 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: thumbv7em-none-eabihf, wasm32-unknown-unknown
+          targets: thumbv7em-none-eabihf, wasm32-unknown-unknown, riscv32imc-unknown-none-elf, aarch64-unknown-none-softfloat
       - uses: Swatinem/rust-cache@v2
       - run: cargo build --workspace --no-default-features --exclude tpt-simd-testutil --exclude xtask --exclude bench-vs --target thumbv7em-none-eabihf
       - run: cargo build --workspace --no-default-features --exclude tpt-simd-testutil --exclude xtask --exclude bench-vs --target wasm32-unknown-unknown
+      - run: cargo build --workspace --no-default-features --exclude tpt-simd-testutil --exclude xtask --exclude bench-vs --target riscv32imc-unknown-none-elf
+      - run: cargo build --workspace --no-default-features --exclude tpt-simd-testutil --exclude xtask --exclude bench-vs --target aarch64-unknown-none-softfloat
 
   aarch64:
     runs-on: ubuntu-24.04-arm
@@ -172,6 +174,25 @@ jobs:
         env:
           PROPTEST_CASES: "8"
           MIRIFLAGS: -Zmiri-disable-isolation
+
+  # Smoke run of each libFuzzer target. Long fuzzing is for a manual run; this only catches
+  # a kernel that breaks against its reference within a minute.
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [dot_i16, gather_scatter_i32, transpose_8x8_i16, gemm_f32]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: taiki-e/install-action@cargo-fuzz
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: fuzz
+      - run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=60
+        working-directory: fuzz
 
   deny:
     runs-on: ubuntu-latest

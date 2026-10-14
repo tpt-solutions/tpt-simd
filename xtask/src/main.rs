@@ -11,7 +11,12 @@ use std::process::{Command, ExitCode};
 const MSRV: &str = "1.95";
 
 /// Bare-metal and wasm targets used by the `no-std` CI job.
-const NO_STD_TARGETS: &[&str] = &["thumbv7em-none-eabihf", "wasm32-unknown-unknown"];
+const NO_STD_TARGETS: &[&str] = &[
+    "thumbv7em-none-eabihf",
+    "wasm32-unknown-unknown",
+    "riscv32imc-unknown-none-elf",
+    "aarch64-unknown-none-softfloat",
+];
 
 const USAGE: &str = "\
 cargo xtask <task>
@@ -77,13 +82,18 @@ fn no_std() -> Result<(), String> {
             println!("xtask no-std: skipping {target} (install with `rustup target add {target}`)");
             continue;
         }
+        // Same arguments as the `no-std` job in ci.yml: default features off, and
+        // `bench-vs` excluded because its dev-dependencies turn `std` on for the crates it uses.
         run(cargo().args([
             "build",
             "--workspace",
+            "--no-default-features",
             "--exclude",
             "tpt-simd-testutil",
             "--exclude",
             "xtask",
+            "--exclude",
+            "bench-vs",
             "--target",
             target,
         ]))?;

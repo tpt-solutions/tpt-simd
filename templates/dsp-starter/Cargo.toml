@@ -1,0 +1,17 @@
+[package]
+name = "{{project-name}}"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "A DSP or codec crate built on tpt-simd"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Default features: `runtime-dispatch` (AVX2+FMA picked at runtime, needs `std`).
+# For a no_std build, use `default-features = false` and check the feature table
+# in the tpt-simd book (docs/book/src/api.md).
+# Until tpt-simd 0.1.0 is on crates.io, point this at a path or git source.
+tpt-simd = "0.1"
+
+[dev-dependencies]
+# Keep the scalar reference next to the SIMD code, as the workspace does.
