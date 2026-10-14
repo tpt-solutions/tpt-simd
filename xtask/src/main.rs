@@ -26,8 +26,50 @@ Tasks:
   no-std   no_std builds for the bare-metal and wasm targets installed with rustup
   msrv     cargo check on the minimum supported toolchain (1.95)
   cpu      print the SIMD features this build and CPU support (examples/cpu_report)
+  asm      check that the hot kernels still contain their SIMD instructions (needs cargo-show-asm)
   help     show this text
 ";
+
+/// Hot kernels checked by `cargo xtask asm`. Each symbol is one that `cargo asm` can emit from
+/// the library (not inlined away), and each minimum is a floor below the count measured when the
+/// check was added. Dropping a SIMD path makes the count fall below the floor.
+struct AsmKernel {
+    krate: &'static str,
+    symbol: &'static str,
+    /// Minimum count of instructions that use an xmm/ymm/zmm register.
+    min_vector: usize,
+    /// Minimum count of fused multiply-add instructions (0 when the kernel has none).
+    min_fma: usize,
+}
+
+const ASM_KERNELS: &[AsmKernel] = &[
+    AsmKernel {
+        krate: "tpt-simd-blas",
+        symbol: "tpt_simd_blas::single::gemm_with_workspace",
+        min_vector: 140,
+        min_fma: 18,
+    },
+    AsmKernel {
+        krate: "tpt-simd-convolve",
+        symbol: "convolve_1d_f32",
+        min_vector: 49,
+        min_fma: 10,
+    },
+    // The explicit Q15 FIR path is AVX-512 only; under the AVX2 target this relies on
+    // autovectorisation, so the floor is low. The AVX-512 path is checked by the CI avx512 job.
+    AsmKernel {
+        krate: "tpt-simd-convolve",
+        symbol: "fir_filter_i16",
+        min_vector: 2,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-dot",
+        symbol: "x86::dot_i16",
+        min_vector: 40,
+        min_fma: 0,
+    },
+];
 
 fn main() -> ExitCode {
     let task = env::args().nth(1).unwrap_or_else(|| "help".to_owned());
@@ -36,6 +78,7 @@ fn main() -> ExitCode {
         "no-std" => no_std(),
         "msrv" => msrv(),
         "cpu" => cpu(),
+        "asm" => asm(),
         "help" | "-h" | "--help" => {
             print!("{USAGE}");
             Ok(())
@@ -126,6 +169,104 @@ fn cpu() -> Result<(), String> {
     ]))
 }
 
+/// Instruction counts for one function, read from `cargo asm` output.
+#[derive(Debug, Default, PartialEq)]
+struct AsmCounts {
+    instructions: usize,
+    vector: usize,
+    fma: usize,
+}
+
+/// Count instructions in `cargo asm` output. Directives (`.section`, `.cfi_*`), labels and
+/// blank lines are skipped; a line is an instruction when it starts with whitespace and a mnemonic.
+fn count_asm(text: &str) -> AsmCounts {
+    let mut counts = AsmCounts::default();
+    for line in text.lines() {
+        if !line.starts_with(|c: char| c.is_whitespace()) {
+            continue;
+        }
+        let mut words = line.split_whitespace();
+        let Some(mnemonic) = words.next() else {
+            continue;
+        };
+        if mnemonic.starts_with('.') || mnemonic.starts_with('#') || mnemonic.ends_with(':') {
+            continue;
+        }
+        counts.instructions += 1;
+        if line.contains("xmm") || line.contains("ymm") || line.contains("zmm") {
+            counts.vector += 1;
+        }
+        if ["vfmadd", "vfmsub", "vfnmadd", "vfnmsub"]
+            .iter()
+            .any(|prefix| mnemonic.starts_with(prefix))
+        {
+            counts.fma += 1;
+        }
+    }
+    counts
+}
+
+/// Check the hot kernels' SIMD instruction counts with `cargo asm` (needs cargo-show-asm).
+///
+/// Built with `-C target-cpu=x86-64-v3`, so the AVX2+FMA paths are selected. On other hosts the
+/// check is skipped, because the symbols and the codegen are different.
+fn asm() -> Result<(), String> {
+    if !cfg!(target_arch = "x86_64") {
+        println!("xtask asm: skipped (the checks are for x86_64 codegen)");
+        return Ok(());
+    }
+    let installed = Command::new("cargo")
+        .args(["asm", "--help"])
+        .output()
+        .map(|out| out.status.success())
+        .unwrap_or(false);
+    if !installed {
+        return Err(
+            "cargo-show-asm is not installed (`cargo install cargo-show-asm --locked`)".into(),
+        );
+    }
+
+    let mut failures = Vec::new();
+    for kernel in ASM_KERNELS {
+        let output = Command::new("cargo")
+            .args([
+                "asm",
+                "-p",
+                kernel.krate,
+                "--lib",
+                "--release",
+                kernel.symbol,
+            ])
+            .env("RUSTFLAGS", "-C target-cpu=x86-64-v3")
+            .output()
+            .map_err(|e| format!("could not run cargo asm: {e}"))?;
+        let text = String::from_utf8_lossy(&output.stdout);
+        let counts = count_asm(&text);
+        let ok = counts.vector >= kernel.min_vector && counts.fma >= kernel.min_fma;
+        println!(
+            "{:<40} instructions {:>5}  vector {:>4} (min {:>3})  fma {:>3} (min {:>2})  {}",
+            kernel.symbol,
+            counts.instructions,
+            counts.vector,
+            kernel.min_vector,
+            counts.fma,
+            kernel.min_fma,
+            if ok { "ok" } else { "FAIL" },
+        );
+        if !ok {
+            failures.push(kernel.symbol);
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "SIMD instruction count below the floor for: {}",
+            failures.join(", ")
+        ))
+    }
+}
+
 /// A `cargo` command, using the same toolchain that launched xtask.
 fn cargo() -> Command {
     let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
@@ -147,9 +288,24 @@ fn run(command: &mut Command) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::NO_STD_TARGETS;
+    use super::{NO_STD_TARGETS, count_asm};
 
     /// The `no-std` CI job in `.github/workflows/ci.yml` must build the same targets as `cargo xtask no-std`.
+    #[test]
+    fn count_asm_counts_vector_and_fma_instructions() {
+        let text = "tpt_simd::f:\n\
+            \t.cfi_startproc\n\
+            \tvmovups ymm0, ymmword ptr [rdi]\n\
+            \tvfmadd231ps ymm1, ymm0, ymm2\n\
+            \tvfnmsub132ps xmm3, xmm1, xmm2\n\
+            \tadd rax, 4\n\
+            \tcall foo\n";
+        let counts = count_asm(text);
+        assert_eq!(counts.instructions, 5);
+        assert_eq!(counts.vector, 3);
+        assert_eq!(counts.fma, 2);
+    }
+
     #[test]
     fn no_std_targets_match_ci_workflow() {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../.github/workflows/ci.yml");

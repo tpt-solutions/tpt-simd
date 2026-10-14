@@ -374,7 +374,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [ ] Runtime dispatch correctness (right path picked, no UB on unsupported CPUs)
 - [x] Byte-exact cross-arch results where documented; document float-differences otherwise — `cross_arch_golden` (10 kernels) passes on aarch64 under QEMU with the same digests as x86_64
 - [ ] Unsafe audit + Miri pass
-  - Status: CI `miri` job added and the unsafe-bearing crates made Miri-safe (commit 1eeb510). Not re-run for this pass. Confirm the Actions run is green.
+  - Status: CI `miri` job covers the unsafe-bearing crates (commit 1eeb510). Re-run locally for `tpt-simd-dot` (`cargo +nightly miri test --features std,scalar-only`): 4 test results, 0 failed. The other crates are checked by the CI job, not by hand here. Confirm the Actions run is green.
 - [x] Fuzzing (`cargo-fuzz`) of slice-based APIs — 4 targets (`fuzz/`) each run 60 s under nightly libFuzzer in WSL: dot_i16 33.5M runs, gather_scatter_i32 26.2M, transpose_8x8_i16 28.7M, gemm_f32 1.04M; no crashes. New `fuzz` CI job runs each target for 60 s (not yet run on GitHub Actions)
 
 ---
@@ -415,7 +415,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] Complex variants via split re/im — free functions `_c32`/`_c64` on split planes and interleaved `[[T; 2]]`: axpy, scal, dotu/dotc, nrm2, asum, gemv (N/T/H), gemm (4 real gemm calls; 3M deliberately not used); no `ComplexSimd` type. cgemm 256: 6–20x vs naive (20–42 GFLOP/s); cgemv N 30x, H 1.9x; dotc 1.3x, axpy parity; no complex getrf/potrf/trsm yet
 - [x] Portable reference + AVX2/FMA path; NEON later
 - [x] LAPACK-style `getrf`/`getrs`/`trsm`/`potrf`/`potrs` (f32/f64, blocked on gemm) — LU only 1.2–2x vs naive reference (panel factor/row swaps dominate), Cholesky 2–14.5x; see docs/benchmarks.md
-- [ ] Tests vs scalar reference (tails, NaN/inf, non-multiple sizes), proptest, criterion bench, `cargo-show-asm` — tests and criterion benches exist (incl. lapack); show-asm not done
+- [ ] Tests vs scalar reference (tails, NaN/inf, non-multiple sizes), proptest, criterion bench, `cargo-show-asm` — tests and criterion benches exist (incl. lapack); the gemm microkernel is covered by `cargo xtask asm`; show-asm for the lapack routines not done
 - [x] Target: gemm >= 3x scalar f32 on AVX2 — 5.5–32x vs naive strided loop (28–43 GFLOP/s), see docs/benchmarks.md
 - [ ] Wire into `tpt-math-linalg-dense` (`DMatrix` mul, `DVector::dot`/`norm`, LU/Cholesky/QR inner loops) and `tpt-math-linalg-complex` behind `simd` — **wired and verified** (tpt-math commit `91e0aaf`; dense tests pass with `simd` and `simd-runtime`, 20 unit tests + doctest each): `tpt-math-linalg-dense` features `simd` / `simd-runtime` route f32/f64 `DMatrix * DMatrix`, `DMatrix * DVector` (move-based, no copy, needs `T: 'static`) and f64 `solve`/`inverse` (getrf/getrs) to tpt-simd-blas. NOT wired: `dot`/`norm` (take `&self`; a safe route needs a copy, and tpt-math forbids `unsafe`); no Cholesky/QR in dense; `tpt-math-linalg-complex` (its `Vec<Complex<T>>` needs an O(n²) copy into planes, and blas has no complex getrf/potrf/trsm). **Correction:** the previous entry claimed this wiring was already done, but tpt-math at the time had no tpt-simd dependency and no `simd` feature anywhere (clean tree, no stash/branch). The previous `tpt-math-stats`/`tpt-math-linalg-sparse` "wired" claims (lines below) are not present in the repo either; re-verify before relying on them.
 
@@ -484,8 +484,8 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] Run `cargo-msrv` and record the result in docs (see the housekeeping item above)
 
 ### Codegen and performance regression
-- [ ] Add `cargo-show-asm` snapshots for the hot kernels
-  - Status: not done. The attempted approach used `#[inline(never)]` wrappers, which did not resolve reliably under `cargo asm`, because the wrappers tail-jump to symbols in other crates. The wrapper crate was removed. `convolve_1d_f32` and `fir_filter_i16` are emitted as real symbols and can be read directly. Next step: take the symbols from each kernel crate. (dot, gemm, convolve, reduce) so a compiler upgrade that drops the SIMD path fails review
+- [x] Add `cargo-show-asm` snapshots for the hot kernels
+  - Done as a floor check, not a text snapshot: `cargo xtask asm` (CI `asm` job) counts vector and FMA instructions in four emitted kernels under `-C target-cpu=x86-64-v3`: f32 gemm microkernel (282 vector / 36 FMA measured), `convolve_1d_f32` (98 / 20), `fir_filter_i16` (5 / 0; the explicit path is AVX-512 only), `dot_i16` (83 / 0). Floors are about half the measured counts. Not covered: `reduce` and the f32 dot, which have no emitted symbol under cargo-show-asm, so they need a different approach. (dot, gemm, convolve, reduce) so a compiler upgrade that drops the SIMD path fails review
 - [ ] Publish criterion baseline comparisons from `bench.yml` on `master` pushes and keep the history under `docs/`
 
 ### Adoption
