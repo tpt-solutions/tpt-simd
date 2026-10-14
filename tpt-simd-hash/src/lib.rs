@@ -165,7 +165,7 @@ mod pclmul {
     fn wide_available() -> bool {
         #[cfg(feature = "runtime-dispatch")]
         {
-            std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("vpclmulqdq")
+            !cfg!(miri) && std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("vpclmulqdq")
         }
         #[cfg(not(feature = "runtime-dispatch"))]
         {
@@ -191,7 +191,8 @@ mod pclmul {
             target_feature = "ssse3"
         )))]
         {
-            std::is_x86_feature_detected!("pclmulqdq")
+            !cfg!(miri)
+                && std::is_x86_feature_detected!("pclmulqdq")
                 && std::is_x86_feature_detected!("sse2")
                 && std::is_x86_feature_detected!("sse4.1")
                 && std::is_x86_feature_detected!("ssse3")
@@ -471,7 +472,7 @@ mod adler_avx2 {
     pub(super) fn available() -> bool {
         #[cfg(feature = "runtime-dispatch")]
         {
-            std::is_x86_feature_detected!("avx2")
+            !cfg!(miri) && std::is_x86_feature_detected!("avx2")
         }
         #[cfg(not(feature = "runtime-dispatch"))]
         {

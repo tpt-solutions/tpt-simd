@@ -47,12 +47,13 @@ impl Features {
     }
 
     /// Features available on the running CPU (needs `std`; otherwise the
-    /// compile-time set).
+    /// compile-time set). Under Miri this is the compile-time set, because
+    /// Miri cannot execute the `cpuid` instruction behind the query.
     #[cfg(feature = "std")]
     pub fn runtime() -> Self {
         #[allow(unused_mut)]
         let mut f = Self::compile_time();
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        #[cfg(all(any(target_arch = "x86", target_arch = "x86_64"), not(miri)))]
         {
             f.sse2 |= std::is_x86_feature_detected!("sse2");
             f.sse41 |= std::is_x86_feature_detected!("sse4.1");
@@ -61,7 +62,7 @@ impl Features {
             f.fma |= std::is_x86_feature_detected!("fma");
             f.avx512f |= std::is_x86_feature_detected!("avx512f");
         }
-        #[cfg(target_arch = "aarch64")]
+        #[cfg(all(target_arch = "aarch64", not(miri)))]
         {
             f.neon |= std::arch::is_aarch64_feature_detected!("neon");
             f.sve |= std::arch::is_aarch64_feature_detected!("sve");

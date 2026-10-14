@@ -530,7 +530,10 @@ pub fn fir_filter_scalar_i16(input: &[i16], coefficients: &[i16], output: &mut [
     fir_scalar_range(input, coefficients, output, 0..input.len());
 }
 
-#[cfg(test)]
+// Skipped under Miri: the portable FMA fallback calls `libm::fmaf`, whose x86
+// feature detection runs `cpuid`, which Miri cannot execute. This crate's only
+// `unsafe` code is the AVX-512 path, which is not compiled for Miri's target.
+#[cfg(all(test, not(miri)))]
 mod tests {
     use super::*;
     use proptest::prelude::*;

@@ -157,7 +157,18 @@ jobs:
           key: miri-sysroot-${{ steps.date.outputs.date }}
       - run: cargo +nightly miri setup
       # rust-toolchain.toml pins stable, which overrides the nightly installed above; +nightly forces it.
-      - run: cargo +nightly miri nextest run --workspace --features std,scalar-only --partition count:${{ matrix.shard }}/4
+      # Scope: crates that contain `unsafe` code in src/. Crates without `unsafe` (audio, dct, distance,
+      # geom, interpolate, math, rng, ...) are left out: most of them depend on libm's x86 routines,
+      # which call inline asm that Miri cannot run. Add a crate here when it gains `unsafe`.
+      - run: >
+          cargo +nightly miri nextest run --no-fail-fast --features std,scalar-only
+          --partition count:${{ matrix.shard }}/4
+          -p tpt-simd-aligned -p tpt-simd-blas -p tpt-simd-blend -p tpt-simd-butterfly
+          -p tpt-simd-compare -p tpt-simd-convolve -p tpt-simd-dot -p tpt-simd-fixed
+          -p tpt-simd-gather -p tpt-simd-hash -p tpt-simd-horizontal -p tpt-simd-matrix
+          -p tpt-simd-mul -p tpt-simd-permute -p tpt-simd-reduce -p tpt-simd-rounding
+          -p tpt-simd-scatter -p tpt-simd-search -p tpt-simd-select -p tpt-simd-shift
+          -p tpt-simd-sparse -p tpt-simd-text -p tpt-simd-vector
         env:
           PROPTEST_CASES: "8"
           MIRIFLAGS: -Zmiri-disable-isolation

@@ -305,9 +305,11 @@ mod tests {
     fn negative_index_unchecked() {
         let data = [1, 2, 3, 4];
         // SAFETY: base points at element 2, so offsets -2..=1 are in bounds.
+        // Derive the pointer from the whole array: a pointer taken from `data[2..]`
+        // carries provenance only for that subslice, so offsets before it are UB.
         let r = unsafe {
             gather_i32(
-                data[2..].as_ptr(),
+                data.as_ptr().add(2),
                 Simd::from_array([-2, -1, 0, 1, -2, -1, 0, 1]),
             )
         };

@@ -108,8 +108,10 @@ fn compensated_beats_naive_on_cancellation() {
 #[test]
 fn pairwise_beats_naive_on_long_constant_sum() {
     // 0.1f32 summed 4M times: left-to-right drifts badly, pairwise stays close.
-    let x = std::vec![0.1f32; 4_000_000];
-    let exact = 4_000_000.0 * f64::from(0.1f32);
+    // Under Miri, 64K terms still show the drift and take a fraction of the time.
+    let len = if cfg!(miri) { 65_536 } else { 4_000_000 };
+    let x = std::vec![0.1f32; len];
+    let exact = len as f64 * f64::from(0.1f32);
     let naive: f32 = x.iter().sum();
     let pw = pairwise_sum_f32(&x);
     assert!((f64::from(pw) - exact).abs() < (f64::from(naive) - exact).abs());

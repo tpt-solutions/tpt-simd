@@ -45,9 +45,14 @@ cargo test --locked --workspace --features std
 RUSTFLAGS="-C target-feature=+v" cargo test ...    # riscv64: RVV auto-vectorisation (unstable flag, warns)
 RUSTFLAGS="-C target-feature=+sve" cargo test ...  # arm64: SVE auto-vectorisation (accepted on stable)
 
-# Miri (CI configuration)
-PROPTEST_CASES=8 MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri test --workspace --features std,scalar-only
+# Miri (CI configuration; the -p list is in .github/workflows/ci.yml)
+PROPTEST_CASES=8 MIRIFLAGS=-Zmiri-disable-isolation cargo +nightly miri nextest run --no-fail-fast --features std,scalar-only -p tpt-simd-aligned ...
 ```
+
+Miri covers only the crates that contain `unsafe` code. Crates that depend on `libm`'s
+x86 routines (which use inline asm Miri cannot run) are excluded, and so are crates
+with no `unsafe` code. Tests that reach those routines carry
+`#[cfg_attr(miri, ignore = "...")]` with the reason.
 
 ## Cross-architecture conformance
 

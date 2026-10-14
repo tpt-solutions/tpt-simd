@@ -128,8 +128,15 @@ fn hex_decode_agrees_with_faster_hex_for_every_byte_value_in_every_lane() {
     // Every byte value at every position of 32-, 64- and 96-byte inputs (whole AVX2 blocks,
     // with the SSE2 and scalar tails after them). The rest of the input is valid digits, so the
     // only difference between cases is the byte under test.
-    for n in [32usize, 64, 96] {
-        for pos in 0..n {
+    // Under Miri: one block size, and positions at the block edges only.
+    let sizes: &[usize] = if cfg!(miri) { &[32] } else { &[32, 64, 96] };
+    for &n in sizes {
+        let positions: Vec<usize> = if cfg!(miri) {
+            vec![0, 1, 15, 16, 31]
+        } else {
+            (0..n).collect()
+        };
+        for pos in positions {
             for b in 0..=255u8 {
                 let mut src: Vec<u8> = (0..n).map(|i| b"0aF9bE"[i % 6]).collect();
                 src[pos] = b;
@@ -180,8 +187,15 @@ fn core_valid(bytes: &[u8]) -> bool {
 #[test]
 fn utf8_validation_matches_core_for_all_two_byte_pairs() {
     // Each pair sits inside a 96-byte ASCII buffer, at positions around the 32-byte blocks.
-    for a in 0..=255u8 {
-        for b in 0..=255u8 {
+    // Under Miri, use the byte values where UTF-8 classes change, instead of all 256 x 256.
+    let all: Vec<u8> = (0..=255u8).collect();
+    let edges: Vec<u8> = vec![
+        0x00, 0x7F, 0x80, 0x8F, 0x90, 0x9F, 0xA0, 0xBF, 0xC0, 0xC1, 0xC2, 0xDF, 0xE0, 0xE1,
+        0xED, 0xEE, 0xEF, 0xF0, 0xF4, 0xF5, 0xFF,
+    ];
+    let values: &[u8] = if cfg!(miri) { &edges } else { &all };
+    for &a in values {
+        for &b in values {
             for pos in [0usize, 1, 30, 31, 32, 33, 62] {
                 let mut buf = vec![b'x'; 96];
                 buf[pos] = a;
@@ -204,18 +218,19 @@ fn utf8_validation_matches_core_for_structured_three_and_four_byte_sequences() {
         0x00, 0x41, 0x7F, 0x80, 0x8F, 0x90, 0x9F, 0xA0, 0xBF, 0xC0, 0xC1, 0xC2, 0xDF, 0xE0, 0xE1,
         0xED, 0xEF, 0xF0, 0xF4, 0xF5, 0xFF,
     ];
-    let n = INTERESTING.len();
-    for &pos in &[30usize, 31, 61] {
+    // Under Miri: one representative per class, one position, 9^4 instead of 21^4 x 3.
+    let (set, positions): (&[u8], &[usize]) = if cfg!(miri) {
+        (&[0x00, 0x7F, 0x80, 0xBF, 0xC0, 0xE0, 0xF0, 0xF4, 0xFF], &[31])
+    } else {
+        (&INTERESTING, &[30, 31, 61])
+    };
+    let n = set.len();
+    for &pos in positions {
         for i in 0..n {
             for j in 0..n {
                 for k in 0..n {
                     for l in 0..n {
-                        let seq = [
-                            INTERESTING[i],
-                            INTERESTING[j],
-                            INTERESTING[k],
-                            INTERESTING[l],
-                        ];
+                        let seq = [set[i], set[j], set[k], set[l]];
                         let mut buf = vec![b'x'; 96];
                         buf[pos..pos + 4].copy_from_slice(&seq);
                         assert_eq!(is_valid_utf8(&buf), core_valid(&buf), "{seq:x?} pos={pos}");

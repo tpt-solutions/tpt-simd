@@ -194,14 +194,14 @@ where
 
 proptest! {
     #[test]
-    fn prop_i16((a, b) in pair(i16_edgy().boxed(), 300)) {
+    fn prop_i16((a, b) in pair(i16_edgy().boxed(), if cfg!(miri) { 40 } else { 300 })) {
         prop_assert_eq!(dot_product_i16(&a, &b), ref_i16(&a, &b));
         prop_assert_eq!(portable::dot_product_i16(&a, &b), ref_i16(&a, &b));
         prop_assert_eq!(dot_product_saturating_i16(&a, &b), ref_sat(&a, &b));
     }
 
     #[test]
-    fn prop_f32((a, b) in pair(f32_with_specials().boxed(), 300)) {
+    fn prop_f32((a, b) in pair(f32_with_specials().boxed(), if cfg!(miri) { 40 } else { 300 })) {
         let r = ref_f32(&a, &b);
         prop_assert!(same(dot_product_f32(&a, &b), r));
         prop_assert!(same(portable::dot_product_f32(&a, &b), r));

@@ -239,6 +239,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "libm x86 routine uses inline asm, which Miri does not support")]
     fn dct_constant_input_is_pure_dc() {
         let dct = Dct::new(4);
         let mut c = [0.0f32; 4];

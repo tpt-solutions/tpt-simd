@@ -59,6 +59,10 @@ pub fn x86_avx2_fma() -> bool {
     if cfg!(all(target_feature = "avx2", target_feature = "fma")) {
         return true;
     }
+    // Miri cannot execute `cpuid`; report the compile-time answer (false here).
+    if cfg!(miri) {
+        return false;
+    }
     static CACHE: Cache = Cache::new();
     CACHE.get_or_detect(|| {
         std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("fma")

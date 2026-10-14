@@ -159,7 +159,7 @@ mod avx2 {
     pub(crate) fn available() -> bool {
         #[cfg(feature = "runtime-dispatch")]
         {
-            std::is_x86_feature_detected!("avx2")
+            !cfg!(miri) && std::is_x86_feature_detected!("avx2")
         }
         #[cfg(not(feature = "runtime-dispatch"))]
         {

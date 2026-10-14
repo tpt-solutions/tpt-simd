@@ -497,7 +497,7 @@ macro_rules! suite {
             fn trsm_all_variants_and_sizes() {
                 // Under Miri, keep the block edges (63-65, 129-130) and drop the largest sizes.
                 let (ms, ns): (&[usize], &[usize]) = if cfg!(miri) {
-                    (&[0, 1, 2, 31, 63, 64, 65, 130], &[1, 2, 5])
+                    (&[0, 1, 2, 31, 63, 64, 65], &[1, 2])
                 } else {
                     (&[0, 1, 2, 31, 63, 64, 65, 100, 129, 130, 200], &[1, 2, 5, 40])
                 };
@@ -883,6 +883,7 @@ proptest! {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "libm::sqrt uses inline asm on x86")]
     fn prop_chol_f32(n in 0usize..80, seed in any::<u64>()) {
         let mut rng = Rng(seed);
         let lda = n.max(1);

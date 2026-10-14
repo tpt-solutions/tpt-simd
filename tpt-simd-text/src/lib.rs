@@ -112,7 +112,7 @@ mod utf8_avx2 {
     pub(super) fn available() -> bool {
         #[cfg(feature = "runtime-dispatch")]
         {
-            std::is_x86_feature_detected!("avx2")
+            !cfg!(miri) && std::is_x86_feature_detected!("avx2")
         }
         #[cfg(not(feature = "runtime-dispatch"))]
         {
@@ -631,7 +631,7 @@ mod hex_avx2 {
     pub(super) fn available() -> bool {
         #[cfg(feature = "runtime-dispatch")]
         {
-            std::is_x86_feature_detected!("avx2")
+            !cfg!(miri) && std::is_x86_feature_detected!("avx2")
         }
         #[cfg(not(feature = "runtime-dispatch"))]
         {

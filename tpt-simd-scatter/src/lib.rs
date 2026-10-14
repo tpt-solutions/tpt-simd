@@ -402,9 +402,11 @@ mod tests {
     fn negative_index_unchecked() {
         let mut d = [0i32; 4];
         // SAFETY: base points at element 2, so offsets -2..=1 are in bounds.
+        // Derive the pointer from the whole array: a pointer taken from `d[2..]` carries
+        // provenance only for that subslice, so offsets before it are UB.
         unsafe {
             scatter_i32(
-                d[2..].as_mut_ptr(),
+                d.as_mut_ptr().add(2),
                 Simd::from_array([-2, -1, 0, 1, -2, -1, 0, 1]),
                 Simd::from_array([1, 2, 3, 4, 5, 6, 7, 8]),
             )
