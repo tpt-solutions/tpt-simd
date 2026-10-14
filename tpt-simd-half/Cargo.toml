@@ -22,4 +22,9 @@ workspace = true
 bench = false
 
 [dev-dependencies]
+criterion = { workspace = true, features = ["cargo_bench_support"] }
 proptest.workspace = true
+
+[[bench]]
+name = "kernels"
+harness = false

@@ -21,7 +21,12 @@ workspace = true
 bench = false
 
 [dev-dependencies]
+criterion = { workspace = true, features = ["cargo_bench_support"] }
 rubato = "1"
 audioadapter-buffers = "2"
 biquad = "0.5"
 proptest.workspace = true
+
+[[bench]]
+name = "kernels"
+harness = false

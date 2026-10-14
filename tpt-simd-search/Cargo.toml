@@ -23,6 +23,7 @@ memchr = ["dep:memchr"]
 memchr = { version = "2.8.3", default-features = false, optional = true }
 
 [dev-dependencies]
+criterion = { workspace = true, features = ["cargo_bench_support"] }
 proptest.workspace = true
 # Differential-test oracle only.
 memchr = { version = "2.8.3", default-features = false }
@@ -32,3 +33,7 @@ workspace = true
 
 [lib]
 bench = false
+
+[[bench]]
+name = "kernels"
+harness = false

@@ -23,6 +23,7 @@ simdutf8 = ["dep:simdutf8"]
 simdutf8 = { version = "0.1.5", default-features = false, optional = true }
 
 [dev-dependencies]
+criterion = { workspace = true, features = ["cargo_bench_support"] }
 proptest.workspace = true
 # Differential-test oracles only.
 simdutf8 = { version = "0.1.5", default-features = false }
@@ -33,3 +34,7 @@ workspace = true
 
 [lib]
 bench = false
+
+[[bench]]
+name = "kernels"
+harness = false

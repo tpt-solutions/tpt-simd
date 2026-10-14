@@ -1695,6 +1695,7 @@ version = "0.1.0"
 dependencies = [
  "audioadapter-buffers",
  "biquad",
+ "criterion",
  "libm",
  "proptest",
  "rubato",
@@ -1704,6 +1705,7 @@ dependencies = [
 name = "tpt-simd-bits"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "proptest",
 ]
 
@@ -1784,6 +1786,7 @@ dependencies = [
 name = "tpt-simd-dct"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "libm",
  "proptest",
 ]
@@ -1792,6 +1795,7 @@ dependencies = [
 name = "tpt-simd-distance"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "libm",
  "proptest",
 ]
@@ -1831,6 +1835,7 @@ dependencies = [
 name = "tpt-simd-geom"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "libm",
  "proptest",
 ]
@@ -1839,6 +1844,7 @@ dependencies = [
 name = "tpt-simd-half"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "half",
  "libm",
  "proptest",
@@ -1849,6 +1855,7 @@ name = "tpt-simd-hash"
 version = "0.1.0"
 dependencies = [
  "crc32fast",
+ "criterion",
  "proptest",
  "simd-adler32",
 ]
@@ -1910,6 +1917,7 @@ dependencies = [
 name = "tpt-simd-ntt"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "proptest",
 ]
 
@@ -1928,6 +1936,7 @@ dependencies = [
 name = "tpt-simd-pixel"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "proptest",
 ]
 
@@ -1988,6 +1997,7 @@ dependencies = [
 name = "tpt-simd-search"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "memchr",
  "proptest",
 ]
@@ -2018,6 +2028,7 @@ dependencies = [
 name = "tpt-simd-sort"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "proptest",
 ]
 
@@ -2043,6 +2054,7 @@ dependencies = [
 name = "tpt-simd-text"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "faster-hex",
  "proptest",
  "simdutf8",
@@ -2052,6 +2064,7 @@ dependencies = [
 name = "tpt-simd-transpose"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "proptest",
 ]
 

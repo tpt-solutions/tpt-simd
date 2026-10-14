@@ -21,6 +21,7 @@ runtime-dispatch = ["std"]
 [dependencies]
 
 [dev-dependencies]
+criterion = { workspace = true, features = ["cargo_bench_support"] }
 proptest.workspace = true
 # Differential-test oracles only; not used by the library.
 crc32fast = { version = "1.5.2", default-features = false }
@@ -31,3 +32,7 @@ workspace = true
 
 [lib]
 bench = false
+
+[[bench]]
+name = "kernels"
+harness = false
