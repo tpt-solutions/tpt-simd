@@ -23,6 +23,7 @@ simdutf8 = ["dep:simdutf8"]
 simdutf8 = { version = "0.1.5", default-features = false, optional = true }
 
 [dev-dependencies]
+proptest.workspace = true
 # Differential-test oracles only.
 simdutf8 = { version = "0.1.5", default-features = false }
 faster-hex = { version = "1.0.0", default-features = false }

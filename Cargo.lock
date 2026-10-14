@@ -1613,11 +1613,15 @@ name = "tpt-simd-audio"
 version = "0.1.0"
 dependencies = [
  "libm",
+ "proptest",
 ]
 
 [[package]]
 name = "tpt-simd-bits"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+]
 
 [[package]]
 name = "tpt-simd-blas"
@@ -1697,6 +1701,7 @@ name = "tpt-simd-dct"
 version = "0.1.0"
 dependencies = [
  "libm",
+ "proptest",
 ]
 
 [[package]]
@@ -1704,6 +1709,7 @@ name = "tpt-simd-distance"
 version = "0.1.0"
 dependencies = [
  "libm",
+ "proptest",
 ]
 
 [[package]]
@@ -1742,6 +1748,7 @@ name = "tpt-simd-geom"
 version = "0.1.0"
 dependencies = [
  "libm",
+ "proptest",
 ]
 
 [[package]]
@@ -1750,6 +1757,7 @@ version = "0.1.0"
 dependencies = [
  "half",
  "libm",
+ "proptest",
 ]
 
 [[package]]
@@ -1757,6 +1765,7 @@ name = "tpt-simd-hash"
 version = "0.1.0"
 dependencies = [
  "crc32fast",
+ "proptest",
  "simd-adler32",
 ]
 
@@ -1816,6 +1825,9 @@ dependencies = [
 [[package]]
 name = "tpt-simd-ntt"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+]
 
 [[package]]
 name = "tpt-simd-permute"
@@ -1831,6 +1843,9 @@ dependencies = [
 [[package]]
 name = "tpt-simd-pixel"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+]
 
 [[package]]
 name = "tpt-simd-reduce"
@@ -1889,6 +1904,7 @@ name = "tpt-simd-search"
 version = "0.1.0"
 dependencies = [
  "memchr",
+ "proptest",
 ]
 
 [[package]]
@@ -1916,6 +1932,9 @@ dependencies = [
 [[package]]
 name = "tpt-simd-sort"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+]
 
 [[package]]
 name = "tpt-simd-sparse"
@@ -1940,12 +1959,16 @@ name = "tpt-simd-text"
 version = "0.1.0"
 dependencies = [
  "faster-hex",
+ "proptest",
  "simdutf8",
 ]
 
 [[package]]
 name = "tpt-simd-transpose"
 version = "0.1.0"
+dependencies = [
+ "proptest",
+]
 
 [[package]]
 name = "tpt-simd-vector"

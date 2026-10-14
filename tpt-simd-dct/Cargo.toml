@@ -19,3 +19,6 @@ workspace = true
 
 [lib]
 bench = false
+
+[dev-dependencies]
+proptest.workspace = true

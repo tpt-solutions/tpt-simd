@@ -498,7 +498,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 
 ## Phase 11 — New crate candidates
 
-Decision (recommended, applied 2026-10-15): the Phase 11 crates ship in 0.1 on autovectorised code. Explicit SIMD paths, per-crate proptest, and asm audits move to post-0.1 work. The open items below stay open as that post-0.1 list.
+Decision (recommended, applied 2026-10-15): the Phase 11 crates ship in 0.1 on autovectorised code. Explicit SIMD paths and asm audits move to post-0.1 work. Reference property tests were added for all 13 crates (see Definition-of-done gaps). The open items below stay open as that post-0.1 list.
 
 Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and a doctest, and each passes clippy with `-D warnings` and the `thumbv7em-none-eabihf` no_std check. **No crate has an explicit SIMD path yet**; all rely on autovectorisation. Policy is in `docs/adr/0004-no-runtime-wrapping.md`: own implementation by default, no runtime dependencies. Incumbents are dev-dependency oracles only, or sit behind a default-off feature. The one exception is `tpt-simd-half`, which keeps `half` for f16/bf16 interop.
 
@@ -601,7 +601,7 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 
 ### Definition-of-done gaps (apply to every crate above)
 
-- [ ] proptest property tests (SIMD == scalar) for each crate
+- [x] proptest property tests (SIMD == scalar) for each crate — `tests/proptest_reference.rs` in all 13 Phase 11 crates (256 cases per property, clippy `-D warnings` clean). Each checks the kernel against a plain reference (a naive loop, `std`, the `half` crate, or a bitwise CRC). Explicit SIMD paths are still not built, so the comparison is against scalar references, not SIMD-vs-scalar.
 - [ ] `cargo-show-asm` audit of hot functions
 - [ ] Explicit SIMD paths for x86_64 and aarch64 (none built yet)
 

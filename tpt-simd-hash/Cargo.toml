@@ -21,6 +21,7 @@ runtime-dispatch = ["std"]
 [dependencies]
 
 [dev-dependencies]
+proptest.workspace = true
 # Differential-test oracles only; not used by the library.
 crc32fast = { version = "1.5.2", default-features = false }
 simd-adler32 = { version = "0.3.10", default-features = false }
