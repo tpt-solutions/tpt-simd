@@ -558,7 +558,7 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 
 #### tpt-simd-audio
 - [x] Mix, interleave/deinterleave, peak/RMS, FIR, RBJ biquad (low-pass, high-pass), windowed-sinc resampler
-- [ ] Oracles: add `biquad` and `rubato` as dev-dependencies and compare outputs (the resampler is currently checked by sine amplitude and zero-crossing spacing only)
+- [x] Oracles: add `biquad` and `rubato` as dev-dependencies and compare outputs — `tests/oracle_biquad.rs` (lowpass and highpass match `biquad` 0.5 within 1e-3) and `tests/oracle_resample.rs` (a 1 kHz tone resampled 48k to 24k keeps amplitude within 2% of 1.0 and agrees with `rubato`). Note: `biquad` 0.5.0 maps the cutoff to a quarter of the RBJ frequency, so the oracle is given 4 x f0 (see the test module docs).
 - [ ] Channel-batched biquad over interleaved frames
 - [ ] Explicit SIMD FIR / biquad batches (uses the `convolve` / `window` / `interpolate` crates where they fit)
 - [ ] proptest, criterion bench, asm audit
@@ -624,7 +624,7 @@ Rule: existing tpt-simd crates are complete and stay as-is **unless** a MIT-comp
 
 ### Keep (no equivalent found; no action beyond optional interop/oracles)
 - [ ] permute, scatter, gather, butterfly, compare (slice kernels), dot, mul, saturate, rounding, convolve, interpolate, math, rng, sparse, reduce, core
-- [ ] Use `rand_xoshiro` / `rand_philox` as rng test vectors and implement `rand_core` traits; `libm` / `sleef` as math accuracy oracles; `statrs` as distribution oracle
+- [ ] Use `rand_xoshiro` / `rand_philox` as rng test vectors and implement `rand_core` traits — xoshiro256++ (scalar, jump, and the eight-lane generator) and SplitMix64 match `rand_xoshiro` word for word (`tpt-simd-rng/tests/reference_vectors.rs`); Philox and the `rand_core` traits are not done; `libm` / `sleef` as math accuracy oracles; `statrs` as distribution oracle
 
 ---
 

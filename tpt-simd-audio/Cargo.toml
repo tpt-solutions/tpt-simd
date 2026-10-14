@@ -21,4 +21,7 @@ workspace = true
 bench = false
 
 [dev-dependencies]
+rubato = "1"
+audioadapter-buffers = "2"
+biquad = "0.5"
 proptest.workspace = true

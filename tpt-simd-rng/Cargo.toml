@@ -24,6 +24,7 @@ tpt-simd-core.workspace = true
 proptest.workspace = true
 libm.workspace = true
 criterion = { workspace = true, features = ["cargo_bench_support"] }
+rand_xoshiro = "0.7"
 
 [lints]
 workspace = true
