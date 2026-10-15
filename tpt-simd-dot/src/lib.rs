@@ -35,10 +35,13 @@
 //! ```
 #![no_std]
 #![cfg_attr(
-    not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2"
+    not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )),
     forbid(unsafe_code)
 )]
@@ -56,6 +59,9 @@ pub mod portable;
     target_feature = "avx2"
 ))]
 mod x86;
+
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+mod neon;
 
 #[inline(never)]
 #[cold]
@@ -113,10 +119,18 @@ pub fn dot_product_i16(a: &[i16], b: &[i16]) -> i32 {
         // whole crate, and the slice lengths were checked equal above.
         unsafe { x86::dot_i16(a, b) }
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        // SAFETY: NEON is part of the aarch64 baseline, and the lengths were checked above.
+        unsafe { neon::dot_i16(a, b) }
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         portable::dot_product_i16(a, b)
@@ -211,11 +225,21 @@ pub fn dot_product_f32(a: &[f32], b: &[f32]) -> f32 {
         let acc = unsafe { x86::dot_f32_blocks_512(a, b) };
         portable::dot_f32_tail(acc, &a[full..], &b[full..])
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2",
-        target_feature = "avx512f"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        let full = a.len() - a.len() % 32;
+        // SAFETY: NEON is part of the aarch64 baseline; the lengths were checked above.
+        let acc = unsafe { neon::dot_f32_blocks(a, b) };
+        portable::dot_f32_tail(acc, &a[full..], &b[full..])
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2",
+            target_feature = "avx512f"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         portable::dot_product_f32(a, b)
