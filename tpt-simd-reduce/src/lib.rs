@@ -87,13 +87,19 @@
 //! ```
 #![no_std]
 #![cfg_attr(
-    not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx512f"
+    not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx512f"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )),
     forbid(unsafe_code)
 )]
+
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+mod neon;
 
 #[cfg(feature = "std")]
 extern crate std;
@@ -424,12 +430,22 @@ fn f32_blocks(xs: &[f32]) -> ([tpt_simd_core::Simd<f32, 8>; 4], usize) {
     unsafe { x86_512::f32_blocks(xs) }
 }
 
+/// NEON hook on aarch64 (NEON is baseline there).
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+fn f32_blocks(xs: &[f32]) -> ([tpt_simd_core::Simd<f32, 8>; 4], usize) {
+    // SAFETY: NEON is part of the aarch64 baseline.
+    unsafe { neon::f32_blocks(xs) }
+}
+
 /// No hook on this build: nothing is consumed and the portable loop does all
 /// the blocks.
-#[cfg(not(all(
-    not(feature = "scalar-only"),
-    target_arch = "x86_64",
-    target_feature = "avx512f"
+#[cfg(not(any(
+    all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx512f"
+    ),
+    all(not(feature = "scalar-only"), target_arch = "aarch64")
 )))]
 fn f32_blocks(_xs: &[f32]) -> ([tpt_simd_core::Simd<f32, 8>; 4], usize) {
     ([tpt_simd_core::Simd::splat(0.0); 4], 0)
@@ -447,11 +463,21 @@ fn f64_blocks(xs: &[f64]) -> ([tpt_simd_core::Simd<f64, 4>; 4], usize) {
     unsafe { x86_512::f64_blocks(xs) }
 }
 
+/// NEON hook on aarch64 (NEON is baseline there).
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+fn f64_blocks(xs: &[f64]) -> ([tpt_simd_core::Simd<f64, 4>; 4], usize) {
+    // SAFETY: NEON is part of the aarch64 baseline.
+    unsafe { neon::f64_blocks(xs) }
+}
+
 /// No f64 hook on this build: the portable loop does all the blocks.
-#[cfg(not(all(
-    not(feature = "scalar-only"),
-    target_arch = "x86_64",
-    target_feature = "avx512f"
+#[cfg(not(any(
+    all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx512f"
+    ),
+    all(not(feature = "scalar-only"), target_arch = "aarch64")
 )))]
 fn f64_blocks(_xs: &[f64]) -> ([tpt_simd_core::Simd<f64, 4>; 4], usize) {
     ([tpt_simd_core::Simd::splat(0.0); 4], 0)
