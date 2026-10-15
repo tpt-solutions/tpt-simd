@@ -17,6 +17,9 @@ extern crate std;
 pub use tpt_simd_blend::select_f32;
 use tpt_simd_core::Simd;
 
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+mod neon;
+
 /// Returns `out[i] = v[indices[i] & 7]`.
 ///
 /// # Examples
@@ -50,10 +53,19 @@ pub fn select_i32(v: Simd<i32, 8>, indices: Simd<i32, 8>) -> Simd<i32, 8> {
         }
         Simd::from_array(out)
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        let (v, idx) = (v.to_array(), indices.to_array());
+        let bits = neon::permute8(&v.map(|x| x as u32), &idx);
+        Simd::from_array(bits.map(|x| x as i32))
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         select_i32_portable(v, indices)
@@ -62,11 +74,18 @@ pub fn select_i32(v: Simd<i32, 8>, indices: Simd<i32, 8>) -> Simd<i32, 8> {
 
 #[inline]
 #[cfg_attr(
-    all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2",
-        not(test)
+    any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2",
+            not(test)
+        ),
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "aarch64",
+            not(test)
+        )
     ),
     allow(dead_code)
 )]
@@ -108,10 +127,19 @@ pub fn select_lanes_f32(v: Simd<f32, 8>, indices: Simd<i32, 8>) -> Simd<f32, 8> 
         }
         Simd::from_array(out)
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        let (v, idx) = (v.to_array(), indices.to_array());
+        let bits = neon::permute8(&v.map(f32::to_bits), &idx);
+        Simd::from_array(bits.map(f32::from_bits))
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         select_lanes_f32_portable(v, indices)
@@ -120,11 +148,18 @@ pub fn select_lanes_f32(v: Simd<f32, 8>, indices: Simd<i32, 8>) -> Simd<f32, 8> 
 
 #[inline]
 #[cfg_attr(
-    all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2",
-        not(test)
+    any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2",
+            not(test)
+        ),
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "aarch64",
+            not(test)
+        )
     ),
     allow(dead_code)
 )]
