@@ -119,10 +119,78 @@ mod lane {
     }
 }
 
-#[cfg(not(all(
-    not(feature = "scalar-only"),
-    target_arch = "x86_64",
-    target_feature = "sse2"
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+mod lane {
+    //! NEON rows. `cross` is not needed here: only the x86 inverse uses it.
+    use core::arch::aarch64::*;
+
+    pub type F4 = float32x4_t;
+
+    #[inline(always)]
+    pub fn load(a: [f32; 4]) -> F4 {
+        // SAFETY: NEON is part of the aarch64 baseline; `a` is 16 readable bytes.
+        unsafe { vld1q_f32(a.as_ptr()) }
+    }
+
+    #[inline(always)]
+    pub fn store(v: F4) -> [f32; 4] {
+        let mut a = [0.0f32; 4];
+        // SAFETY: `a` is 16 writable bytes.
+        unsafe { vst1q_f32(a.as_mut_ptr(), v) };
+        a
+    }
+
+    #[inline(always)]
+    pub fn zero() -> F4 {
+        // SAFETY: NEON is part of the aarch64 baseline.
+        unsafe { vdupq_n_f32(0.0) }
+    }
+
+    #[inline(always)]
+    pub fn add(a: F4, b: F4) -> F4 {
+        // SAFETY: NEON is part of the aarch64 baseline.
+        unsafe { vaddq_f32(a, b) }
+    }
+
+    #[inline(always)]
+    pub fn mul(a: F4, b: F4) -> F4 {
+        // SAFETY: NEON is part of the aarch64 baseline.
+        unsafe { vmulq_f32(a, b) }
+    }
+
+    #[inline(always)]
+    pub fn broadcast(v: F4, k: usize) -> F4 {
+        // SAFETY: NEON is part of the aarch64 baseline; the lane index is a constant per arm.
+        unsafe {
+            match k {
+                0 => vdupq_laneq_f32::<0>(v),
+                1 => vdupq_laneq_f32::<1>(v),
+                2 => vdupq_laneq_f32::<2>(v),
+                _ => vdupq_laneq_f32::<3>(v),
+            }
+        }
+    }
+
+    /// `out[i][j] = r[j][i]`, by 2x2 transposes of the row pairs.
+    #[inline(always)]
+    pub fn transpose4(r: [F4; 4]) -> [F4; 4] {
+        // SAFETY: NEON is part of the aarch64 baseline; register-only operations.
+        unsafe {
+            let t0 = vtrnq_f32(r[0], r[1]);
+            let t1 = vtrnq_f32(r[2], r[3]);
+            [
+                vcombine_f32(vget_low_f32(t0.0), vget_low_f32(t1.0)),
+                vcombine_f32(vget_low_f32(t0.1), vget_low_f32(t1.1)),
+                vcombine_f32(vget_high_f32(t0.0), vget_high_f32(t1.0)),
+                vcombine_f32(vget_high_f32(t0.1), vget_high_f32(t1.1)),
+            ]
+        }
+    }
+}
+
+#[cfg(not(any(
+    all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "sse2"),
+    all(not(feature = "scalar-only"), target_arch = "aarch64")
 )))]
 mod lane {
     use tpt_simd_core::Simd;
