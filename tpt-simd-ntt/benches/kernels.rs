@@ -46,6 +46,17 @@ fn bench(c: &mut Criterion) {
             acc
         })
     });
+    // Fixed multiplier in Montgomery form, as for twiddle factors: one reduction per product.
+    let b_mont: Vec<u32> = b.iter().map(|&y| m.to_mont(y)).collect();
+    group.bench_function("montgomery_fixed_multiplier", |bch| {
+        bch.iter(|| {
+            let mut acc = 0u32;
+            for (x, y) in black_box(&a).iter().zip(black_box(&b_mont)) {
+                acc ^= m.mul_mont(*x, *y);
+            }
+            acc
+        })
+    });
     group.finish();
 }
 

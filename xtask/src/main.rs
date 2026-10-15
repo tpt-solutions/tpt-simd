@@ -27,6 +27,8 @@ Tasks:
   msrv     cargo check on the minimum supported toolchain (1.95)
   cpu      print the SIMD features this build and CPU support (examples/cpu_report)
   asm      check that the hot kernels still contain their SIMD instructions (needs cargo-show-asm)
+  bench-compare <baseline-dir> <new-dir> [--tag=ci] [--max-regression=0.20]
+           fail if a criterion median is slower than the baseline by more than the threshold
   help     show this text
 ";
 
@@ -79,6 +81,7 @@ fn main() -> ExitCode {
         "msrv" => msrv(),
         "cpu" => cpu(),
         "asm" => asm(),
+        "bench-compare" => bench_compare(&env::args().skip(2).collect::<Vec<_>>()),
         "help" | "-h" | "--help" => {
             print!("{USAGE}");
             Ok(())
@@ -167,6 +170,121 @@ fn cpu() -> Result<(), String> {
         "--example",
         "cpu_report",
     ]))
+}
+
+/// Median time per benchmark, from two criterion result trees, compared by `cargo xtask bench-compare`.
+///
+/// A result is `<dir>/<group>/.../<tag>/estimates.json` (criterion's `--save-baseline <tag>`).
+/// Benchmarks are matched by their path relative to `dir` (without the tag).
+fn bench_compare(args: &[String]) -> Result<(), String> {
+    let mut paths = Vec::new();
+    let mut tag = "ci".to_owned();
+    let mut max_regression = 0.20f64;
+    for arg in args {
+        if let Some(value) = arg.strip_prefix("--tag=") {
+            tag = value.to_owned();
+        } else if let Some(value) = arg.strip_prefix("--max-regression=") {
+            max_regression = value
+                .parse()
+                .map_err(|_| format!("bad --max-regression `{value}`"))?;
+        } else {
+            paths.push(arg.as_str());
+        }
+    }
+    let [base_dir, new_dir] = paths.as_slice() else {
+        return Err("usage: cargo xtask bench-compare <baseline-dir> <new-dir> [--tag=ci] [--max-regression=0.20]".into());
+    };
+
+    let base = collect_medians(std::path::Path::new(base_dir), &tag)?;
+    let new = collect_medians(std::path::Path::new(new_dir), &tag)?;
+    if base.is_empty() {
+        return Err(format!("no `{tag}` results under {base_dir}"));
+    }
+
+    let regressions = find_regressions(&base, &new, max_regression);
+    for (name, base_ns, new_ns) in &regressions {
+        println!(
+            "REGRESSION {name}: {base_ns:.1} ns -> {new_ns:.1} ns ({:+.1}%)",
+            (new_ns / base_ns - 1.0) * 100.0
+        );
+    }
+    let missing: Vec<&String> = base.keys().filter(|k| !new.contains_key(*k)).collect();
+    for name in &missing {
+        println!("missing in new results: {name}");
+    }
+    println!(
+        "xtask bench-compare: {} benchmarks compared, {} regressed beyond {:.0}%",
+        base.keys().filter(|k| new.contains_key(*k)).count(),
+        regressions.len(),
+        max_regression * 100.0
+    );
+    if regressions.is_empty() {
+        Ok(())
+    } else {
+        Err(format!("{} benchmark(s) regressed", regressions.len()))
+    }
+}
+
+/// Benchmarks whose new median is more than `max_regression` above the baseline median.
+fn find_regressions(
+    base: &std::collections::BTreeMap<String, f64>,
+    new: &std::collections::BTreeMap<String, f64>,
+    max_regression: f64,
+) -> Vec<(String, f64, f64)> {
+    base.iter()
+        .filter_map(|(name, &base_ns)| {
+            let &new_ns = new.get(name)?;
+            (new_ns > base_ns * (1.0 + max_regression)).then(|| (name.clone(), base_ns, new_ns))
+        })
+        .collect()
+}
+
+/// Walks `dir` for `<tag>/estimates.json` files and returns each benchmark's median in ns.
+fn collect_medians(
+    dir: &std::path::Path,
+    tag: &str,
+) -> Result<std::collections::BTreeMap<String, f64>, String> {
+    let mut found = std::collections::BTreeMap::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let entries = std::fs::read_dir(&current)
+            .map_err(|e| format!("cannot read {}: {e}", current.display()))?;
+        for entry in entries {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else if path.file_name().is_some_and(|n| n == "estimates.json")
+                && path
+                    .parent()
+                    .and_then(|p| p.file_name())
+                    .is_some_and(|n| n == tag)
+            {
+                let bench_dir = path.parent().and_then(|p| p.parent()).unwrap_or(dir);
+                let name = bench_dir
+                    .strip_prefix(dir)
+                    .unwrap_or(bench_dir)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+                let median = parse_median_ns(&text)
+                    .ok_or_else(|| format!("no median in {}", path.display()))?;
+                found.insert(name, median);
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// The `point_estimate` under `"median"` in a criterion `estimates.json`, in nanoseconds.
+fn parse_median_ns(text: &str) -> Option<f64> {
+    let rest = &text[text.find("\"median\"")?..];
+    let rest = &rest[rest.find("\"point_estimate\"")? + "\"point_estimate\"".len()..];
+    let rest = rest.trim_start().strip_prefix(':')?.trim_start();
+    let end = rest.find(|c: char| {
+        c != '.' && c != '-' && c != 'e' && c != 'E' && c != '+' && !c.is_ascii_digit()
+    })?;
+    rest[..end].parse().ok()
 }
 
 /// Instruction counts for one function, read from `cargo asm` output.
@@ -288,9 +406,35 @@ fn run(command: &mut Command) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{NO_STD_TARGETS, count_asm};
+    use super::{NO_STD_TARGETS, count_asm, find_regressions, parse_median_ns};
+    use std::collections::BTreeMap;
 
     /// The `no-std` CI job in `.github/workflows/ci.yml` must build the same targets as `cargo xtask no-std`.
+    #[test]
+    fn parses_criterion_median() {
+        let json = r#"{"mean":{"point_estimate":9.0},"median":{"confidence_interval":{"lower_bound":1.0},"point_estimate":1234.5e0,"standard_error":0.1}}"#;
+        assert_eq!(parse_median_ns(json), Some(1234.5));
+        assert_eq!(parse_median_ns("{}"), None);
+    }
+
+    #[test]
+    fn flags_only_medians_slower_than_the_threshold() {
+        let base: BTreeMap<String, f64> = [
+            ("a".into(), 100.0),
+            ("b".into(), 100.0),
+            ("c".into(), 100.0),
+        ]
+        .into();
+        let new: BTreeMap<String, f64> = [
+            ("a".into(), 119.0),
+            ("b".into(), 121.0),
+            ("d".into(), 500.0),
+        ]
+        .into();
+        let found = find_regressions(&base, &new, 0.20);
+        assert_eq!(found, vec![("b".to_owned(), 100.0, 121.0)]);
+    }
+
     #[test]
     fn count_asm_counts_vector_and_fma_instructions() {
         let text = "tpt_simd::f:\n\

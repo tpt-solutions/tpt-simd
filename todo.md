@@ -351,7 +351,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 
 ### Release
 - [ ] Full benchmark report vs scalar / manual intrinsics / `wide` / `simba` / `rustfft`
-- [ ] Performance-regression guard in CI
+- [ ] Performance-regression guard in CI — comparison tool added: `cargo xtask bench-compare <baseline> <new>` fails on medians more than 20% slower (tested; run on the full results: 221 benchmarks, 0 regressed). Not wired into CI: a baseline source has to be chosen first (see the next item)
 - [x] Per-crate READMEs, keywords, categories, `rust-version`, license fields — all 41 publishable crates have README, CHANGELOG and an example
 - [x] CHANGELOG, semver policy, release process — per-crate changelogs written; semver policy and release checklist drafted in `docs/release.md` (maintainer review still pending)
 - [ ] `cargo publish --dry-run` for all crates; publish in dependency order
@@ -486,7 +486,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 ### Codegen and performance regression
 - [x] Add `cargo-show-asm` snapshots for the hot kernels
   - Done as a floor check, not a text snapshot: `cargo xtask asm` (CI `asm` job) counts vector and FMA instructions in four emitted kernels under `-C target-cpu=x86-64-v3`: f32 gemm microkernel (282 vector / 36 FMA measured), `convolve_1d_f32` (98 / 20), `fir_filter_i16` (5 / 0; the explicit path is AVX-512 only), `dot_i16` (83 / 0). Floors are about half the measured counts. Not covered: `reduce` and the f32 dot, which have no emitted symbol under cargo-show-asm, so they need a different approach. (dot, gemm, convolve, reduce) so a compiler upgrade that drops the SIMD path fails review
-- [ ] Publish criterion baseline comparisons from `bench.yml` on `master` pushes and keep the history under `docs/`
+- [ ] Publish criterion baseline comparisons from `bench.yml` on `master` pushes and keep the history under `docs/` — the workflow uploads criterion output as an artifact; nothing compares or stores history yet. Decision needed: a committed baseline file from one runner class, or artifact download from the last `master` run
 
 ### Adoption
 - [x] Add a scalar-to-tpt-simd porting table to the mdBook migration section (`docs/book/src/migration/scalar-code.md`)
