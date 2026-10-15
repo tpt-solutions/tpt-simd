@@ -87,7 +87,137 @@ pub fn is_valid_utf8(bytes: &[u8]) -> bool {
                 return utf8_avx2::is_valid(bytes);
             }
         }
+        #[cfg(target_arch = "aarch64")]
+        {
+            if bytes.len() >= 32 {
+                return neon::is_valid(bytes);
+            }
+        }
         core::str::from_utf8(bytes).is_ok()
+    }
+}
+
+#[cfg(target_arch = "aarch64")]
+mod neon;
+
+/// Lookup tables, error flags and the scalar tail check of the UTF-8 validator. Shared by the
+/// AVX2 and NEON block checks, so both validate exactly the same bytes.
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+#[allow(dead_code)]
+pub(crate) mod utf8_tables {
+    // Error bits for the lookup validator. A lane's bits are the set of errors that
+    // the (previous byte, current byte) pair could cause; ANDing the three lookups
+    // leaves a non-zero value only where a pair is invalid.
+    pub(crate) const TOO_SHORT: u8 = 1 << 0;
+    pub(crate) const TOO_LONG: u8 = 1 << 1;
+    pub(crate) const OVERLONG_3: u8 = 1 << 2;
+    pub(crate) const TOO_LARGE: u8 = 1 << 3;
+    pub(crate) const SURROGATE: u8 = 1 << 4;
+    pub(crate) const OVERLONG_2: u8 = 1 << 5;
+    pub(crate) const TOO_LARGE_1000: u8 = 1 << 6;
+    pub(crate) const OVERLONG_4: u8 = 1 << 6;
+    pub(crate) const TWO_CONTS: u8 = 1 << 7;
+    pub(crate) const CARRY: u8 = TOO_SHORT | TOO_LONG | TWO_CONTS;
+
+    /// Lookup by the high nibble of the previous byte.
+    pub(crate) const BYTE_1_HIGH: [u8; 16] = [
+        TOO_LONG,
+        TOO_LONG,
+        TOO_LONG,
+        TOO_LONG,
+        TOO_LONG,
+        TOO_LONG,
+        TOO_LONG,
+        TOO_LONG,
+        TWO_CONTS,
+        TWO_CONTS,
+        TWO_CONTS,
+        TWO_CONTS,
+        TOO_SHORT | OVERLONG_2,
+        TOO_SHORT,
+        TOO_SHORT | OVERLONG_3 | SURROGATE,
+        TOO_SHORT | TOO_LARGE | TOO_LARGE_1000 | OVERLONG_4,
+    ];
+
+    /// Lookup by the low nibble of the previous byte.
+    pub(crate) const BYTE_1_LOW: [u8; 16] = [
+        CARRY | OVERLONG_3 | OVERLONG_2 | OVERLONG_4,
+        CARRY | OVERLONG_2,
+        CARRY,
+        CARRY,
+        CARRY | TOO_LARGE,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | SURROGATE,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+        CARRY | TOO_LARGE | TOO_LARGE_1000,
+    ];
+
+    /// Lookup by the high nibble of the current byte.
+    pub(crate) const BYTE_2_HIGH: [u8; 16] = [
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_LONG | OVERLONG_2 | TWO_CONTS | OVERLONG_3 | TOO_LARGE_1000 | OVERLONG_4,
+        TOO_LONG | OVERLONG_2 | TWO_CONTS | OVERLONG_3 | TOO_LARGE,
+        TOO_LONG | OVERLONG_2 | TWO_CONTS | SURROGATE | TOO_LARGE,
+        TOO_LONG | OVERLONG_2 | TWO_CONTS | SURROGATE | TOO_LARGE,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+        TOO_SHORT,
+    ];
+
+    pub(crate) fn is_continuation(b: u8) -> bool {
+        b & 0xC0 == 0x80
+    }
+
+    /// `true` if the last lead byte in `prefix` still needs continuation bytes past its end.
+    pub(crate) fn pending_lead(prefix: &[u8]) -> bool {
+        for k in 1..=3.min(prefix.len()) {
+            let need = match prefix[prefix.len() - k] {
+                0xC2..=0xDF => 1,
+                0xE0..=0xEF => 2,
+                0xF0..=0xF4 => 3,
+                _ => 0,
+            };
+            if need >= k {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Checks the bytes after the vector blocks (`bytes[..n32]` already passed the block check).
+    pub(crate) fn tail_valid(bytes: &[u8], n32: usize) -> bool {
+        let n = bytes.len();
+        // Start the tail at a character boundary. A character has at most three
+        // continuation bytes, so a boundary exists within the last three bytes of the blocks.
+        let mut start = n32;
+        if start < n && is_continuation(bytes[start]) {
+            match (n32.saturating_sub(3)..n32)
+                .rev()
+                .find(|&i| !is_continuation(bytes[i]))
+            {
+                Some(i) => start = i,
+                None => return false,
+            }
+        }
+        if start == n32 && n32 > 0 && pending_lead(&bytes[..n32]) {
+            return false;
+        }
+        core::str::from_utf8(&bytes[start..]).is_ok()
     }
 }
 
@@ -101,6 +231,7 @@ pub fn is_valid_utf8(bytes: &[u8]) -> bool {
 #[cfg(all(target_arch = "x86_64", not(feature = "simdutf8")))]
 #[allow(unsafe_code)]
 mod utf8_avx2 {
+    use super::utf8_tables::*;
     use core::arch::x86_64::{
         __m128i, __m256i, _mm_loadu_si128, _mm256_alignr_epi8, _mm256_and_si256,
         _mm256_broadcastsi128_si256, _mm256_cmpeq_epi8, _mm256_loadu_si256, _mm256_max_epu8,
@@ -128,42 +259,7 @@ mod utf8_avx2 {
         if !unsafe { blocks_valid(&bytes[..n32]) } {
             return false;
         }
-        // Start the tail at a character boundary. A character has at most three
-        // continuation bytes, so a boundary exists within the last three bytes of the blocks.
-        let mut start = n32;
-        if start < n && is_continuation(bytes[start]) {
-            match (n32.saturating_sub(3)..n32)
-                .rev()
-                .find(|&i| !is_continuation(bytes[i]))
-            {
-                Some(i) => start = i,
-                None => return false,
-            }
-        }
-        if start == n32 && n32 > 0 && pending_lead(&bytes[..n32]) {
-            return false;
-        }
-        core::str::from_utf8(&bytes[start..]).is_ok()
-    }
-
-    fn is_continuation(b: u8) -> bool {
-        b & 0xC0 == 0x80
-    }
-
-    /// `true` if the last lead byte in `prefix` still needs continuation bytes past its end.
-    fn pending_lead(prefix: &[u8]) -> bool {
-        for k in 1..=3.min(prefix.len()) {
-            let need = match prefix[prefix.len() - k] {
-                0xC2..=0xDF => 1,
-                0xE0..=0xEF => 2,
-                0xF0..=0xF4 => 3,
-                _ => 0,
-            };
-            if need >= k {
-                return true;
-            }
-        }
-        false
+        tail_valid(bytes, n32)
     }
 
     /// `true` if every 32-byte block of `data` passes the vector check.
@@ -181,79 +277,6 @@ mod utf8_avx2 {
         _mm256_testz_si256(errors, errors) != 0
     }
 
-    // Error bits for the lookup validator. A lane's bits are the set of errors that
-    // the (previous byte, current byte) pair could cause; ANDing the three lookups
-    // leaves a non-zero value only where a pair is invalid.
-    const TOO_SHORT: u8 = 1 << 0;
-    const TOO_LONG: u8 = 1 << 1;
-    const OVERLONG_3: u8 = 1 << 2;
-    const TOO_LARGE: u8 = 1 << 3;
-    const SURROGATE: u8 = 1 << 4;
-    const OVERLONG_2: u8 = 1 << 5;
-    const TOO_LARGE_1000: u8 = 1 << 6;
-    const OVERLONG_4: u8 = 1 << 6;
-    const TWO_CONTS: u8 = 1 << 7;
-    const CARRY: u8 = TOO_SHORT | TOO_LONG | TWO_CONTS;
-
-    /// Lookup by the high nibble of the previous byte.
-    const BYTE_1_HIGH: [u8; 16] = [
-        TOO_LONG,
-        TOO_LONG,
-        TOO_LONG,
-        TOO_LONG,
-        TOO_LONG,
-        TOO_LONG,
-        TOO_LONG,
-        TOO_LONG,
-        TWO_CONTS,
-        TWO_CONTS,
-        TWO_CONTS,
-        TWO_CONTS,
-        TOO_SHORT | OVERLONG_2,
-        TOO_SHORT,
-        TOO_SHORT | OVERLONG_3 | SURROGATE,
-        TOO_SHORT | TOO_LARGE | TOO_LARGE_1000 | OVERLONG_4,
-    ];
-
-    /// Lookup by the low nibble of the previous byte.
-    const BYTE_1_LOW: [u8; 16] = [
-        CARRY | OVERLONG_3 | OVERLONG_2 | OVERLONG_4,
-        CARRY | OVERLONG_2,
-        CARRY,
-        CARRY,
-        CARRY | TOO_LARGE,
-        CARRY | TOO_LARGE | TOO_LARGE_1000,
-        CARRY | TOO_LARGE | TOO_LARGE_1000,
-        CARRY | TOO_LARGE | TOO_LARGE_1000,
-        CARRY | TOO_LARGE | TOO_LARGE_1000,
-        CARRY | TOO_LARGE | TOO_LARGE_1000,
-        CARRY | TOO_LARGE | TOO_LARGE_1000,
-        CARRY | TOO_LARGE | TOO_LARGE_1000,
-        CARRY | TOO_LARGE | TOO_LARGE_1000,
-        CARRY | SURROGATE,
-        CARRY | TOO_LARGE | TOO_LARGE_1000,
-        CARRY | TOO_LARGE | TOO_LARGE_1000,
-    ];
-
-    /// Lookup by the high nibble of the current byte.
-    const BYTE_2_HIGH: [u8; 16] = [
-        TOO_SHORT,
-        TOO_SHORT,
-        TOO_SHORT,
-        TOO_SHORT,
-        TOO_SHORT,
-        TOO_SHORT,
-        TOO_SHORT,
-        TOO_SHORT,
-        TOO_LONG | OVERLONG_2 | TWO_CONTS | OVERLONG_3 | TOO_LARGE_1000 | OVERLONG_4,
-        TOO_LONG | OVERLONG_2 | TWO_CONTS | OVERLONG_3 | TOO_LARGE,
-        TOO_LONG | OVERLONG_2 | TWO_CONTS | SURROGATE | TOO_LARGE,
-        TOO_LONG | OVERLONG_2 | TWO_CONTS | SURROGATE | TOO_LARGE,
-        TOO_SHORT,
-        TOO_SHORT,
-        TOO_SHORT,
-        TOO_SHORT,
-    ];
 
     /// The three lookup tables, each repeated in both 128-bit lanes for `vpshufb`.
     struct Tables {
@@ -456,8 +479,14 @@ fn hex_encode_sse2(src: &[u8], dst: &mut [u8]) -> usize {
     blocks * 32
 }
 
+/// NEON encoder on aarch64 (NEON is part of the baseline).
+#[cfg(target_arch = "aarch64")]
+fn hex_encode_blocks(src: &[u8], dst: &mut [u8]) -> usize {
+    neon::hex_encode_blocks(src, dst)
+}
+
 /// Portable encoder: nothing is written here, so the caller encodes every byte.
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
 fn hex_encode_blocks(_src: &[u8], _dst: &mut [u8]) -> usize {
     0
 }
