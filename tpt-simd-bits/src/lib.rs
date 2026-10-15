@@ -5,6 +5,8 @@
 //! | bitsets | [`popcount_u64`], [`bitset_and`], [`bitset_or`], [`bitset_xor`], [`bitset_andnot`] |
 //! | zigzag | [`zigzag_encode_i32`], [`zigzag_decode_u32`], [`zigzag_encode_i64`], [`zigzag_decode_u64`] |
 //! | streams | [`delta_encode_u32`], [`delta_decode_u32`], [`prefix_sum_u32`], [`prefix_sum_u64`] |
+//! | varint (LEB128) | [`varint_encode_u32`], [`varint_decode_u32`], [`varint_len_u64`] |
+//! | bitpacking | [`bitpack_u32`], [`bitunpack_u32`], [`bitpacked_len`] |
 //!
 //! ## Length policy
 //!
@@ -32,6 +34,12 @@
 #![warn(missing_docs)]
 
 extern crate alloc;
+
+mod codec;
+pub use codec::{
+    bitpack_u32, bitpacked_len, bitunpack_u32, varint_decode_u32, varint_encode_u32,
+    varint_encoded_len_u32, varint_len_u64,
+};
 
 use alloc::vec::Vec;
 

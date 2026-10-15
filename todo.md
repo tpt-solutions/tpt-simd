@@ -523,7 +523,7 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 - [x] `RankSelect`: O(1) `rank1`, `select1` by binary search, checked against a naive scan
 - [ ] Explicit SIMD paths for popcount and prefix sums
 - [ ] proptest, criterion bench, asm audit
-- [ ] Bitpacking / varint codecs (not started; the `bitpacking` and `roaring` candidates were not needed under ADR 0004)
+- [x] Bitpacking / varint codecs — `tpt-simd-bits`: LEB128 varints for u32 (`varint_encode_u32`, `varint_decode_u32`) and fixed-width LSB-first bitpacking for 1..=32 bits (`bitpack_u32`, `bitunpack_u32`). Scalar, no_std, no allocation; known-answer and round-trip tests. The `bitpacking` and `roaring` crates were not needed under ADR 0004
 
 #### tpt-simd-geom
 - [x] SoA `distance_sq`, `distance`, `dot`, AABB overlap, ray–AABB slab test
