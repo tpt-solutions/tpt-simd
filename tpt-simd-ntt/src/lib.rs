@@ -35,6 +35,37 @@ extern crate alloc;
 use alloc::vec;
 use alloc::vec::Vec;
 
+/// Whether `n` is prime, by trial division.
+///
+/// Intended for checking a modulus before building a [`Montgomery`] or [`Barrett`] context,
+/// which accept any valid modulus and do not check primality themselves. Trial division costs
+/// `O(sqrt(n))`, so it is fast for the `u32` moduli these types take.
+///
+/// ```
+/// assert!(tpt_simd_ntt::is_prime(998_244_353));
+/// assert!(!tpt_simd_ntt::is_prime(998_244_351));
+/// ```
+#[must_use]
+pub fn is_prime(n: u32) -> bool {
+    if n < 2 {
+        return false;
+    }
+    if n < 4 {
+        return true;
+    }
+    if n.is_multiple_of(2) {
+        return false;
+    }
+    let mut d = 3u64;
+    while d * d <= u64::from(n) {
+        if u64::from(n).is_multiple_of(d) {
+            return false;
+        }
+        d += 2;
+    }
+    true
+}
+
 /// Montgomery arithmetic for an odd modulus `q < 2^31`, with `R = 2^32`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Montgomery {

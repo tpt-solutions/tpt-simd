@@ -543,7 +543,7 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 - [ ] Explicit SIMD paths (vectorised butterflies)
 - [ ] Bigint multiply built on the NTT
 - [ ] proptest, criterion bench, asm audit
-- [ ] Optional: a primality check for the modulus (currently caller-supplied)
+- [x] Optional: a primality check for the modulus — `tpt-simd-ntt::is_prime` (trial division, `u32`); checked against a sieve up to 10 000 and by property test. The contexts still accept any valid modulus and do not call it
 
 #### tpt-simd-transpose
 - [x] Blocked out-of-place transpose, in-place square transpose, strided copy (generic over `Copy`)
