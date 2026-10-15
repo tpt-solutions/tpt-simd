@@ -4,10 +4,12 @@ on:
   workflow_dispatch:
   push:
     branches: [master]
+  pull_request:
 
 jobs:
   bench:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -20,3 +22,30 @@ jobs:
         with:
           name: criterion
           path: target/criterion
+
+      # Regression guard. A master run stores its results as the baseline for later PRs.
+      # A PR run restores the newest master baseline and fails if any median is more than 25%
+      # slower. The threshold is wider than the xtask default because shared runners are noisy.
+      - name: Store master baseline
+        if: github.event_name == 'push'
+        run: |
+          rm -rf base-criterion
+          cp -r target/criterion base-criterion
+      - name: Save master baseline cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: base-criterion
+          key: criterion-master-${{ github.sha }}
+
+      - name: Restore latest master baseline
+        if: github.event_name == 'pull_request'
+        id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: base-criterion
+          key: criterion-master-none
+          restore-keys: criterion-master-
+      - name: Compare with master baseline
+        if: github.event_name == 'pull_request' && steps.restore.outputs.cache-matched-key != ''
+        run: cargo xtask bench-compare base-criterion target/criterion --tag=ci --max-regression=0.25
