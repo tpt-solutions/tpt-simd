@@ -46,11 +46,23 @@ pub fn find_byte(haystack: &[u8], needle: u8) -> Option<usize> {
             sse2::find_byte(haystack, needle)
         }
     }
-    #[cfg(all(not(feature = "memchr"), not(target_arch = "x86_64")))]
+    #[cfg(all(not(feature = "memchr"), target_arch = "aarch64"))]
+    {
+        neon::find_byte(haystack, needle)
+    }
+    #[cfg(all(
+        not(feature = "memchr"),
+        not(any(target_arch = "x86_64", target_arch = "aarch64"))
+    ))]
     {
         find_byte_swar(haystack, needle)
     }
 }
+
+/// NEON kernels for aarch64, where NEON is part of the baseline.
+#[cfg(all(not(feature = "memchr"), target_arch = "aarch64"))]
+#[allow(unsafe_code)]
+mod neon;
 
 /// SSE2 kernels. SSE2 is part of the x86_64 baseline, so no runtime detection
 /// is needed. Each loop reads 16-byte unaligned vectors that lie inside the slice.
@@ -279,7 +291,14 @@ mod avx2 {
 /// Word-at-a-time search: a 64-bit word contains a zero byte exactly when
 /// `(x - LO) & !x & HI` is non-zero, where `x` is the word XOR the needle
 /// broadcast. The byte position is then found with a short scan.
-#[cfg_attr(any(feature = "memchr", target_arch = "x86_64"), allow(dead_code))]
+#[cfg_attr(
+    any(
+        feature = "memchr",
+        target_arch = "x86_64",
+        target_arch = "aarch64"
+    ),
+    allow(dead_code)
+)]
 fn find_byte_swar(haystack: &[u8], needle: u8) -> Option<usize> {
     let pattern = LO * u64::from(needle);
     let mut chunks = haystack.chunks_exact(8);
@@ -328,7 +347,14 @@ pub fn count_byte(haystack: &[u8], needle: u8) -> usize {
             sse2::count_byte(haystack, needle)
         }
     }
-    #[cfg(all(not(feature = "memchr"), not(target_arch = "x86_64")))]
+    #[cfg(all(not(feature = "memchr"), target_arch = "aarch64"))]
+    {
+        neon::count_byte(haystack, needle)
+    }
+    #[cfg(all(
+        not(feature = "memchr"),
+        not(any(target_arch = "x86_64", target_arch = "aarch64"))
+    ))]
     {
         haystack.iter().filter(|&&b| b == needle).count()
     }
