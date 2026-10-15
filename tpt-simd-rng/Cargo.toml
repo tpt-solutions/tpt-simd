@@ -16,9 +16,12 @@ default = []
 std = ["tpt-simd-core/std"]
 nightly = ["tpt-simd-core/nightly"]
 scalar-only = ["tpt-simd-core/scalar-only"]
+# rand_core 0.9 traits for Xoshiro256pp (MIT OR Apache-2.0, no_std, no default features).
+rand_core = ["dep:rand_core"]
 
 [dependencies]
 tpt-simd-core.workspace = true
+rand_core = { version = "0.9", default-features = false, optional = true }
 
 [dev-dependencies]
 proptest.workspace = true

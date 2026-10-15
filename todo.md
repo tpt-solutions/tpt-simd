@@ -624,7 +624,7 @@ Rule: existing tpt-simd crates are complete and stay as-is **unless** a MIT-comp
 
 ### Keep (no equivalent found; no action beyond optional interop/oracles)
 - [ ] permute, scatter, gather, butterfly, compare (slice kernels), dot, mul, saturate, rounding, convolve, interpolate, math, rng, sparse, reduce, core
-- [ ] Use `rand_xoshiro` / `rand_philox` as rng test vectors and implement `rand_core` traits — xoshiro256++ (scalar, jump, and the eight-lane generator) and SplitMix64 match `rand_xoshiro` word for word (`tpt-simd-rng/tests/reference_vectors.rs`); Philox4x32-10 matches the Random123 known-answer vectors (`tpt-simd-rng/tests/philox_kat.rs`); the `rand_core` traits are not implemented; `libm` / `sleef` as math accuracy oracles; `statrs` as distribution oracle
+- [x] Use `rand_xoshiro` / `rand_philox` as rng test vectors and implement `rand_core` traits — xoshiro256++ (scalar, jump, and the eight-lane generator) and SplitMix64 match `rand_xoshiro` word for word (`tpt-simd-rng/tests/reference_vectors.rs`); Philox4x32-10 matches the Random123 known-answer vectors (`tpt-simd-rng/tests/philox_kat.rs`); `RngCore` and `SeedableRng` are implemented for `Xoshiro256pp` behind the default-off `rand_core` feature, tested against `rand_xoshiro` (`tests/rand_core_traits.rs`); `libm` / `sleef` as math accuracy oracles; `statrs` as distribution oracle
 
 ---
 
