@@ -224,6 +224,28 @@ fn rbj_params(sample_rate: f64, f0: f64, q: f64) -> (f64, f64, f64) {
     (libm::cos(w0), alpha, w0)
 }
 
+/// Filters interleaved audio with one biquad per channel.
+///
+/// `samples` holds frames of `filters.len()` samples (`[c0, c1, ..., c0, c1, ...]`), and
+/// channel `c` is processed by `filters[c]`. Each filter keeps its own state, so calls can
+/// be split at frame boundaries and the result equals processing each channel on its own.
+///
+/// # Panics
+///
+/// Panics if `filters` is empty or `samples.len()` is not a multiple of `filters.len()`.
+pub fn process_interleaved(filters: &mut [Biquad], samples: &mut [f32]) {
+    assert!(!filters.is_empty(), "process_interleaved: no filters");
+    assert!(
+        samples.len().is_multiple_of(filters.len()),
+        "process_interleaved: length is not a whole number of frames"
+    );
+    for frame in samples.chunks_exact_mut(filters.len()) {
+        for (filter, sample) in filters.iter_mut().zip(frame.iter_mut()) {
+            *sample = filter.tick(*sample);
+        }
+    }
+}
+
 /// Blackman window value at position `t` in `[0, 1]`.
 fn blackman(t: f64) -> f64 {
     0.42 - 0.5 * libm::cos(2.0 * PI * t) + 0.08 * libm::cos(4.0 * PI * t)
@@ -368,7 +390,10 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore = "4800-sample sinc sweep takes ~75s under Miri; numeric check, not UB-relevant")]
+    #[cfg_attr(
+        miri,
+        ignore = "4800-sample sinc sweep takes ~75s under Miri; numeric check, not UB-relevant"
+    )]
     fn resample_preserves_sine_amplitude_and_frequency() {
         let fs_in = 48_000.0;
         let fs_out = 24_000.0;

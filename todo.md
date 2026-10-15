@@ -559,7 +559,7 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 #### tpt-simd-audio
 - [x] Mix, interleave/deinterleave, peak/RMS, FIR, RBJ biquad (low-pass, high-pass), windowed-sinc resampler
 - [x] Oracles: add `biquad` and `rubato` as dev-dependencies and compare outputs — `tests/oracle_biquad.rs` (lowpass and highpass match `biquad` 0.5 within 1e-3) and `tests/oracle_resample.rs` (a 1 kHz tone resampled 48k to 24k keeps amplitude within 2% of 1.0 and agrees with `rubato`). Note: `biquad` 0.5.0 maps the cutoff to a quarter of the RBJ frequency, so the oracle is given 4 x f0 (see the test module docs).
-- [ ] Channel-batched biquad over interleaved frames
+- [x] Channel-batched biquad over interleaved frames — `tpt-simd-audio::process_interleaved` (one filter per channel, no allocation); equals per-channel processing bit for bit, including split calls
 - [ ] Explicit SIMD FIR / biquad batches (uses the `convolve` / `window` / `interpolate` crates where they fit)
 - [ ] proptest, criterion bench, asm audit
 
