@@ -498,7 +498,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 
 ## Phase 11 — New crate candidates
 
-Decision (recommended, applied 2026-10-15): the Phase 11 crates ship in 0.1 on autovectorised code. Explicit SIMD paths and asm audits move to post-0.1 work. Reference property tests and criterion benches were added for all 13 crates (see Definition-of-done gaps). asm audits and explicit SIMD paths remain open as the post-0.1 list.
+Decision (recommended, applied 2026-10-15): the Phase 11 crates ship in 0.1 on autovectorised code. Explicit SIMD paths and asm audits move to post-0.1 work. Reference property tests and criterion benches were added for all 13 crates (see Definition-of-done gaps). asm audits remain open. Decision (recommended, applied 2026-10-16): explicit SIMD paths are not planned for the Phase 11 crates. Every one of them sets `#![deny(unsafe_code)]`, and intrinsics need `unsafe`, so they would need a policy change first. The slower rows in `docs/benchmarks.md` stay documented as they are. Revisit if that policy changes.
 
 Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and a doctest, and each passes clippy with `-D warnings` and the `thumbv7em-none-eabihf` no_std check. **No crate has an explicit SIMD path yet**; all rely on autovectorisation. Policy is in `docs/adr/0004-no-runtime-wrapping.md`: own implementation by default, no runtime dependencies. Incumbents are dev-dependency oracles only, or sit behind a default-off feature. The one exception is `tpt-simd-half`, which keeps `half` for f16/bf16 interop.
 
