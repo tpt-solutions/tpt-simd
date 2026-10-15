@@ -142,6 +142,15 @@ impl FixedRepr for i32 {
     ) -> [Self; N] {
         avx2::mul_lanes::<I, F, MODE, N>(a, b)
     }
+
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    #[inline(always)]
+    fn mul_lanes<const I: u32, const F: u32, const MODE: u8, const N: usize>(
+        a: &[Self; N],
+        b: &[Self; N],
+    ) -> [Self; N] {
+        neon::mul_lanes::<I, F, MODE, N>(a, b)
+    }
 }
 
 #[cfg(all(
@@ -220,6 +229,76 @@ mod avx2 {
                 _mm256_storeu_si256(out.as_mut_ptr().add(i).cast(), r);
             }
             i += 8;
+        }
+        while i < N {
+            out[i] = i32::narrow(mul_lane::<I, F, MODE>(a[i] as i64, b[i] as i64));
+            i += 1;
+        }
+        out
+    }
+}
+
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+mod neon {
+    use super::*;
+    use core::arch::aarch64::*;
+
+    /// Finish two 64-bit products per vector, the same steps as the AVX2 `finish`.
+    /// The shift count is negative, which for `vshlq_s64` is an arithmetic right shift,
+    /// matching `p >> F` in the portable code.
+    #[inline(always)]
+    fn finish<const I: u32, const F: u32, const MODE: u8>(p: int64x2_t) -> int64x2_t {
+        // SAFETY: NEON is part of the aarch64 baseline; these are register-only operations.
+        unsafe {
+            let shift = vdupq_n_s64(-(F as i64));
+            if MODE == MUL_TRUNC_WRAP {
+                return vshlq_s64(p, shift);
+            }
+            let s = if F == 0 {
+                p
+            } else {
+                // -1 where p < 0, added so that the rounding is ties away from zero.
+                let neg = vreinterpretq_s64_u64(vcltq_s64(p, vdupq_n_s64(0)));
+                vaddq_s64(vaddq_s64(p, vdupq_n_s64(1i64 << (F - 1))), neg)
+            };
+            let lo = vshlq_s64(s, shift);
+            if MODE == MUL_ROUND_WRAP {
+                return lo;
+            }
+            // Saturate: s >> F outside [MIN, MAX] <=> s outside [MIN << F, (MAX << F) | (2^F - 1)].
+            let over = vcgtq_s64(s, vdupq_n_s64((max_w(I, F) << F) | ((1i64 << F) - 1)));
+            let under = vcgtq_s64(vdupq_n_s64(min_w(I, F) << F), s);
+            let r = vbslq_s64(over, vdupq_n_s64(max_w(I, F)), lo);
+            vbslq_s64(under, vdupq_n_s64(min_w(I, F)), r)
+        }
+    }
+
+    /// Four lanes of `a * b` (low 32 bits of each result, per the mode).
+    #[inline(always)]
+    fn mul4<const I: u32, const F: u32, const MODE: u8>(a: int32x4_t, b: int32x4_t) -> int32x4_t {
+        // SAFETY: NEON is part of the aarch64 baseline; register-only operations.
+        unsafe {
+            let lo = finish::<I, F, MODE>(vmull_s32(vget_low_s32(a), vget_low_s32(b)));
+            let hi = finish::<I, F, MODE>(vmull_high_s32(a, b));
+            vcombine_s32(vmovn_s64(lo), vmovn_s64(hi))
+        }
+    }
+
+    pub(super) fn mul_lanes<const I: u32, const F: u32, const MODE: u8, const N: usize>(
+        a: &[i32; N],
+        b: &[i32; N],
+    ) -> [i32; N] {
+        let mut out = [0i32; N];
+        let mut i = 0;
+        while i + 4 <= N {
+            // SAFETY: NEON is part of the aarch64 baseline. `i + 4 <= N`, so each 4-lane load
+            // and the store stay inside the arrays.
+            unsafe {
+                let va = vld1q_s32(a.as_ptr().add(i));
+                let vb = vld1q_s32(b.as_ptr().add(i));
+                vst1q_s32(out.as_mut_ptr().add(i), mul4::<I, F, MODE>(va, vb));
+            }
+            i += 4;
         }
         while i < N {
             out[i] = i32::narrow(mul_lane::<I, F, MODE>(a[i] as i64, b[i] as i64));

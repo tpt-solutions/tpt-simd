@@ -46,10 +46,13 @@
 //! ```
 #![no_std]
 #![cfg_attr(
-    not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2"
+    not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )),
     forbid(unsafe_code)
 )]
