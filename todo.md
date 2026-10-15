@@ -570,7 +570,7 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 
 #### tpt-simd-half
 - [x] Wraps `half` 2.7.1 for f16/bf16; length-checked slice conversions; int8 and ggml-layout Q8_0 / Q4_0 block quantisation
-- [ ] f16/bf16 arithmetic kernels (conversions only so far)
+- [x] f16/bf16 arithmetic kernels — `tpt-simd-half`: `add_f16`, `mul_f16`, `mul_bf16`, `add_bf16`. f16 results are correctly rounded (computed in f64, exact for two f16 values). bf16 mul is correctly rounded; bf16 add is within 1 ulp (the f32 intermediate can double-round). Scalar; no SIMD path
 - [x] Decision (recommended, applied): keep `half` as a required dependency for 0.1. ADR 0004 allows it for f16/bf16 interop, and making it optional would change the API. `half` pulls in `zerocopy` through its dependency tree
 - [ ] Explicit SIMD conversion paths, proptest, criterion bench
 

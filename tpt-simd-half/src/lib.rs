@@ -89,6 +89,63 @@ pub fn bf16_to_f32_slice(src: &[bf16], dst: &mut [f32]) {
     }
 }
 
+/// Element-wise `out = a + b` in f16.
+///
+/// Computed in f64, which holds the exact sum of any two f16 values, so each result is
+/// rounded once and is the correctly rounded f16 sum.
+///
+/// # Panics
+///
+/// Panics unless the three slices have the same length.
+pub fn add_f16(a: &[f16], b: &[f16], out: &mut [f16]) {
+    assert!(a.len() == b.len() && a.len() == out.len(), "add_f16: length mismatch");
+    for ((o, &x), &y) in out.iter_mut().zip(a).zip(b) {
+        *o = f16::from_f64(x.to_f64() + y.to_f64());
+    }
+}
+
+/// Element-wise `out = a * b` in f16, correctly rounded (the exact product of two f16 values
+/// fits in f64).
+///
+/// # Panics
+///
+/// Panics unless the three slices have the same length.
+pub fn mul_f16(a: &[f16], b: &[f16], out: &mut [f16]) {
+    assert!(a.len() == b.len() && a.len() == out.len(), "mul_f16: length mismatch");
+    for ((o, &x), &y) in out.iter_mut().zip(a).zip(b) {
+        *o = f16::from_f64(x.to_f64() * y.to_f64());
+    }
+}
+
+/// Element-wise `out = a * b` in bf16, correctly rounded (the exact product of two bf16 values
+/// fits in f32).
+///
+/// # Panics
+///
+/// Panics unless the three slices have the same length.
+pub fn mul_bf16(a: &[bf16], b: &[bf16], out: &mut [bf16]) {
+    assert!(a.len() == b.len() && a.len() == out.len(), "mul_bf16: length mismatch");
+    for ((o, &x), &y) in out.iter_mut().zip(a).zip(b) {
+        *o = bf16::from_f32(x.to_f32() * y.to_f32());
+    }
+}
+
+/// Element-wise `out = a + b` in bf16.
+///
+/// Computed in f32 and rounded once. The exact sum of two bf16 values can need more than
+/// 24 significant bits, so for operands with very different exponents the f32 intermediate
+/// can round first. The result is then within one bf16 ulp of the correctly rounded sum.
+///
+/// # Panics
+///
+/// Panics unless the three slices have the same length.
+pub fn add_bf16(a: &[bf16], b: &[bf16], out: &mut [bf16]) {
+    assert!(a.len() == b.len() && a.len() == out.len(), "add_bf16: length mismatch");
+    for ((o, &x), &y) in out.iter_mut().zip(a).zip(b) {
+        *o = bf16::from_f32(x.to_f32() + y.to_f32());
+    }
+}
+
 /// Symmetric int8 quantisation: `q = clamp(round(x / scale), -127, 127)`.
 ///
 /// # Panics
