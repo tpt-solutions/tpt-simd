@@ -32,11 +32,17 @@ extern crate std;
 use tpt_simd_core::Simd;
 
 /// True when the AVX2 variable-shift fast path is compiled in.
-pub const SHIFT_VAR_USES_INTRINSICS: bool = cfg!(all(
-    not(feature = "scalar-only"),
-    target_arch = "x86_64",
-    target_feature = "avx2"
+pub const SHIFT_VAR_USES_INTRINSICS: bool = cfg!(any(
+    all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ),
+    all(not(feature = "scalar-only"), target_arch = "aarch64")
 ));
+
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+mod neon;
 
 #[inline(always)]
 fn shl(x: i32, n: u32) -> i32 {
@@ -193,10 +199,17 @@ pub fn shift_left_var_i32(a: Simd<i32, 8>, amounts: Simd<u32, 8>) -> Simd<i32, 8
     {
         var_avx2!(a, amounts, _mm256_sllv_epi32)
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        Simd::from_array(neon::shift_left(a.to_array(), amounts.to_array()))
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         shift_left_var_i32_portable(a, amounts)
@@ -230,10 +243,17 @@ pub fn shift_right_logical_var_i32(a: Simd<i32, 8>, amounts: Simd<u32, 8>) -> Si
     {
         var_avx2!(a, amounts, _mm256_srlv_epi32)
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        Simd::from_array(neon::shift_right_logical(a.to_array(), amounts.to_array()))
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         shift_right_logical_var_i32_portable(a, amounts)
@@ -271,10 +291,17 @@ pub fn shift_right_arithmetic_var_i32(a: Simd<i32, 8>, amounts: Simd<u32, 8>) ->
     {
         var_avx2!(a, amounts, _mm256_srav_epi32)
     }
-    #[cfg(not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        target_feature = "avx2"
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+    {
+        Simd::from_array(neon::shift_right_arithmetic(a.to_array(), amounts.to_array()))
+    }
+    #[cfg(not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2"
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )))]
     {
         shift_right_arithmetic_var_i32_portable(a, amounts)
