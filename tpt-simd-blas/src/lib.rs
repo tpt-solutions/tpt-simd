@@ -188,13 +188,16 @@
 //! ```
 #![no_std]
 #![cfg_attr(
-    not(all(
-        not(feature = "scalar-only"),
-        target_arch = "x86_64",
-        any(
-            all(target_feature = "avx2", target_feature = "fma"),
-            feature = "runtime-dispatch"
-        )
+    not(any(
+        all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            any(
+                all(target_feature = "avx2", target_feature = "fma"),
+                feature = "runtime-dispatch"
+            )
+        ),
+        all(not(feature = "scalar-only"), target_arch = "aarch64")
     )),
     forbid(unsafe_code)
 )]
@@ -226,6 +229,9 @@ pub use lapack::{Diag, NotPositiveDefiniteError, SingularError, Trans, Uplo};
 ))]
 mod x86;
 
+#[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+mod neon;
+
 /// `true` when the AVX-512F microkernels are compiled in. Then the microtiles
 /// are twice as tall (two 512-bit rows per column). This is a compile-time
 /// choice, so the packing layout is fixed for each build.
@@ -252,6 +258,8 @@ blas_impl!(
     kernel = crate::x86::kernel_f32,
     kstore = crate::x86::kernel_f32_store,
     kernel512 = crate::x86::kernel_f32_512,
+    nkernel = crate::neon::kernel_f32,
+    nkstore = crate::neon::kernel_f32_store,
     l1_dot = crate::x86::l1_f32::<0>,
     l1_sq = crate::x86::l1_f32::<1>,
     l1_abs = crate::x86::l1_f32::<2>
@@ -269,6 +277,8 @@ blas_impl!(
     kernel = crate::x86::kernel_f64,
     kstore = crate::x86::kernel_f64_store,
     kernel512 = crate::x86::kernel_f64_512,
+    nkernel = crate::neon::kernel_f64,
+    nkstore = crate::neon::kernel_f64_store,
     l1_dot = crate::x86::l1_f64::<0>,
     l1_sq = crate::x86::l1_f64::<1>,
     l1_abs = crate::x86::l1_f64::<2>

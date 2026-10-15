@@ -5,6 +5,7 @@ macro_rules! blas_impl {
         $modname:ident, $t:ident, w = $w:expr, mr = $mr:expr, nr = $nr:expr,
         mc = $mc:expr, kc = $kc:expr, nc = $nc:expr, sqrt = $sqrt:path,
         kernel = $kernel:path, kstore = $kstore:path, kernel512 = $kernel512:path,
+        nkernel = $nkernel:path, nkstore = $nkstore:path,
         l1_dot = $ld:path, l1_sq = $lq:path, l1_abs = $la:path
     ) => {
         pub(crate) mod $modname {
@@ -238,6 +239,13 @@ macro_rules! blas_impl {
                     unsafe { $kernel512(kc, a.as_ptr(), b.as_ptr(), out.as_mut_ptr()) };
                     return;
                 }
+                #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+                {
+                    // SAFETY: lengths asserted above; `out` has MR*NR elements. NEON is part of
+                    // the aarch64 baseline.
+                    unsafe { $nkernel(kc, a.as_ptr(), b.as_ptr(), out.as_mut_ptr()) };
+                    return;
+                }
                 #[cfg(not(all(
                     not(feature = "scalar-only"),
                     target_arch = "x86_64",
@@ -262,12 +270,15 @@ macro_rules! blas_impl {
                         return;
                     }
                 }
-                #[cfg(not(all(
-                    not(feature = "scalar-only"),
-                    target_arch = "x86_64",
-                    target_feature = "avx2",
-                    target_feature = "fma",
-                    target_feature = "avx512f"
+                #[cfg(not(any(
+                    all(
+                        not(feature = "scalar-only"),
+                        target_arch = "x86_64",
+                        target_feature = "avx2",
+                        target_feature = "fma",
+                        target_feature = "avx512f"
+                    ),
+                    all(not(feature = "scalar-only"), target_arch = "aarch64")
                 )))]
                 {
                     let mut acc = [[0.0 as $t; MR]; NR];
@@ -315,8 +326,20 @@ macro_rules! blas_impl {
                         return true;
                     }
                 }
-                let _ = (kc, a, b, c, ldc, alpha);
-                false
+                #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+                {
+                    // SAFETY: lengths and the tile extent asserted above. NEON is part of the
+                    // aarch64 baseline.
+                    unsafe {
+                        $nkstore(kc, a.as_ptr(), b.as_ptr(), c.as_mut_ptr(), ldc, alpha)
+                    };
+                    true
+                }
+                #[cfg(not(all(not(feature = "scalar-only"), target_arch = "aarch64")))]
+                {
+                    let _ = (kc, a, b, c, ldc, alpha);
+                    false
+                }
             }
 
             #[allow(clippy::too_many_arguments)]
