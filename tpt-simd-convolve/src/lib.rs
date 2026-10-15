@@ -63,7 +63,30 @@ fn fma_v(a: F32x8, b: F32x8, c: F32x8) -> F32x8 {
             F32x8::from_array(core::mem::transmute::<__m256, [f32; 8]>(r))
         }
     }
-    #[cfg(not(all(target_arch = "x86_64", target_feature = "avx", target_feature = "fma")))]
+    #[cfg(target_arch = "aarch64")]
+    {
+        use core::arch::aarch64::{vfmaq_f32, vld1q_f32, vst1q_f32};
+        let (x, y, z) = (a.to_array(), b.to_array(), c.to_array());
+        let mut out = [0.0f32; 8];
+        // SAFETY: NEON is part of the aarch64 baseline. Each 4-lane access covers offsets
+        // `h..h + 4` of an 8-element array, for h = 0 and h = 4.
+        unsafe {
+            for h in [0usize, 4] {
+                // vfmaq_f32(acc, x, y) = acc + x * y, rounded once per lane.
+                let r = vfmaq_f32(
+                    vld1q_f32(z.as_ptr().add(h)),
+                    vld1q_f32(x.as_ptr().add(h)),
+                    vld1q_f32(y.as_ptr().add(h)),
+                );
+                vst1q_f32(out.as_mut_ptr().add(h), r);
+            }
+        }
+        F32x8::from_array(out)
+    }
+    #[cfg(not(any(
+        all(target_arch = "x86_64", target_feature = "avx", target_feature = "fma"),
+        target_arch = "aarch64"
+    )))]
     {
         a.mul_add(b, c)
     }
