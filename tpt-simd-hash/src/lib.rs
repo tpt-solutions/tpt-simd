@@ -82,8 +82,17 @@ fn crc_update(state: u32, data: &[u8]) -> u32 {
             return !pclmul::update(!state, data);
         }
     }
+    #[cfg(target_arch = "aarch64")]
+    {
+        if neon::available() {
+            return !neon::update(!state, data);
+        }
+    }
     crc_update_scalar(state, data)
 }
+
+#[cfg(target_arch = "aarch64")]
+mod neon;
 
 /// Portable slicing-by-8 update of the raw CRC state over `data`.
 fn crc_update_scalar(mut state: u32, data: &[u8]) -> u32 {
@@ -165,7 +174,9 @@ mod pclmul {
     fn wide_available() -> bool {
         #[cfg(feature = "runtime-dispatch")]
         {
-            !cfg!(miri) && std::is_x86_feature_detected!("avx2") && std::is_x86_feature_detected!("vpclmulqdq")
+            !cfg!(miri)
+                && std::is_x86_feature_detected!("avx2")
+                && std::is_x86_feature_detected!("vpclmulqdq")
         }
         #[cfg(not(feature = "runtime-dispatch"))]
         {
