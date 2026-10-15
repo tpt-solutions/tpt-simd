@@ -51,6 +51,28 @@ const ASM_KERNELS: &[AsmKernel] = &[
         min_vector: 140,
         min_fma: 18,
     },
+    // Blocked LU and Cholesky. Their trailing updates call the gemm kernel (a call, not inlined),
+    // so only the panel code is counted here. The panels use no fused multiply-add, hence 0.
+    AsmKernel {
+        krate: "tpt-simd-blas",
+        symbol: "tpt_simd_blas::fsingle::getrf_with_workspace",
+        min_vector: 50,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-blas",
+        symbol: "tpt_simd_blas::fsingle::potrf_with_workspace",
+        min_vector: 50,
+        min_fma: 0,
+    },
+    // The f32 dot (BLAS level 1). It keeps separate multiply and add so the result is
+    // bit-identical to the reference order, hence no FMA.
+    AsmKernel {
+        krate: "tpt-simd-blas",
+        symbol: "tpt_simd_blas::single::dot",
+        min_vector: 66,
+        min_fma: 0,
+    },
     AsmKernel {
         krate: "tpt-simd-convolve",
         symbol: "convolve_1d_f32",
