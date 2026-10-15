@@ -46,6 +46,12 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::f64::consts::PI;
 
+mod fast;
+pub use fast::FastDct;
+
+mod wavelet;
+pub use wavelet::{haar_forward, haar_inverse};
+
 #[cold]
 #[inline(never)]
 fn size_mismatch(func: &str, what: &str, expected: usize, got: usize) -> ! {
@@ -239,7 +245,10 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore = "libm x86 routine uses inline asm, which Miri does not support")]
+    #[cfg_attr(
+        miri,
+        ignore = "libm x86 routine uses inline asm, which Miri does not support"
+    )]
     fn dct_constant_input_is_pure_dc() {
         let dct = Dct::new(4);
         let mut c = [0.0f32; 4];

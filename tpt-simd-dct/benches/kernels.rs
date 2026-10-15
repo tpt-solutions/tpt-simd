@@ -2,7 +2,7 @@
 
 use criterion::{Criterion, Throughput, criterion_group, criterion_main};
 use std::hint::black_box;
-use tpt_simd_dct::Dct;
+use tpt_simd_dct::{Dct, FastDct};
 
 fn bench(c: &mut Criterion) {
     let n = 256usize;
@@ -41,5 +41,23 @@ fn bench(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench);
+fn fast_vs_table(c: &mut Criterion) {
+    for n in [256usize, 1024, 4096] {
+        let x: Vec<f32> = (0..n)
+            .map(|i| ((i * 37 % 101) as f32) / 50.0 - 1.0)
+            .collect();
+        let mut out = vec![0f32; n];
+        let table = Dct::new(n);
+        let fast = FastDct::new(n);
+        let mut group = c.benchmark_group(format!("dct2_fast_vs_table/{n}"));
+        group.throughput(Throughput::Elements(n as u64));
+        group.bench_function("table", |b| {
+            b.iter(|| table.forward(black_box(&x), &mut out))
+        });
+        group.bench_function("fft", |b| b.iter(|| fast.forward(black_box(&x), &mut out)));
+        group.finish();
+    }
+}
+
+criterion_group!(benches, bench, fast_vs_table);
 criterion_main!(benches);

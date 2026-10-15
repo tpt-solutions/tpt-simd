@@ -534,8 +534,8 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 
 #### tpt-simd-dct
 - [x] Orthonormal DCT-II/III, MDCT/IMDCT with sine window; TDAC reconstruction tested
-- [ ] FFT-based path for large sizes (current cost is O(N²))
-- [ ] Wavelets
+- [x] FFT-based path for large sizes — `tpt-simd-dct::FastDct` (power-of-two N, 2N-point FFT, O(N) memory), checked against the table DCT for every size up to 512 in both directions; 5x faster at N = 256 and 75x at N = 4096 (docs/benchmarks.md)
+- [x] Wavelets — orthonormal Haar, multi-level, in place (`haar_forward` / `haar_inverse`); energy preserved and exact reconstruction tested; one-level values checked by hand
 - [ ] Explicit SIMD paths, proptest, criterion bench, asm audit
 
 #### tpt-simd-ntt

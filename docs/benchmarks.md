@@ -971,3 +971,19 @@ Where the crate is slower or level, and the reason as far as it is known:
 
 The bench workflow (`.github/workflows/bench.yml`) uploads its criterion output as a
 workflow artifact. Nothing commits these numbers automatically, so this table is updated by hand.
+
+
+## tpt-simd-dct: FFT-based DCT-II against the table (2026-10-16)
+
+`cargo bench -p tpt-simd-dct --bench kernels -- dct2_fast_vs_table`, one run, same host as the
+Phase 11 baseline. Forward transform of one block, orthonormal DCT-II, f32 in and out:
+
+| N | table `Dct` (O(N²) memory and time) | `FastDct` (2N-point FFT) | speed-up |
+|---|---|---|---|
+| 256 | 21.5 µs | 4.2 µs | 5.1x |
+| 1024 | 435 µs | 19.1 µs | 23x |
+| 4096 | 9.21 ms | 123 µs | 75x |
+
+The table costs 4 bytes times N² in memory (64 MiB at N = 4096), which is the larger
+practical problem. `FastDct` uses O(N) memory. It is faster from N = 256 at least, and the
+table is the reference for sizes that are not powers of two.
