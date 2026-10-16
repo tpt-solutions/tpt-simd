@@ -23,9 +23,28 @@ jobs:
           name: criterion
           path: target/criterion
 
-      # Regression guard. A master run stores its results as the baseline for later PRs.
-      # A PR run restores the newest master baseline and fails if any median is more than 25%
-      # slower. The threshold is wider than the xtask default because shared runners are noisy.
+      # Regression guard. Every run compares against the newest master baseline. The threshold is
+      # wider than the xtask default because shared runners are noisy.
+      #   - On master, a regression fails the run (blocking).
+      #   - On a PR, a regression is reported but does not fail the run (informational, ADR 0006
+      #     decision 9), until several runs show how noisy the runners are.
+      # The comparison runs before the store step, which overwrites base-criterion.
+      - name: Restore latest master baseline
+        id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: base-criterion
+          key: criterion-master-none
+          restore-keys: criterion-master-
+      - name: Compare with master baseline (PR, informational)
+        if: github.event_name == 'pull_request' && steps.restore.outputs.cache-matched-key != ''
+        continue-on-error: true
+        run: cargo xtask bench-compare base-criterion target/criterion --tag=ci --max-regression=0.25
+      - name: Compare with master baseline (master, blocking)
+        if: github.event_name == 'push' && steps.restore.outputs.cache-matched-key != ''
+        run: cargo xtask bench-compare base-criterion target/criterion --tag=ci --max-regression=0.25
+
+      # A master run stores its results as the baseline for the next run.
       - name: Store master baseline
         if: github.event_name == 'push'
         run: |
@@ -37,15 +56,3 @@ jobs:
         with:
           path: base-criterion
           key: criterion-master-${{ github.sha }}
-
-      - name: Restore latest master baseline
-        if: github.event_name == 'pull_request'
-        id: restore
-        uses: actions/cache/restore@v4
-        with:
-          path: base-criterion
-          key: criterion-master-none
-          restore-keys: criterion-master-
-      - name: Compare with master baseline
-        if: github.event_name == 'pull_request' && steps.restore.outputs.cache-matched-key != ''
-        run: cargo xtask bench-compare base-criterion target/criterion --tag=ci --max-regression=0.25
