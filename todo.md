@@ -8,7 +8,7 @@ Owner: TPT Solutions · License: `MIT OR Apache-2.0` · Spec: [spec.txt](spec.tx
 - [x] Dependencies must be MIT-compatible (permissive; **no Apache-2.0-only deps**)
 - [x] Backend: `core::simd` behind `nightly` feature; stable path via own `tpt-simd-vector` crate
 - [x] 22 crates = spec's 21 + new `tpt-simd-vector` (stable backend types); the workspace has since grown to 28 `tpt-simd-*` crates (including blas, reduce, math, rng, sparse and the unpublished `testutil`) plus the `tpt-simd` umbrella
-- [x] `no_std` + `alloc` (`std` optional), MSRV = stable-2
+- [x] `no_std` + `alloc` (`std` optional), MSRV = 1.95 (ADR 0006 decision 1; was written as "stable-2")
 - [x] Clippy lint `chunks_exact_to_as_chunks` (new in clippy 1.98, breaks `-D warnings`) allowed workspace-wide in `Cargo.toml`; `chunks_exact` + `zip` reads better in the kernels and benches than `as_chunks`
 - [x] Targets in v0.1: x86_64 (SSE/AVX/AVX2/AVX-512), ARM64 (NEON/SVE), RISC-V RVV, scalar fallback
 - [x] GitHub + GitHub Actions; tpt-kinetix and tpt-cadence are existing separate repos
@@ -75,7 +75,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] Feature flags: `std`, `alloc` (blas), `nightly` (reserved, no-op), `scalar-only`. No per-ISA Cargo features (`sse2`/`avx2`/`avx512`/`neon`/`sve`/`rvv`): ADR 0001 decision 3 selects ISA paths at compile time through `RUSTFLAGS`, so those names would be no-ops
 - [x] Decide runtime dispatch vs compile-time `target_feature` strategy (document in ADR) — compile-time `cfg(target_feature)`; see ADR 0001
 - [x] `rust-toolchain.toml` (stable) + separate nightly job config (nightly CI job in ci.yml)
-- [ ] Pin and test MSRV (stable-2) with `cargo-msrv` — `rust-version = "1.95"`; `cargo +1.95 check --workspace --all-targets` passes; `cargo-msrv` itself not run
+- [x] Pin and test MSRV with `cargo-msrv` — `cargo msrv find` (0.19.3) reports 1.95.0 as the lowest passing toolchain, matching `rust-version = "1.95"`; CI `msrv` job runs `cargo check --workspace --all-targets` on 1.95. Floor kept at 1.95 (ADR 0006 decision 1)
 - [x] Shared test-utils / scalar-reference helper crate (unpublished) for proptest strategies
 
 ### CI (GitHub Actions)
@@ -85,12 +85,12 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] x86_64 runners with target-feature matrix (SSE2, AVX, AVX2) — written, not yet run
 - [x] AVX-512 testing: run natively on this host (i5-1135G7 has AVX-512 F/BW/DQ/VL), not via SDE. Full suite with `-C target-cpu=native` passes; covers the `vpscatterdd` scatter path and the AVX-512BW dot kernel (docs/benchmarks.md)
 - [x] ARM64 testing (GitHub ARM runners / macOS-14) — runner defined, not yet run
-- [ ] ARM SVE testing via QEMU (vector-length matrix)
-- [ ] RISC-V RVV testing via QEMU (`riscv64gcv`)
+- [x] ARM SVE testing via QEMU (vector-length matrix) — CI `qemu-sve` job; full aarch64 suite passes under `qemu-aarch64 -cpu max,sve-default-vector-length={16,32,64,256}` (128/256/512/2048 bit) with `-C target-feature=+sve` (121 test binaries each). Covers compiler-vectorised SVE code only; no SVE intrinsics (unstable on stable Rust)
+- [x] RISC-V RVV testing via QEMU (`riscv64gcv`) — CI `qemu-riscv` job; full riscv64 suite passes under `qemu-riscv64 -cpu rv64,v=true,vlen={128,256,512}` with `-C target-feature=+v` (121 test binaries each). Covers compiler-vectorised RVV code only
 - [x] Scalar-fallback job (`scalar-only` feature)
 - [x] Miri job for unsafe code (where supported) — written, not yet run
 - [x] `cargo-deny` license + advisory job
-- [ ] Benchmark job with regression tracking (criterion baselines)
+- [x] Benchmark job with regression tracking (criterion baselines) — `bench.yml` stores master criterion results in an actions cache and a master run fails on a regression of more than 25% (`cargo xtask bench-compare`); PRs report the same comparison without failing (ADR 0006 decision 9); xtask unit tests pass locally, the workflow has not run on GitHub yet
 - [x] Caching, concurrency limits, release workflow
 
 ### Docs & spec fixes
@@ -113,18 +113,18 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] Vector width constants per target
 - [x] Type aliases: `F32x8`, `I32x8`, `I16x16`, `I8x32`, 128/256/512-bit families
 - [x] Shared `ComplexSimd` type definition (see decisions)
-- [ ] Backend selection plumbing — `nightly` feature reserved/no-op (ADR 0001) (`nightly` → `core::simd`, else `tpt-simd-vector`)
-- [ ] Core-done checklist
+- [ ] Backend selection plumbing — deferred to post-0.1: `nightly` stays a reserved no-op (ADR 0001, ADR 0006 decision 2)
+- [ ] Core-done checklist — not done: core has no proptest (docs/crate-done-audit.md)
 
 ### tpt-simd-vector (stable backend)
 - [x] `Simd<T, N>` and `SimdMask<T, N>` types (array-backed)
 - [x] Arithmetic/bitwise/comparison ops, splat, from_array/to_array, load/store (aligned + unaligned)
-- [ ] `core::arch` fast paths: SSE2/AVX2 (x86_64), NEON (aarch64) — decided per-crate instead (fixed, mul, dot have AVX2 paths); none in vector; no NEON anywhere
+- [x] `core::arch` fast paths: closed. `tpt-simd-vector` stays `forbid(unsafe_code)` and the intrinsics live in the kernel crates (ADR 0006 decision 3). Was: SSE2/AVX2 (x86_64), NEON (aarch64) — decided per-crate instead (fixed, mul, dot have AVX2 paths); none in vector; no NEON anywhere
 - [x] Scalar fallback for all other targets
 - [ ] Verify codegen: array backend auto-vectorizes; fast paths beat it — `mul_add`/`round`/`floor` are per-lane libm calls without the `std` feature; with `std` they use std intrinsics (5x on portable complex mul; see docs/benchmarks.md); `Simd::mul_add` never lowers to vector FMA even under `target-cpu=native` (libm/libc `fmaf` per lane), so crates need `core::arch` FMA paths (done in mul; matrix uses unfused mul+add); a fix in vector needs `unsafe`, which conflicts with `forbid(unsafe_code)` (ADR note needed)
 - [x] Layout/ABI tests (size, align, lane order)
-- [ ] Tests mirroring `core::simd` behavior so the two backends are interchangeable
-- [ ] Vector-crate-done checklist
+- [ ] Tests mirroring `core::simd` behavior so the two backends are interchangeable — deferred to post-0.1 with the `nightly` backend (ADR 0006 decision 2)
+- [ ] Vector-crate-done checklist — not done: no criterion bench (docs/crate-done-audit.md)
 
 ### tpt-simd-complex (f32 first)
 - [x] `new`, `add`, `sub`, `mul`, `div`, `conj`, `mag_sq`, `mag`, `phase`
@@ -133,8 +133,8 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] FMA (`fmadd/fmsub`) and `addsub` fast path on x86; NEON equivalent
 - [x] Interleaved ↔ split (SoA/AoS) conversions
 - [x] f64 variant (stretch)
-- [ ] Hit target: ≥3× complex multiply speedup vs scalar — 3.3–4.5× only vs a non-vectorised baseline; parity (~1.0–1.1×) with an auto-vectorised zip loop (load/store bound), so not reachable; value is fused-FMA semantics + portable API; see docs/benchmarks.md (Phase 4 performance-target review)
-- [ ] Crate-done checklist
+- [x] Hit target: ≥3× complex multiply speedup vs scalar — accepted gap (ADR 0006 decision 5). 3.3–4.5× only vs a non-vectorised baseline; parity (~1.0–1.1×) with an auto-vectorised zip loop (load/store bound), so not reachable; value is fused-FMA semantics + portable API; see docs/benchmarks.md (Phase 4 performance-target review)
+- [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### tpt-simd-fixed (i32 first)
 - [x] `Fixed<T, INT_BITS, FRAC_BITS, N>` with compile-time format checks (i32 and i16)
@@ -144,11 +144,11 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] Overflow semantics documented (wrapping vs saturating variants)
 - [x] i16 variant (stretch)
 - [x] Hit target: ≥2× vs manual fixed-point — met on mul/add (3.3–10.7×); `from_f32` no gain
-- [ ] Crate-done checklist
+- [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### Phase 1 exit
 - [x] Workspace builds on all CI targets Checked at build level for the host, all no_std targets, aarch64 and riscv64 Linux; emulated test runs in docs/verification.md.
-- [ ] Core traits frozen for 0.1 review
+- [x] Core traits frozen for 0.1 (ADR 0006 decision 6: the seven public traits, listed there)
 - [x] Complex + fixed tested vs scalar refs
 
 ---
@@ -160,33 +160,33 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] `horizontal_max_i16`, `horizontal_min_f32`, `horizontal_product_f32`
 - [x] Add missing min/max/sum variants for symmetry (decide scope) (min/max for i16/i32/f32, u8/i8 sums, generic `reduce_*`)
 - [x] NaN handling policy documented for min/max
-- [ ] Hit target: ≥4–8× vs scalar — NOT reachable: a single-register reduction is ~1 ns and LLVM already emits the optimal shuffle tree; 1.5–2.6× only vs the strict-order scalar f32 loop, parity for int sum/max; see docs/benchmarks.md
-- [ ] Crate-done checklist
+- [x] Target ≥4–8× vs scalar dropped (decision): NOT reachable: a single-register reduction is ~1 ns and LLVM already emits the optimal shuffle tree; 1.5–2.6× only vs the strict-order scalar f32 loop, parity for int sum/max; see docs/benchmarks.md
+- [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### tpt-simd-dot
 - [x] `dot_product_i16`, `dot_product_f32`, `dot_product_complex_f32`, `dot_product_saturating_i16`
 - [x] Handle arbitrary lengths / tails; length-mismatch policy
 - [x] Accumulation order/precision documented (f32 reassociation)
-- [ ] Hit target: ≥8× vs scalar (256 × i16) — NOT reachable: 1.4–1.6× over the auto-vectorised scalar loop (both use `vpmaddwd`; L1 load-bound, extra accumulators gave no gain); f32 dot 5.7–12.5× vs strict serial loop
+- [x] Target ≥8× vs scalar (256 × i16) dropped (decision): NOT reachable: 1.4–1.6× over the auto-vectorised scalar loop (both use `vpmaddwd`; L1 load-bound, extra accumulators gave no gain); f32 dot 5.7–12.5× vs strict serial loop
 - [x] Verify FLAC LPC example (Appendix B.3) compiles and passes
-- [ ] Crate-done checklist
+- [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### tpt-simd-butterfly
 - [x] `butterfly_f32`, `butterfly_i16`, `butterfly_complex_f32`, `butterfly_with_twiddle_f32`
 - [x] Fix spec: `butterfly_with_twiddle_f32` signature (real vectors + complex twiddle is ambiguous)
 - [x] Verify Appendix B.5 example output
 - [x] Hit target: ≥2× — vs indexed scalar only; parity with auto-vectorised; f32 on SSE2 default is a known slow case (docs/benchmarks.md)
-- [ ] Crate-done checklist
+- [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### tpt-simd-saturate
 - [x] `saturating_add_i16`, `saturating_sub_i16`, `saturating_add_i8`, `saturating_mul_i16`
 - [x] `pack_i16_to_i8` (home crate), plus unsigned-saturating pack variants
 - [x] Hit target: ≥4× — vs indexed scalar only; parity with auto-vectorised (docs/benchmarks.md)
-- [ ] Crate-done checklist
+- [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### Phase 2 exit
 - [x] Benchmark suite vs scalar (criterion) published in repo (per-crate `benches/`, results in docs/benchmarks.md)
-- [ ] 3–8× speedups demonstrated (table from spec §6.2 reproduced)
+- [x] §6.2 table reproduced (docs/benchmarks.md, "Spec §6.2 table"). Partly met: 4 of 6 rows vs indexed scalar (complex, independent transposes, saturating add, butterfly), none vs auto-vectorised scalar; the dot and horizontal targets are dropped above
 - [x] Docs + examples for all four crates
 
 ---
@@ -202,21 +202,21 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] Length-mismatch and tail handling
 - [x] Verify Appendix B.4 example `tpt-simd/tests/appendix_b.rs`.
 - [x] Hit target: ≥5× 8×8 transpose — met on AVX2 (7.0× over scalar on independent blocks, 4.6× SSE2; 2.9× for a lone serial block); see docs/benchmarks.md
-- [ ] Crate-done checklist
+- [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### tpt-simd-gather
 - [x] `gather_i32`, `gather_f32` (unsafe)
 - [x] `gather_checked_i32` (panics on OOB)
 - [x] Software fallback for CPUs without gather
 - [x] Benchmark vs scalar (gather is often slow — document honestly) — 0.09–0.13× here; documented
-- [ ] Crate-done checklist
+- [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### tpt-simd-scatter
 - [x] `scatter_i32`, `scatter_f32` (unsafe)
 - [x] `scatter_checked_i32`
-- [ ] AVX-512 scatter path + AVX2/scalar fallback
+- [x] AVX-512 scatter path (`vpscatterdd`, built with `avx512f` + `avx512vl`) + AVX2/scalar fallback (AVX2 has no scatter instruction, so AVX2 builds use the scalar loop)
 - [x] Define behavior for duplicate indices
-- [ ] Crate-done checklist
+- [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### tpt-simd-aligned
 - [x] `Aligned32<T>`, `Aligned64<T>` (+ `Aligned16`)
@@ -245,18 +245,18 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] `round_to_nearest_even_i32`, `round_with_bias_i32`
 - [x] SSE2 fallback (no `roundps` before SSE4.1) — branch-free bit trick; NEON `vrndn` not written (LLVM autovectorises)
 - [x] Define tie-breaking (half-away vs half-even) per function
-- [ ] Crate-done checklist
+- [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### tpt-simd-shift
 - [x] `shift_left_i32`, `shift_right_logical_i32`, `shift_right_arithmetic_i32`
 - [x] `rotate_left_i32`, `shift_with_rounding_i32`
 - [x] Out-of-range shift amount policy (≥32)
 - [x] Per-lane variable shift variants (AVX2 `vpsllvd` etc. when compiled in)
-- [ ] Crate-done checklist
+- [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### Phase 4 exit
 - [x] `cargo-show-asm` audit recorded for hot functions in all Phase 1–4 crates — x86_64 only (complex, fixed, horizontal, dot, butterfly, saturate, permute, gather, scatter, mul, rounding, shift, vector, core); aligned, NEON/wasm/RVV/AVX-512 not inspected; see docs/asm-audit.md
-- [ ] Fallback to explicit intrinsics where LLVM codegen is poor — done for `round_f32`/`round_to_nearest_even_i32`/`round_with_bias_i32` (169/64/66 → 11–13 instrs, verified over all 2^32 f32 patterns) and the dot i16 tail; open: no-std per-lane libm for `mul_add`/`sqrt`/`floor` etc. (needs `unsafe` in forbid-unsafe vector crate; ADR note), float `Simd::min/max` always libm per lane, saturating f32→i32 cast scalar, `shift_with_rounding_var_i32` scalar, `Fixed<i16>` mul via 64-bit lanes, `mul_add_sub_f32` not one `vfmaddsub`
+- [ ] Fallback to explicit intrinsics where LLVM codegen is poor — done for `round_f32`/`round_to_nearest_even_i32`/`round_with_bias_i32` (169/64/66 → 11–13 instrs, verified over all 2^32 f32 patterns) and the dot i16 tail; open: no-std per-lane libm for `mul_add`/`sqrt`/`floor` etc. (needs `unsafe` in forbid-unsafe vector crate; ADR note), float `Simd::min/max` always libm per lane, saturating f32→i32 cast scalar, `shift_with_rounding_var_i32` scalar, `Fixed<i16>` mul via 64-bit lanes, `mul_add_sub_f32` not one `vfmaddsub`. Progress: `interpolate`'s per-lane `libm::fmaf` in the cubic and linear SIMD paths is fixed (`fma8`, 2026-10-16; docs/asm-audit.md, third pass); the remaining items stay open.
 
 ---
 
@@ -267,18 +267,18 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] Fill out symmetry (`ge`, `le`, f32 `lt/eq/ne/ge/le`, i16/i8) (decide scope)
 - [x] Mask ops: `any`, `all`, `count`, `to_bitmask`
 - [x] NaN comparison semantics documented
-- [ ] Crate-done checklist
+- [x] Crate-done checklist
 
 ### tpt-simd-blend
 - [x] `blend_i32`, `blend_f32`, `blend_i8`
 - [x] `select_f32` (home crate)
 - [x] Immediate-blend (const mask) variants
-- [ ] Crate-done checklist
+- [x] Crate-done checklist
 
 ### tpt-simd-select
 - [x] `select_i32`, `select_f32` (re-export from blend; this crate's index-based variant is distinct — rename to avoid clash)
 - [x] `select_from_slice_i32` (uses gather; bounds policy)
-- [ ] Crate-done checklist
+- [ ] Crate-done checklist (not done: no criterion bench, docs/crate-done-audit.md)
 
 ### Phase 5 exit
 - [x] Branch-elimination benchmarks showing benefit vs branchy scalar — `blend_f32` 2.9×, fused `blend_gt_f32` 6.4×, `select_f32` 6.1× (docs/benchmarks.md)
@@ -291,19 +291,20 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] `convolve_1d_f32` (output length / edge-mode policy)
 - [x] `convolve_2d_separable_f32` (added caller `scratch` slice; fix spec: `&[[f32]]` is not valid Rust — use `&[f32]` + stride/width or slice of rows)
 - [x] `fir_filter_i16` (saturation/rounding policy)
-- [ ] Crate-done checklist
+- [x] Crate-done checklist
 
 ### tpt-simd-interpolate
 - [x] `interpolate_linear_f32` (scalar), `interpolate_linear_simd_f32`
 - [x] `interpolate_cubic_f32`
 - [x] `interpolate_lanczos_f32` (kernel size `a`, `sinc` approximation)
-- [ ] Crate-done checklist
+  - Open: the Lanczos SIMD and scalar paths disagree on non-finite input (NaN vs ±inf). The tests only check that both stay non-finite (`tpt-simd/tests/dsp_conformance.rs`). Needs a policy decision: propagate NaN everywhere, or match the scalar path.
+- [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### tpt-simd-matrix
 - [x] `mat4x4_mul_f32`, `mat8x8_mul_i16`
 - [x] `mat4x4_transpose_f32`, `mat8x8_transpose_i16` (reuse permute)
 - [x] `mat3x3_inverse_f32` (singular-matrix → `None`, epsilon policy)
-- [ ] Crate-done checklist
+- [ ] Crate-done checklist (not done: no criterion bench, docs/crate-done-audit.md)
 
 ### tpt-simd-window
 - [x] `hamming`, `hanning`, `blackman`, `kaiser` window generators (`alloc`)
@@ -311,11 +312,11 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] Cosine approximation (polynomial, max err 2e-6) — no LUT
 - [x] Bessel I0 for Kaiser
 - [x] Optional `no_alloc` variants writing into caller slices
-- [ ] Crate-done checklist
+- [x] Crate-done checklist
 
 ### Phase 6 exit
 - [x] Integration tests: FFT and MDCT built from tpt-simd crates, validated vs rustfft / reference `tpt-simd/tests/fft_mdct.rs`: FFT vs rustfft, MDCT vs f64 direct sum.
-- [ ] Cross-check conformance vs known-good outputs
+- [x] Cross-check conformance vs known-good outputs: golden values from scipy (windows), numpy (full convolution, 4x4 product, 3x3 inverse) and exact integer maths (Q15 FIR) in `tpt-simd/tests/dsp_conformance.rs` (generator `tests/golden/gen_dsp_golden.py`), plus bitwise SIMD-vs-scalar special-value tests (NaN, inf, -0.0, subnormal, tails, empty)
 
 ---
 
@@ -498,7 +499,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 
 ## Phase 11 — New crate candidates
 
-Decision (recommended, applied 2026-10-15): the Phase 11 crates ship in 0.1 on autovectorised code. Explicit SIMD paths and asm audits move to post-0.1 work. Reference property tests and criterion benches were added for all 13 crates (see Definition-of-done gaps). asm audits remain open. Decision (recommended, applied 2026-10-16): explicit SIMD paths are not planned for the Phase 11 crates. Every one of them sets `#![deny(unsafe_code)]`, and intrinsics need `unsafe`, so they would need a policy change first. The slower rows in `docs/benchmarks.md` stay documented as they are. Revisit if that policy changes.
+Decision (recommended, applied 2026-10-15): the Phase 11 crates ship in 0.1 on autovectorised code. Explicit SIMD paths and asm audits move to post-0.1 work. Reference property tests and criterion benches were added for all 13 crates (see Definition-of-done gaps). asm audits remain open. Decision (recommended, applied 2026-10-16): explicit SIMD paths are not planned for the Phase 11 crates. Every one of them sets `#![deny(unsafe_code)]`, and intrinsics need `unsafe`, so they would need a policy change first. The slower rows in `docs/benchmarks.md` stay documented as they are. Revisit if that policy changes. Recorded as ADR 0006 decision 4: explicit SIMD for these crates is post-0.1, so the open explicit-SIMD boxes below are deferred, not pending for 0.1.
 
 Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and a doctest, and each passes clippy with `-D warnings` and the `thumbv7em-none-eabihf` no_std check. **No crate has an explicit SIMD path yet**; all rely on autovectorisation. Policy is in `docs/adr/0004-no-runtime-wrapping.md`: own implementation by default, no runtime dependencies. Incumbents are dev-dependency oracles only, or sit behind a default-off feature. The one exception is `tpt-simd-half`, which keeps `half` for f16/bf16 interop.
 

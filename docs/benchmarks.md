@@ -1034,3 +1034,28 @@ Caveats, in the order they matter:
   compiled-out `cfg` branches, but this run does not prove the earlier figure was correct.
 * **No aarch64 timings.** The NEON level-1 kernels and the `lu`/`cholesky` NEON gemm path were
   not measured.
+
+# Spec §6.2 table (Phase 2 exit)
+
+The spec's §6.2 table is in cycles. This table restates it as measured
+speedups from the runs above, against two baselines: an **indexed scalar**
+loop (what the spec's numbers assume) and an **auto-vectorised scalar** loop
+(what LLVM already produces from a plain zip). Where two sections disagree,
+the later measurement is used. Cycle counts were not re-measured.
+
+| Operation (§6.2) | Spec target | tpt-simd, measured | vs indexed scalar | vs auto-vectorised scalar | Target met? |
+|---|---|---|---|---|---|
+| Complex multiply, f32x8 | 3x | `complex_mul_f32`, native FMA | 3.3x | 0.97–1.14x (parity, 1024 elements) | vs indexed only |
+| Dot product, 256 i16 | 8x | `dot_product_i16`, native AVX2 | 1.55x | 1.4–1.6x (LLVM already uses `vpmaddwd`) | **no** |
+| 8x8 transpose, i16 | 5x | `transpose_8x8_i16`, AVX2, 256 independent blocks | 7.0x | n/a | **yes** (independent blocks); one serial block: 2.9x, **no** |
+| Horizontal sum, f32x8 | 4x | `sum_f32`, 1024 vectors, default build | 2.6x | parity for single-register reductions | **no** |
+| Saturating add, i16x16 | 4x | `saturate::add_i16` / `add_i8` | 33–59x | 1.0–1.2x | vs indexed only |
+| Butterfly, f32x8 | 2x | `butterfly_f32`, native | 9x | 1.0x; default SSE2 build 0.18x | vs indexed only (native) |
+
+**Summary.** Against the indexed baseline the spec targets are met for 4 of 6
+rows (complex multiply, independent 8x8 transposes, saturating add,
+butterfly). Against an auto-vectorised scalar loop none of the six targets is
+met. The i16 dot product and the horizontal sum miss the spec target against
+either baseline. Their
+targets are dropped (see `todo.md`, Phase 2), since a single-register reduction
+is a few cycles and LLVM already emits the optimal shuffle tree for it.

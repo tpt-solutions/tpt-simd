@@ -24,6 +24,52 @@ use tpt_simd_core::Simd;
 
 type F32x8 = Simd<f32, 8>;
 
+/// Lane-wise `a * b + c` with a single rounding. Lane `i` equals
+/// `libm::fmaf(a[i], b[i], c[i])` bit for bit.
+///
+/// `Simd::mul_add` calls `libm::fmaf` once per lane, because nothing in the
+/// generic lane code lowers to a vector FMA. With `avx` and `fma` enabled at
+/// compile time this uses `vfmadd` instead; both are correctly rounded, so the
+/// results are identical.
+#[inline]
+fn fma8(a: F32x8, b: F32x8, c: F32x8) -> F32x8 {
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx",
+        target_feature = "fma"
+    ))]
+    {
+        use core::arch::x86_64::*;
+        let mut out = [0.0f32; 8];
+        // SAFETY: `avx` and `fma` are enabled at compile time. Every array is
+        // 8 f32 (32 bytes), and the unaligned load/store intrinsics accept any
+        // alignment.
+        unsafe {
+            let r = _mm256_fmadd_ps(
+                _mm256_loadu_ps(a.0.as_ptr()),
+                _mm256_loadu_ps(b.0.as_ptr()),
+                _mm256_loadu_ps(c.0.as_ptr()),
+            );
+            _mm256_storeu_ps(out.as_mut_ptr(), r);
+        }
+        F32x8::from_array(out)
+    }
+    #[cfg(not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx",
+        target_feature = "fma"
+    )))]
+    {
+        let mut out = [0.0f32; 8];
+        for (l, o) in out.iter_mut().enumerate() {
+            *o = libm::fmaf(a.0[l], b.0[l], c.0[l]);
+        }
+        F32x8::from_array(out)
+    }
+}
+
 /// Scalar linear interpolation `a + t * (b - a)` (one fused multiply-add).
 ///
 /// Exactly `a` at `t == 0`; at `t == 1` the result is `b` up to one rounding
@@ -49,7 +95,7 @@ pub fn interpolate_linear_f32(a: f32, b: f32, t: f32) -> f32 {
 /// ```
 #[inline]
 pub fn interpolate_linear_simd_f32(a: F32x8, b: F32x8, t: F32x8) -> F32x8 {
-    t.mul_add(b - a, a)
+    fma8(t, b - a, a)
 }
 
 /// Scalar Catmull-Rom cubic: interpolates between `b` (at `t = 0`) and `c`
@@ -89,9 +135,9 @@ pub fn interpolate_cubic_f32(a: F32x8, b: F32x8, c: F32x8, d: F32x8, t: F32x8) -
     let c1 = s(0.5) * (c - a);
     let c2 = ((a - s(2.5) * b) + s(2.0) * c) - s(0.5) * d;
     let c3 = s(0.5) * (d - a) + s(1.5) * (b - c);
-    let r = c3.mul_add(t, c2);
-    let r = r.mul_add(t, c1);
-    r.mul_add(t, b)
+    let r = fma8(c3, t, c2);
+    let r = fma8(r, t, c1);
+    fma8(r, t, b)
 }
 
 /// Normalised sinc `sin(pi x) / (pi x)` (`1` at `x == 0`), computed with

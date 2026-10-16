@@ -282,7 +282,6 @@ mod utf8_avx2 {
         _mm256_testz_si256(errors, errors) != 0
     }
 
-
     /// The three lookup tables, each repeated in both 128-bit lanes for `vpshufb`.
     struct Tables {
         byte_1_high: __m256i,

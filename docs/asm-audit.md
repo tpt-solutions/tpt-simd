@@ -386,3 +386,59 @@ SVE intrinsics (`core::arch::aarch64::sv*`, feature `stdarch_aarch64_sve`) and
 RISC-V vector intrinsics (no `vsetvli` etc. in `core::arch::riscv64`). The
 `sve` target feature is accepted on stable and LLVM auto-vectorises for it; the
 `v` target feature emits an "unstable feature" warning on stable.
+
+## Third pass: compare, blend, convolve, interpolate, window (2026-10-16)
+
+Closes the asm gap in the crate-done checklists for these five crates.
+Build: `RUSTFLAGS="-C target-feature=+avx2,+fma"` on x86_64, no `std`, release
+with LTO off and `codegen-units = 1`. `cargo-show-asm` is not installed on this
+machine, so the method is the one in "Method" above: `cargo rustc -p <crate>
+--release --lib -- --emit asm` for each crate's own symbols, and a scratch
+crate outside the repository with `#[inline(never)] #[no_mangle]` wrappers for
+the generic and `#[inline]` functions. Counts are per function body, after
+folding the local `.LBB` labels into their function. "calls" are direct calls
+in the body; panic and `memset`/`memcpy` calls are listed where they occur.
+
+| Function | Instr | Vector | FMA | Calls | Notes |
+|---|---|---|---|---|---|
+| `convolve::convolve_1d_f32` | 260 | 74 | 12 | `memset` (output fill), panic paths | vector axpy per kernel tap, FMA, no libm in the loop |
+| `convolve::convolve_1d_scalar_f32` | 90 | 5 | 0 | 2 | reference; not on the hot path |
+| `convolve::fir_filter_i16` | 295 | 5 | 0 | panic paths only | AVX2 build runs the scalar path: the explicit FIR path is AVX-512 only (not inspected here) |
+| `interpolate::interpolate_lanczos_f32` | 569 | 501 | 0 | panic only | vector sinc; unfused by design (agrees with the scalar reference to about 1e-5, see crate docs) |
+| `interpolate::interpolate_linear_simd_f32` (wrapper) | 8 | 5 | 1 | 0 | **was 116 instr, 8 `libm::fmaf` calls** (one per lane); fixed, see below |
+| `interpolate::interpolate_cubic_f32` (wrapper) | 87 | 80 | 3 | 0 | **was 384 instr, 24 `libm::fmaf` calls** (three per lane); fixed, see below |
+| `window::cosine_sum_into` (Hamming, Hann, Blackman) | 186 | 143 | 0 | `memcpy` | cosine approximation inlined; vector throughout |
+| `window::apply_window_simd_f32` | 45 | 6 | 0 | panic only | one vector multiply per 8 lanes |
+| `window::apply_window_f32` | 111 | 26 | 0 | panic only | |
+| `window::kaiser_window_into_f32` | 115 | 56 | 0 | `libm::sqrt` once per sample | window generation, not a hot path; `libm::sqrt` is a software call in `no_std` |
+| `compare::count_eq_f32` / `count_gt_f32` | 196 / 217 | 114 / 135 | 0 | 0 | fused mask counts |
+| `compare::cmp_gt_f32` (wrapper) | 5 | 3 | 0 | 0 | compare inlines into callers |
+| `blend::blend_f32` (compare + blend, wrapper) | 9 | 5 | 0 | 0 | one compare and one `vblendvps` |
+| `blend::blend_gt_f32` (wrapper) | 9 | 5 | 0 | 0 | |
+
+`select` and `matrix` were audited in the second pass above.
+
+### Finding fixed: per-lane `libm::fmaf` in `interpolate`
+
+`Simd::mul_add` on the 8-lane type lowers to one `libm::fmaf` call per lane,
+so `interpolate_linear_simd_f32` and `interpolate_cubic_f32` made 8 and 24
+calls respectively and their SIMD paths were not SIMD for their fused
+operations (the same issue as the Phase 4 fallback list in `todo.md`).
+
+Fix: a private `fma8` helper in `tpt-simd-interpolate`. With `avx` and `fma`
+enabled at compile time it uses `_mm256_fmadd_ps`; otherwise it keeps the
+per-lane `libm::fmaf` loop. Both are correctly rounded single-rounding FMAs,
+so the results are bit-identical to the scalar reference. Verified by the
+bitwise special-value tests in `tpt-simd/tests/dsp_conformance.rs` under both
+builds (default, and `+avx,+avx2,+fma`), by the existing interpolate unit
+tests in both builds, and by clippy (`-D warnings`, both cfg branches) and a
+`thumbv7em-none-eabihf` no_std check. **Timing was not measured** after the
+change; the claim is about the instructions emitted, not speed.
+
+### Not covered
+
+* The AVX-512 paths of `fir_filter_i16` and of the other crates are not
+  inspected in this pass (the build here has no AVX-512 flags).
+* Non-x86 (NEON) codegen for these five crates is not inspected here.
+* The scratch crate and the counting scripts are not committed, following the
+  first pass.
