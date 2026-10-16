@@ -3,6 +3,29 @@
 Workspace-wide mechanical sweep against the per-crate definition of done in `todo.md`.
 Run on Windows 11, stable Rust 1.97.1 (`rust-toolchain.toml`), x86_64. Commands run exactly as in `.github/workflows/ci.yml` where applicable.
 
+## Crate-done definition for 0.1
+
+A crate is done for 0.1 when every gate below holds. The table after this section records the
+result per crate. `cargo-show-asm` is not a gate here; it is tracked in
+[asm-audit.md](asm-audit.md), and [ADR 0006](adr/0006-0.1-scope-decisions.md) records that choice.
+
+1. Unit tests cover the edge cases the crate's kernels can hit (empty, tail lengths, NaN/inf where
+   floats are involved).
+2. proptest checks the kernel against a scalar reference.
+3. A criterion bench exists for each kernel (`benches/`).
+4. Every public item has a doc comment, and every `unsafe fn` has `# Safety`.
+5. The crate builds for `no_std` (thumbv7em, wasm32), and clippy, rustfmt and `cargo doc` are clean.
+6. The crate carries the workspace license (`MIT OR Apache-2.0`).
+
+Gate 1 was spot-checked only for the smallest crates (see "Not verified" below), so a crate marked
+done here has passed the sweep, not a full edge-case review.
+
+Result against the definition: 22 crates have both a proptest and a bench (gates 2 and 3):
+complex, fixed, horizontal, dot, butterfly, saturate, permute, gather, scatter, rounding, shift,
+compare, blend, convolve, interpolate, window, blas, math, rng, sparse, reduce. Those are done
+for the gates the table records. Not done: aligned, mul, select and matrix (no bench), vector
+(no bench) and core (no proptest).
+
 ## Commands run (all passed)
 
 | Command | Result |
