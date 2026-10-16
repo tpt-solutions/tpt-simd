@@ -485,7 +485,10 @@ mod quat_mat_tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore = "libm x86 routine uses inline asm, which Miri does not support")]
+    #[cfg_attr(
+        miri,
+        ignore = "libm x86 routine uses inline asm, which Miri does not support"
+    )]
     fn quat_rotate_preserves_length() {
         let (qx, qy, qz, qw) = (
             vec![0.1f32, 0.5, -0.3],

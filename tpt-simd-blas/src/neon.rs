@@ -153,3 +153,123 @@ pub(crate) unsafe fn kernel_f64_store(
         }
     }
 }
+
+/// NEON level-1 block kernel for `f32`, mirroring `x86::l1_f32`. `OP` selects the per-element
+/// product: 0 = `x*y`, 1 = `x*x` (nrm2), 2 = `|x|` (asum). Returns the 32 lane accumulators (lane
+/// `j` sums element `32*i + j` over the blocks `i`) and the number of elements consumed (a
+/// multiple of 32). Multiply and add are separate roundings, as in the portable loop, so the
+/// result is bit-identical to it; `vfmaq` is not used.
+///
+/// # Safety
+/// `y.len() == x.len()` (for `OP != 0`, `y` is not read and may be `x`).
+pub(crate) unsafe fn l1_f32<const OP: u8>(x: &[f32], y: &[f32]) -> ([f32; 32], usize) {
+    let blocks = x.len() / 32;
+    let (px, py) = (x.as_ptr(), y.as_ptr());
+    // SAFETY: NEON is part of the aarch64 baseline.
+    let mut acc = [unsafe { vdupq_n_f32(0.0) }; 8];
+    for i in 0..blocks {
+        for (k, a) in acc.iter_mut().enumerate() {
+            // SAFETY: 32*i + 4*k + 4 <= 32*blocks <= len for both slices.
+            unsafe {
+                let xv = vld1q_f32(px.add(32 * i + 4 * k));
+                let p = match OP {
+                    0 => vmulq_f32(xv, vld1q_f32(py.add(32 * i + 4 * k))),
+                    1 => vmulq_f32(xv, xv),
+                    _ => vabsq_f32(xv),
+                };
+                *a = vaddq_f32(*a, p);
+            }
+        }
+    }
+    let mut out = [0.0f32; 32];
+    for (k, a) in acc.iter().enumerate() {
+        // SAFETY: `out` has 32 elements and each store writes 4 at `4*k`, k < 8.
+        unsafe { vst1q_f32(out.as_mut_ptr().add(4 * k), *a) };
+    }
+    (out, blocks * 32)
+}
+
+/// NEON level-1 block kernel for `f64`; see [`l1_f32`]. 16 lane accumulators in eight 2-lane
+/// registers.
+///
+/// # Safety
+/// As for [`l1_f32`].
+pub(crate) unsafe fn l1_f64<const OP: u8>(x: &[f64], y: &[f64]) -> ([f64; 16], usize) {
+    let blocks = x.len() / 16;
+    let (px, py) = (x.as_ptr(), y.as_ptr());
+    // SAFETY: NEON is part of the aarch64 baseline.
+    let mut acc = [unsafe { vdupq_n_f64(0.0) }; 8];
+    for i in 0..blocks {
+        for (k, a) in acc.iter_mut().enumerate() {
+            // SAFETY: 16*i + 2*k + 2 <= 16*blocks <= len for both slices.
+            unsafe {
+                let xv = vld1q_f64(px.add(16 * i + 2 * k));
+                let p = match OP {
+                    0 => vmulq_f64(xv, vld1q_f64(py.add(16 * i + 2 * k))),
+                    1 => vmulq_f64(xv, xv),
+                    _ => vabsq_f64(xv),
+                };
+                *a = vaddq_f64(*a, p);
+            }
+        }
+    }
+    let mut out = [0.0f64; 16];
+    for (k, a) in acc.iter().enumerate() {
+        // SAFETY: `out` has 16 elements and each store writes 2 at `2*k`, k < 8.
+        unsafe { vst1q_f64(out.as_mut_ptr().add(2 * k), *a) };
+    }
+    (out, blocks * 16)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Scalar model of the block kernel: lane `j` sums `op(x[32*i + j])` over the blocks, with
+    /// separate multiply and add roundings. Used to check the NEON lane mapping bit for bit.
+    fn model_f32(op: u8, x: &[f32], y: &[f32]) -> ([f32; 32], usize) {
+        let blocks = x.len() / 32;
+        let mut acc = [0.0f32; 32];
+        for i in 0..blocks {
+            for j in 0..32 {
+                let e = 32 * i + j;
+                let p = match op {
+                    0 => x[e] * y[e],
+                    1 => x[e] * x[e],
+                    _ => x[e].abs(),
+                };
+                acc[j] += p;
+            }
+        }
+        (acc, blocks * 32)
+    }
+
+    #[test]
+    fn l1_f32_matches_lane_model_bitwise() {
+        for len in [0usize, 1, 31, 32, 33, 64, 100, 257] {
+            let x: std::vec::Vec<f32> = (0..len)
+                .map(|i| (i as f32 * 0.37 - 11.0).sin() * 1e3)
+                .collect();
+            let y: std::vec::Vec<f32> = (0..len)
+                .map(|i| (i as f32 * 0.91 + 2.0).cos() * 7.5)
+                .collect();
+            // SAFETY: equal lengths; NEON is the aarch64 baseline.
+            let got = [
+                unsafe { l1_f32::<0>(&x, &y) },
+                unsafe { l1_f32::<1>(&x, &x) },
+                unsafe { l1_f32::<2>(&x, &x) },
+            ];
+            let want = [
+                model_f32(0, &x, &y),
+                model_f32(1, &x, &x),
+                model_f32(2, &x, &x),
+            ];
+            for (g, w) in got.iter().zip(&want) {
+                assert_eq!(g.1, w.1);
+                for (a, b) in g.0.iter().zip(&w.0) {
+                    assert_eq!(a.to_bits(), b.to_bits(), "len {len}");
+                }
+            }
+        }
+    }
+}

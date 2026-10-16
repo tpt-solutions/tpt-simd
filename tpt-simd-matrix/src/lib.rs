@@ -324,7 +324,11 @@ mod tests {
     fn same_inverse(x: Option<[[f32; 3]; 3]>, y: Option<[[f32; 3]; 3]>) -> bool {
         match (x, y) {
             (None, None) => true,
-            (Some(a), Some(b)) => a.iter().flatten().zip(b.iter().flatten()).all(|(p, q)| p.to_bits() == q.to_bits()),
+            (Some(a), Some(b)) => a
+                .iter()
+                .flatten()
+                .zip(b.iter().flatten())
+                .all(|(p, q)| p.to_bits() == q.to_bits()),
             _ => false,
         }
     }
@@ -359,7 +363,11 @@ mod tests {
         let want = [[-24.0, 18.0, 5.0], [20.0, -15.0, -4.0], [-5.0, 4.0, 1.0]];
         for i in 0..3 {
             for j in 0..3 {
-                assert!((inv[i][j] - want[i][j]).abs() < 1e-5, "inv[{i}][{j}] = {}", inv[i][j]);
+                assert!(
+                    (inv[i][j] - want[i][j]).abs() < 1e-5,
+                    "inv[{i}][{j}] = {}",
+                    inv[i][j]
+                );
             }
         }
     }

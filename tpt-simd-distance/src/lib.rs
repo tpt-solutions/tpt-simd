@@ -378,7 +378,10 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(miri, ignore = "libm x86 routine uses inline asm, which Miri does not support")]
+    #[cfg_attr(
+        miri,
+        ignore = "libm x86 routine uses inline asm, which Miri does not support"
+    )]
     fn cosine_special_cases() {
         assert_eq!(cosine_distance_f32(&[], &[]), 1.0);
         assert_eq!(cosine_distance_f32(&[0.0; 10], &[1.0; 10]), 1.0);

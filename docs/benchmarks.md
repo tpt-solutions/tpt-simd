@@ -987,3 +987,50 @@ Phase 11 baseline. Forward transform of one block, orthonormal DCT-II, f32 in an
 The table costs 4 bytes times N² in memory (64 MiB at N = 4096), which is the larger
 practical problem. `FastDct` uses O(N) memory. It is faster from N = 256 at least, and the
 table is the reference for sizes that are not powers of two.
+
+## tpt-simd-blas refresh after the NEON level-1 change (2026-10-16)
+
+`RUSTFLAGS="-C target-cpu=native" cargo bench -p tpt-simd-blas --bench blas`, one full run on the
+x86_64 host (AVX-512 build, the same configuration as the sections above). The NEON
+`dot`/`nrm2`/`asum` kernels are aarch64-only and compile out on this build, so this run checks
+that the x86 numbers did not move. aarch64 was not timed (emulated runs are correctness-only).
+Median times, `naive` = `tpt_simd_blas::reference`.
+
+| Bench | naive | tpt | speed-up |
+|---|---|---|---|
+| `gemm_64` f32 | 133 µs | 8.2 µs (6.9 µs with workspace) | 16x (19x) |
+| `gemm_64` f64 | 143 µs | 26.5 µs | 5.4x |
+| `gemm_256` f32 | 21.6 ms | 331 µs (296 µs with workspace) | 65x (73x) |
+| `gemm_256` f64 | 9.12 ms | 707 µs | 12.9x |
+| `gemm_512` f32 | 77.3 ms | 2.71 ms (2.32 ms with workspace) | 28x (33x) |
+| `gemm_512` f64 | 291 ms | 5.63 ms | 52x |
+| `gemv_1024` f32 `n` | 2.37 ms | 75.7 µs | 31x |
+| `gemv_1024` f32 `t` | 622 µs | 166 µs | 3.7x |
+| `level1_4096` `dot_f32` | 1.80 µs | 481–495 ns | 3.7x |
+| `level1_4096` `nrm2_f32` | 1.76 µs | 402 ns | 4.4x |
+| `level1_4096` `asum_f32` | 1.75 µs | 312 ns | 5.6x |
+| `level1_4096` `dot_f64` | 1.78 µs | 605 ns | 2.9x |
+| `level1_1048576` `dot_f32` | 464 µs | 160 µs | 2.9x |
+| `level1_1048576` `nrm2_f32` | 460 µs | 112 µs | 4.1x |
+| `level1_1048576` `asum_f32` | 477 µs | 103 µs | 4.6x |
+| `lu_solve_f64_512` | 15.6 ms | 5.11 ms | 3.0x |
+| `getrf_f64_512` | 15.4 ms | 5.02 ms | 3.1x |
+| `getrf_f64_64` | 25.5 µs | 18.2 µs | 1.4x |
+| `cholesky_f64_512` | 31.0 ms | 1.92 ms | 16x |
+| `cholesky_f32_512` | 22.7 ms | 1.01 ms | 22x |
+| `lu_solve_f32_512` | 6.26 ms | 3.63 ms (range 2.8–4.2 ms) | 1.7x |
+
+Caveats, in the order they matter:
+
+* **Noise.** A `python` process on the host had accumulated about 70,000 CPU-seconds during the run.
+  Repeat runs of `level1_4096/dot_f32/tpt` gave 481, 495 and 490 ns, but one gave 1.16 µs. Treat
+  each figure as approximate. The `level1_1048576` `axpy_f32` and `dot_f64` rows are not
+  reliable: their criterion ranges overlap the naive ones (`axpy` tpt 232 µs, range 203–262 µs;
+  `dot_f64` 1M tpt 1.85 ms, naive 1.26 ms, range 0.96–1.56 ms), so no speed-up or slow-down is
+  claimed for them.
+* **Not the same as the AVX-512 A/B table above.** That table records `dot_f32` 4096 at 225 ns.
+  Today's run gives about 490 ns for the same bench on the same build path, so the earlier
+  absolute numbers do not reproduce on this machine state. The x86 code path changed only by
+  compiled-out `cfg` branches, but this run does not prove the earlier figure was correct.
+* **No aarch64 timings.** The NEON level-1 kernels and the `lu`/`cholesky` NEON gemm path were
+  not measured.

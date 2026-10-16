@@ -262,7 +262,10 @@ blas_impl!(
     nkstore = crate::neon::kernel_f32_store,
     l1_dot = crate::x86::l1_f32::<0>,
     l1_sq = crate::x86::l1_f32::<1>,
-    l1_abs = crate::x86::l1_f32::<2>
+    l1_abs = crate::x86::l1_f32::<2>,
+    nl1_dot = crate::neon::l1_f32::<0>,
+    nl1_sq = crate::neon::l1_f32::<1>,
+    nl1_abs = crate::neon::l1_f32::<2>
 );
 blas_impl!(
     double,
@@ -281,7 +284,10 @@ blas_impl!(
     nkstore = crate::neon::kernel_f64_store,
     l1_dot = crate::x86::l1_f64::<0>,
     l1_sq = crate::x86::l1_f64::<1>,
-    l1_abs = crate::x86::l1_f64::<2>
+    l1_abs = crate::x86::l1_f64::<2>,
+    nl1_dot = crate::neon::l1_f64::<0>,
+    nl1_sq = crate::neon::l1_f64::<1>,
+    nl1_abs = crate::neon::l1_f64::<2>
 );
 
 complex_impl!(csingle, f32, real = single, w = 8, sqrt = libm::sqrtf);

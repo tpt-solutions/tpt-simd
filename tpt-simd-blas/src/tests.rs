@@ -337,7 +337,11 @@ macro_rules! suite {
             fn gemv_sizes() {
                 let mut seed = 40;
                 // Under Miri, stop at m = 17: the 64- and 100-row cases dominate the runtime.
-                let ms: &[usize] = if cfg!(miri) { &[0, 1, 3, 8, 17] } else { &[0, 1, 3, 8, 17, 64, 100] };
+                let ms: &[usize] = if cfg!(miri) {
+                    &[0, 1, 3, 8, 17]
+                } else {
+                    &[0, 1, 3, 8, 17, 64, 100]
+                };
                 for &m in ms {
                     for n in [0usize, 1, 2, 4, 5, 9, 33] {
                         for &(alpha, beta) in &[(1.0, 0.0), (2.0, 0.5), (0.0, 2.0), (-1.0, 1.0)] {

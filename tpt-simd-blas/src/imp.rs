@@ -6,7 +6,8 @@ macro_rules! blas_impl {
         mc = $mc:expr, kc = $kc:expr, nc = $nc:expr, sqrt = $sqrt:path,
         kernel = $kernel:path, kstore = $kstore:path, kernel512 = $kernel512:path,
         nkernel = $nkernel:path, nkstore = $nkstore:path,
-        l1_dot = $ld:path, l1_sq = $lq:path, l1_abs = $la:path
+        l1_dot = $ld:path, l1_sq = $lq:path, l1_abs = $la:path,
+        nl1_dot = $nld:path, nl1_sq = $nlq:path, nl1_abs = $nla:path
     ) => {
         pub(crate) mod $modname {
             //! Per-type implementation (see the crate docs).
@@ -61,7 +62,13 @@ macro_rules! blas_impl {
             #[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f"))]
             // SAFETY: AVX-512F is enabled at compile time; the slices are equal length.
             let (mut acc, done) = unsafe { $ld(x, y) };
-            #[cfg(not(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f")))]
+            #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+            // SAFETY: NEON is part of the aarch64 baseline; the slices are equal length.
+            let (mut acc, done) = unsafe { $nld(x, y) };
+            #[cfg(not(any(
+                all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f"),
+                all(not(feature = "scalar-only"), target_arch = "aarch64")
+            )))]
             let (mut acc, done) = ([0.0 as $t; W], 0usize);
                 let xc = x[done..].chunks_exact(W);
                 let yc = y[done..].chunks_exact(W);
@@ -82,7 +89,13 @@ macro_rules! blas_impl {
             #[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f"))]
             // SAFETY: AVX-512F is enabled at compile time; the slices are equal length.
             let (mut acc, done) = unsafe { $lq(x, x) };
-            #[cfg(not(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f")))]
+            #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+            // SAFETY: NEON is part of the aarch64 baseline; the slices are equal length.
+            let (mut acc, done) = unsafe { $nlq(x, x) };
+            #[cfg(not(any(
+                all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f"),
+                all(not(feature = "scalar-only"), target_arch = "aarch64")
+            )))]
             let (mut acc, done) = ([0.0 as $t; W], 0usize);
                 let xc = x[done..].chunks_exact(W);
                 let xt = xc.remainder();
@@ -102,7 +115,13 @@ macro_rules! blas_impl {
             #[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f"))]
             // SAFETY: AVX-512F is enabled at compile time; the slices are equal length.
             let (mut acc, done) = unsafe { $la(x, x) };
-            #[cfg(not(all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f")))]
+            #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
+            // SAFETY: NEON is part of the aarch64 baseline; the slices are equal length.
+            let (mut acc, done) = unsafe { $nla(x, x) };
+            #[cfg(not(any(
+                all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "avx512f"),
+                all(not(feature = "scalar-only"), target_arch = "aarch64")
+            )))]
             let (mut acc, done) = ([0.0 as $t; W], 0usize);
                 let xc = x[done..].chunks_exact(W);
                 let xt = xc.remainder();
