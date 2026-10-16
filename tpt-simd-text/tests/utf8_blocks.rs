@@ -20,6 +20,33 @@ fn text_strategy() -> impl Strategy<Value = String> {
     .prop_map(|v| v.into_iter().collect())
 }
 
+/// Every byte value at every position of a few inputs long enough for the vector paths. Proptest
+/// found the 0xFD lead case only by chance (it was accepted when it followed a 4-byte lead
+/// pattern), so this exhaustive check pins it down.
+#[test]
+fn every_single_byte_replacement_matches_std() {
+    let bases = [
+        // 80 bytes: two 32-byte blocks and a tail, so the NEON path (from 32 bytes) and the AVX2
+        // path (from 64 bytes) both run.
+        "ascii only, long enough for two 32-byte blocks plus a tail, so both vector paths run.",
+        "ࠀ𐀀𐀀ࠀ 𐀀\u{a0}ࠀ    \u{a0}\u{a0}ࠀ𐀀𐀀ࠀࠀ𐀀ࠀ𐀀ࠀ\u{a0}   𐀀\u{a0}\u{a0}ࠀ\u{a0}ࠀ𐀀\u{a0}ࠀࠀ ࠀ  \u{a0}\u{a0} ࠀ \u{a0}ࠀ\u{a0} ࠀ𐀀ࠀ𐀀ࠀ\u{a0}ࠀ¢ı𐻖ꊴͼځz\u{10210}％Ҡᦜ\u{107c8}\u{f4b6})𐴐Ȣćz𐴠\u{ed9f}\u{10a01}𐀫\u{f2aa}} 𐠟Ė\u{61a}𐨢\u{108d6}{𐬿\u{fadd}𐲕챞\u{1095e}𐗦Şۆ",
+    ];
+    for base in bases {
+        let base = base.as_bytes();
+        for i in 0..base.len() {
+            for r in 0..=255u8 {
+                let mut bytes = base.to_vec();
+                bytes[i] = r;
+                assert_eq!(
+                    is_valid_utf8(&bytes),
+                    core::str::from_utf8(&bytes).is_ok(),
+                    "position {i}, byte {r:#04x}"
+                );
+            }
+        }
+    }
+}
+
 proptest! {
     #[test]
     fn valid_text_is_accepted(s in text_strategy()) {

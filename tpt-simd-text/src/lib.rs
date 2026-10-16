@@ -154,7 +154,8 @@ pub(crate) mod utf8_tables {
         CARRY | TOO_LARGE | TOO_LARGE_1000,
         CARRY | TOO_LARGE | TOO_LARGE_1000,
         CARRY | TOO_LARGE | TOO_LARGE_1000,
-        CARRY | SURROGATE,
+        // 0xD: the surrogate range for lead ED, and TOO_LARGE for lead FD (`BYTE_1_HIGH[0xF]`).
+        CARRY | SURROGATE | TOO_LARGE | TOO_LARGE_1000,
         CARRY | TOO_LARGE | TOO_LARGE_1000,
         CARRY | TOO_LARGE | TOO_LARGE_1000,
     ];
@@ -183,13 +184,17 @@ pub(crate) mod utf8_tables {
         b & 0xC0 == 0x80
     }
 
-    /// `true` if the last lead byte in `prefix` still needs continuation bytes past its end.
+    /// `true` if the last lead byte in `prefix` still needs continuation bytes past its end, or if
+    /// `prefix` ends with a byte that is never valid (`C0`, `C1`, `F5..=FF`). The block check
+    /// judges a byte only from the bytes before it, so a bad lead at the end of a block is
+    /// reported here, before the tail starts.
     pub(crate) fn pending_lead(prefix: &[u8]) -> bool {
         for k in 1..=3.min(prefix.len()) {
             let need = match prefix[prefix.len() - k] {
                 0xC2..=0xDF => 1,
                 0xE0..=0xEF => 2,
                 0xF0..=0xF4 => 3,
+                0xC0 | 0xC1 | 0xF5..=0xFF => return true,
                 _ => 0,
             };
             if need >= k {
