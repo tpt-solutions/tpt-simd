@@ -124,16 +124,64 @@ jobs:
         env:
           RUSTFLAGS: -D warnings -C target-cpu=skylake-avx512
 
-  qemu-riscv:
+  msrv:
+    # `rust-version` in Cargo.toml. `cargo msrv find` confirmed 1.95.0 as the lowest passing
+    # toolchain (docs/verification.md); this job keeps it from regressing.
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95"
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --all-targets
+
+  qemu-sve:
+    # aarch64 test suite under QEMU user mode with SVE auto-vectorisation enabled, at each
+    # vector length. sve-default-vector-length is in bytes: 16/32/64/256 = 128/256/512/2048 bit.
+    # The SVE intrinsics are unstable on stable Rust, so this checks the compiler-vectorised
+    # paths only; it does not exercise hand-written SVE code (there is none).
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        vl: [16, 32, 64, 256]
+    env:
+      RUSTFLAGS: -D warnings -C target-feature=+sve
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUNNER: qemu-aarch64 -L /usr/aarch64-linux-gnu -cpu max,sve-default-vector-length=${{ matrix.vl }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu qemu-user
+      - run: cargo test --workspace --exclude bench-vs --exclude xtask --features std --target aarch64-unknown-linux-gnu
+
+  qemu-riscv:
+    # riscv64 test suite under QEMU user mode with RVV auto-vectorisation enabled, at each vector
+    # length (vlen in bits). The `v` target feature is unstable on stable Rust and rustc warns
+    # about it; the warning is not an error under -D warnings. RVV intrinsics are not used.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        vlen: [128, 256, 512]
+    env:
+      RUSTFLAGS: -D warnings -C target-feature=+v
+      CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER: riscv64-linux-gnu-gcc
+      CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_RUNNER: qemu-riscv64 -L /usr/riscv64-linux-gnu -cpu rv64,v=true,vlen=${{ matrix.vlen }},elen=64,vext_spec=v1.0
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: riscv64gc-unknown-linux-gnu
       - uses: Swatinem/rust-cache@v2
-      - name: Cross-compile check (RVV portable path)
-        run: cargo check --workspace --exclude tpt-simd-testutil --exclude xtask --target riscv64gc-unknown-linux-gnu
+      - run: sudo apt-get update && sudo apt-get install -y gcc-riscv64-linux-gnu qemu-user
+      - run: cargo test --workspace --exclude bench-vs --exclude xtask --features std --target riscv64gc-unknown-linux-gnu
 
   miri:
     runs-on: ubuntu-latest
