@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Changed
+- Tests only: pointer provenance fix for Miri. No library change.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - `scatter_i32`, `scatter_f32`: `unsafe` eight-lane scatters by signed `i32` element index (AVX-512 scatter when `avx512f` and `avx512vl` are enabled).

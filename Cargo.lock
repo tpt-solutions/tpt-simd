@@ -1644,10 +1644,12 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rustfft",
  "tpt-simd-aligned",
+ "tpt-simd-audio",
+ "tpt-simd-bits",
  "tpt-simd-blas",
  "tpt-simd-blend",
  "tpt-simd-butterfly",
@@ -1655,16 +1657,22 @@ dependencies = [
  "tpt-simd-complex",
  "tpt-simd-convolve",
  "tpt-simd-core",
+ "tpt-simd-dct",
+ "tpt-simd-distance",
  "tpt-simd-dot",
  "tpt-simd-fixed",
  "tpt-simd-gather",
+ "tpt-simd-geom",
+ "tpt-simd-half",
  "tpt-simd-hash",
  "tpt-simd-horizontal",
  "tpt-simd-interpolate",
  "tpt-simd-math",
  "tpt-simd-matrix",
  "tpt-simd-mul",
+ "tpt-simd-ntt",
  "tpt-simd-permute",
+ "tpt-simd-pixel",
  "tpt-simd-reduce",
  "tpt-simd-rng",
  "tpt-simd-rounding",
@@ -1676,12 +1684,13 @@ dependencies = [
  "tpt-simd-sort",
  "tpt-simd-sparse",
  "tpt-simd-text",
+ "tpt-simd-transpose",
  "tpt-simd-window",
 ]
 
 [[package]]
 name = "tpt-simd-aligned"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1691,7 +1700,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-audio"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "audioadapter-buffers",
  "biquad",
@@ -1703,7 +1712,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-bits"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1711,7 +1720,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-blas"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "libm",
@@ -1722,7 +1731,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-blend"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1732,7 +1741,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-butterfly"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1742,7 +1751,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-compare"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1752,7 +1761,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-complex"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "libm",
@@ -1764,7 +1773,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-convolve"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "libm",
@@ -1775,7 +1784,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proptest",
  "tpt-simd-testutil",
@@ -1784,7 +1793,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-dct"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "libm",
@@ -1793,7 +1802,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-distance"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "libm",
@@ -1802,7 +1811,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-dot"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1813,7 +1822,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-fixed"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1823,7 +1832,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-gather"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1833,7 +1842,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-geom"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "libm",
@@ -1842,7 +1851,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-half"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "half",
@@ -1852,7 +1861,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-hash"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "crc32fast",
  "criterion",
@@ -1862,7 +1871,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-horizontal"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1872,7 +1881,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-interpolate"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "libm",
@@ -1883,7 +1892,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-math"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "libm",
@@ -1894,7 +1903,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-matrix"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1905,7 +1914,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-mul"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1915,7 +1924,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-ntt"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1923,7 +1932,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-permute"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1934,7 +1943,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-pixel"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1942,7 +1951,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-reduce"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1953,7 +1962,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-rng"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "libm",
@@ -1965,7 +1974,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-rounding"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "libm",
@@ -1976,7 +1985,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-saturate"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1986,7 +1995,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-scatter"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -1996,7 +2005,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-search"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "memchr",
@@ -2005,7 +2014,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-select"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -2017,7 +2026,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-shift"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -2027,7 +2036,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-sort"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -2035,7 +2044,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-sparse"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -2045,7 +2054,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-testutil"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "proptest",
  "tpt-simd-vector",
@@ -2053,7 +2062,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-text"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "faster-hex",
@@ -2063,7 +2072,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-transpose"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "proptest",
@@ -2071,7 +2080,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-vector"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "libm",
@@ -2080,7 +2089,7 @@ dependencies = [
 
 [[package]]
 name = "tpt-simd-window"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "criterion",
  "libm",
@@ -2399,31 +2408,3 @@ name = "zmij"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
-
-[[patch.unused]]
-name = "tpt-av-voice-align"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "tpt-av-voice-diarize"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "tpt-av-voice-isolate"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "tpt-av-voice-transcribe"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "tpt-av-voice-tts"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "tpt-av-voice-utils"
-version = "0.1.0"
-
-[[patch.unused]]
-name = "tpt-voice"
-version = "0.1.0"

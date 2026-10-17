@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Fixed
+- UTF-8 validator accepted some invalid input: lead byte `0xFD` (and other `F5..FF`) followed by a continuation byte, and `C0`, `C1` or `F5..FF` at the end of a 32-byte block when the next byte was ASCII. The AVX2 and NEON paths shared the tables and were both affected. 0.1.0 is affected; upgrade.
+
+### Added
+- aarch64: NEON UTF-8 validation and hex encoding.
+
+### Changed
+- Inlined the `hex_decode` entry point (about 20% faster at 64 B).
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - Initial release.

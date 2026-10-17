@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Added
+- aarch64: NEON per-lane variable shifts.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - Uniform-amount `shift_left_i32`, `shift_right_logical_i32`, `shift_right_arithmetic_i32`, `rotate_left_i32` and `shift_with_rounding_i32` (round-half-up, 64-bit intermediate) on `i32x8`.

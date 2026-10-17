@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+- No code changes; version bumped with the workspace.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - `blend_i32`, `blend_f32`, `blend_i8`: per-lane `mask ? a : b` with a `SimdMask` on `i32x8`, `f32x8` and `i8x32`; lane bits (NaN payloads, signed zeros) are copied exactly.

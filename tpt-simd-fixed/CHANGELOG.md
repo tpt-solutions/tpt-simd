@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Added
+- aarch64: NEON `i32` fixed-point multiply.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - `Fixed<T, INT_BITS, FRAC_BITS, N>` SIMD fixed-point vector over `i32` or `i16` storage (sealed `FixedRepr` trait), with compile-time format validation and support for narrow formats stored in wider lanes.

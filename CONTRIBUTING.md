@@ -56,7 +56,3 @@ closed unmerged.
   (`-C target-cpu=...`, `std` / `scalar-only` / `nightly`) and your Rust version.
 - For accuracy or performance reports, include the input, the observed and
   expected results (or benchmark numbers) and how you measured them.
-
-## Conduct
-
-Participation is governed by the [Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/), version 2.1.

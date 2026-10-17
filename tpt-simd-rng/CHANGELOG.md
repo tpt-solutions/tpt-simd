@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Added
+- `rand_core` feature: `rand_core` 0.9 trait implementations for `Xoshiro256pp` (off by default).
+
+### Changed
+- Tests: Philox4x32-10 Random123 known-answer vectors, xoshiro vectors checked against `rand_xoshiro`.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - `SplitMix64` seeding generator.

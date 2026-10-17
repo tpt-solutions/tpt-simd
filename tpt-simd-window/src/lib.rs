@@ -263,13 +263,52 @@ pub fn kaiser_window_into_f32(out: &mut [f32], beta: f32) {
         _ => {}
     }
     let beta = f64::from(beta);
-    let norm = 1.0 / bessel_i0_f64(beta);
     let denom = (n - 1) as f64;
     for (i, o) in out.iter_mut().enumerate() {
         let r = 2.0 * (i as f64) / denom - 1.0;
         let arg = libm::sqrt((1.0 - r * r).max(0.0));
-        *o = (bessel_i0_f64(beta * arg) * norm) as f32;
+        *o = i0_ratio(beta * arg, beta) as f32;
     }
+}
+
+/// Arguments above this use the scaled path in [`i0_ratio`]; `I0(700)` is about `1e303`,
+/// well inside `f64` range, and the power series is accurate there.
+const I0_SERIES_MAX: f64 = 700.0;
+
+/// `I0(x) * exp(-x)` for `x >= 0`, finite for every `x`. Below [`I0_SERIES_MAX`] it is the
+/// series times `exp(-x)`. Above it, the asymptotic expansion
+/// `1/sqrt(2 pi x) * sum_k ((2k-1)!!)^2 / (k! (8x)^k)` is used. At `x = 700` the terms fall
+/// below `1e-17` of the sum after about six steps, so the loop stops well inside its bound.
+fn scaled_i0(x: f64) -> f64 {
+    if x <= I0_SERIES_MAX {
+        return bessel_i0_f64(x) * libm::exp(-x);
+    }
+    asymptotic_scaled_i0(x)
+}
+
+/// The large-argument expansion behind [`scaled_i0`], for `x > 0`.
+fn asymptotic_scaled_i0(x: f64) -> f64 {
+    let mut term = 1.0f64;
+    let mut sum = 1.0f64;
+    for k in 1..30u32 {
+        let kf = f64::from(k);
+        term *= (2.0 * kf - 1.0) * (2.0 * kf - 1.0) / (kf * 8.0 * x);
+        sum += term;
+        if term < sum * 1e-17 {
+            break;
+        }
+    }
+    sum / libm::sqrt(2.0 * core::f64::consts::PI * x)
+}
+
+/// `I0(x) / I0(beta)` for `0 <= x <= beta`, without overflow for any finite `beta`.
+/// `I0(beta)` itself overflows `f64` near `beta = 713`, so for large `beta` the ratio is
+/// `exp(x - beta)` times the ratio of the scaled functions.
+fn i0_ratio(x: f64, beta: f64) -> f64 {
+    if beta <= I0_SERIES_MAX {
+        return bessel_i0_f64(x) / bessel_i0_f64(beta);
+    }
+    scaled_i0(x) / scaled_i0(beta) * libm::exp(x - beta)
 }
 
 /// Symmetric Hamming window of `size` samples (see
@@ -488,6 +527,49 @@ mod tests {
     #[should_panic]
     fn kaiser_negative_beta() {
         kaiser_window_into_f32(&mut [0.0; 4], -1.0);
+    }
+
+    #[test]
+    fn kaiser_large_beta_stays_finite() {
+        // `I0(beta)` overflows f64 near beta = 713; the window must still be well defined.
+        for beta in [713.0f32, 800.0, 5000.0, 1.0e6] {
+            let n = 65;
+            let mut w = std::vec![0.0f32; n];
+            kaiser_window_into_f32(&mut w, beta);
+            assert!(
+                w.iter().all(|x| x.is_finite() && (0.0..=1.0).contains(x)),
+                "beta {beta}"
+            );
+            assert_eq!(w[n / 2], 1.0, "beta {beta}");
+            for (i, x) in w.iter().enumerate() {
+                assert!((x - w[n - 1 - i]).abs() < 1e-6, "beta {beta} i {i}");
+            }
+            assert!(w[0] < 1e-6, "beta {beta}: edge {}", w[0]);
+        }
+    }
+
+    #[test]
+    fn i0_ratio_scaled_branch_matches_series() {
+        // beta = 705 is still inside the series range, so the scaled path can be checked
+        // against it directly.
+        let beta = 705.0f64;
+        for frac in [0.0f64, 0.3, 0.7, 0.95, 0.999, 1.0] {
+            let x = beta * frac;
+            let want = bessel_i0_f64(x) / bessel_i0_f64(beta);
+            let got = (scaled_i0(x) / scaled_i0(beta)) * libm::exp(x - beta);
+            assert!(
+                (got - want).abs() <= 1e-12 * want.max(f64::MIN_POSITIVE),
+                "x {x}: got {got}, want {want}"
+            );
+        }
+        // The asymptotic branch must agree with the series at the switch-over point.
+        let at = I0_SERIES_MAX;
+        let series = bessel_i0_f64(at) * libm::exp(-at);
+        let asym = asymptotic_scaled_i0(at);
+        assert!(
+            (asym / series - 1.0).abs() < 1e-12,
+            "asym {asym} series {series}"
+        );
     }
 
     #[cfg(feature = "alloc")]

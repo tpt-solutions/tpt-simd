@@ -77,12 +77,12 @@ cargo run -p tpt-simd --features std --example cpu_report       # which SIMD pat
 
 | Feature | Default | Effect |
 | --- | --- | --- |
-| `std` | no | Forwards to `tpt-simd-core/std` (runtime CPU feature queries, `std` float intrinsics). |
+| `std` | no | Forwards to every member crate that has a `std` feature (runtime CPU feature queries, `std` float intrinsics). |
 | `nightly` | no | Forwards to `tpt-simd-core/nightly` (reserved; currently a no-op). |
-| `scalar-only` | no | Forwards to `tpt-simd-core/scalar-only` (reserved; currently a no-op at the core/vector level). |
-| `runtime-dispatch` | no | Implies `std` and enables `tpt-simd-blas/runtime-dispatch` (AVX2+FMA detected at run time, ADR 0003). |
+| `scalar-only` | no | Forwards to every member crate that has a `scalar-only` feature, forcing the portable path. |
+| `runtime-dispatch` | **yes** | Implies `std` and enables runtime AVX2+FMA detection in `tpt-simd-blas`, `tpt-simd-hash`, `tpt-simd-text` and `tpt-simd-search` (ADR 0003). |
 
-The default feature set is empty, so the crate is `no_std` out of the box.
+The default feature set is `runtime-dispatch`, which needs `std`. For a `no_std` build, depend on `tpt-simd` with `default-features = false`; kernels then use only the compile-time `cfg(target_feature)` paths.
 
 ## Platform and accuracy notes
 

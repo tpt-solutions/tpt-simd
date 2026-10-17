@@ -68,7 +68,10 @@ macro_rules! complex_lu_impl {
             if n == 0 {
                 return Ok(());
             }
-            assert!(ar.len() >= lda * (n - 1) + n && ai.len() == ar.len(), "getrf: bad matrix length");
+            assert!(
+                ar.len() >= lda * (n - 1) + n && ai.len() == ar.len(),
+                "getrf: bad matrix length"
+            );
             assert!(ipiv.len() >= n, "getrf: ipiv needs {n} entries");
 
             let mut first_zero = None;
@@ -206,14 +209,16 @@ macro_rules! complex_lu_impl {
             }
         }
 
-        /// Solve `A X = B` in place from the factors of [`$getrf`]: `B` is
+        /// Solve `A X = B` in place from the factors of `getrf`: `B` is
         /// `n x nrhs` (column-major, leading dimension `ldb`) and holds `X` on exit.
         ///
-        /// Blocked like [`$getrf`]: each `NB`-row block is solved unblocked, and its
+        /// Blocked like `getrf`: each `NB`-row block is solved unblocked, and its
         /// effect on the rest of `B` is one complex `gemm`.
         ///
         /// Like the real `getrs`, a zero `U` diagonal is not checked: it yields
         /// inf/NaN, as in LAPACK.
+        // The argument list mirrors the LAPACK `getrs` interface (separate real and imaginary planes).
+        #[allow(clippy::too_many_arguments)]
         pub fn $getrs(
             n: usize,
             nrhs: usize,
@@ -308,7 +313,12 @@ macro_rules! complex_lu_impl {
                     let xr = &mut br[c * ldb + k0..c * ldb + kend];
                     let xi = &mut bi[c * ldb + k0..c * ldb + kend];
                     for j in (0..kb).rev() {
-                        let (qr, qi) = $cdiv(xr[j], xi[j], ar[(k0 + j) * lda + k0 + j], ai[(k0 + j) * lda + k0 + j]);
+                        let (qr, qi) = $cdiv(
+                            xr[j],
+                            xi[j],
+                            ar[(k0 + j) * lda + k0 + j],
+                            ai[(k0 + j) * lda + k0 + j],
+                        );
                         xr[j] = qr;
                         xi[j] = qi;
                         if j > 0 {
@@ -395,7 +405,15 @@ mod tests {
     }
 
     /// `||A x - b||_inf` for a column-major complex `A` (planes) and `x`, `b`.
-    fn residual(n: usize, ar: &[f64], ai: &[f64], xr: &[f64], xi: &[f64], br: &[f64], bi: &[f64]) -> f64 {
+    fn residual(
+        n: usize,
+        ar: &[f64],
+        ai: &[f64],
+        xr: &[f64],
+        xi: &[f64],
+        br: &[f64],
+        bi: &[f64],
+    ) -> f64 {
         let mut worst = 0.0_f64;
         for i in 0..n {
             let (mut sr, mut si) = (0.0, 0.0);
@@ -465,13 +483,20 @@ mod tests {
             for j in 0..n {
                 let (mut sr, mut si) = (0.0, 0.0);
                 for k in 0..=i.min(j) {
-                    let (lr, li) = if k == i { (1.0, 0.0) } else { (ar[i + k * n], ai[i + k * n]) };
+                    let (lr, li) = if k == i {
+                        (1.0, 0.0)
+                    } else {
+                        (ar[i + k * n], ai[i + k * n])
+                    };
                     let (ur, ui) = (ar[k + j * n], ai[k + j * n]);
                     sr += lr * ur - li * ui;
                     si += lr * ui + li * ur;
                 }
                 let (pr, pi) = (pa_r[i + j * n], pa_i[i + j * n]);
-                assert!((sr - pr).abs() < 1e-9 && (si - pi).abs() < 1e-9, "LU mismatch at ({i}, {j})");
+                assert!(
+                    (sr - pr).abs() < 1e-9 && (si - pi).abs() < 1e-9,
+                    "LU mismatch at ({i}, {j})"
+                );
             }
         }
     }
@@ -519,8 +544,14 @@ mod tests {
         getrf_c64(2, &mut ar, &mut ai, 2, &mut ipiv).unwrap();
         let (mut xr, mut xi) = (vec![-1.0, 1.0], vec![1.0, -1.0]);
         getrs_c64(2, 1, &ar, &ai, 2, &ipiv, &mut xr, &mut xi, 2);
-        assert!((xr[0] - 1.0).abs() < 1e-14 && xi[0].abs() < 1e-14, "x0 = {xr:?} {xi:?}");
-        assert!((xr[1] + 1.0).abs() < 1e-14 && xi[1].abs() < 1e-14, "x1 = {xr:?} {xi:?}");
+        assert!(
+            (xr[0] - 1.0).abs() < 1e-14 && xi[0].abs() < 1e-14,
+            "x0 = {xr:?} {xi:?}"
+        );
+        assert!(
+            (xr[1] + 1.0).abs() < 1e-14 && xi[1].abs() < 1e-14,
+            "x1 = {xr:?} {xi:?}"
+        );
     }
 
     #[test]

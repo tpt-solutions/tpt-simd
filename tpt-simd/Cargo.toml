@@ -13,43 +13,111 @@ categories = ["algorithms", "no-std", "multimedia", "mathematics"]
 
 [features]
 default = ["runtime-dispatch"]
-std = ["tpt-simd-core/std"]
+# `std` and `scalar-only` reach every dependency that defines the feature.
+# xtask's `umbrella_features_forward_to_every_crate` test fails if one is missed.
+std = [
+    "tpt-simd-core/std",
+    "tpt-simd-aligned/std",
+    "tpt-simd-blas/std",
+    "tpt-simd-blend/std",
+    "tpt-simd-butterfly/std",
+    "tpt-simd-compare/std",
+    "tpt-simd-complex/std",
+    "tpt-simd-convolve/std",
+    "tpt-simd-dot/std",
+    "tpt-simd-fixed/std",
+    "tpt-simd-gather/std",
+    "tpt-simd-hash/std",
+    "tpt-simd-horizontal/std",
+    "tpt-simd-interpolate/std",
+    "tpt-simd-math/std",
+    "tpt-simd-matrix/std",
+    "tpt-simd-mul/std",
+    "tpt-simd-permute/std",
+    "tpt-simd-reduce/std",
+    "tpt-simd-rng/std",
+    "tpt-simd-rounding/std",
+    "tpt-simd-saturate/std",
+    "tpt-simd-scatter/std",
+    "tpt-simd-search/std",
+    "tpt-simd-select/std",
+    "tpt-simd-shift/std",
+    "tpt-simd-sparse/std",
+    "tpt-simd-text/std",
+    "tpt-simd-window/std",
+]
 nightly = ["tpt-simd-core/nightly"]
-scalar-only = ["tpt-simd-core/scalar-only"]
+scalar-only = [
+    "tpt-simd-core/scalar-only",
+    "tpt-simd-aligned/scalar-only",
+    "tpt-simd-blas/scalar-only",
+    "tpt-simd-blend/scalar-only",
+    "tpt-simd-butterfly/scalar-only",
+    "tpt-simd-compare/scalar-only",
+    "tpt-simd-complex/scalar-only",
+    "tpt-simd-convolve/scalar-only",
+    "tpt-simd-dot/scalar-only",
+    "tpt-simd-fixed/scalar-only",
+    "tpt-simd-gather/scalar-only",
+    "tpt-simd-horizontal/scalar-only",
+    "tpt-simd-interpolate/scalar-only",
+    "tpt-simd-math/scalar-only",
+    "tpt-simd-matrix/scalar-only",
+    "tpt-simd-mul/scalar-only",
+    "tpt-simd-permute/scalar-only",
+    "tpt-simd-reduce/scalar-only",
+    "tpt-simd-rng/scalar-only",
+    "tpt-simd-rounding/scalar-only",
+    "tpt-simd-saturate/scalar-only",
+    "tpt-simd-scatter/scalar-only",
+    "tpt-simd-select/scalar-only",
+    "tpt-simd-shift/scalar-only",
+    "tpt-simd-sparse/scalar-only",
+    "tpt-simd-window/scalar-only",
+]
 # Detect AVX2+FMA at runtime in kernel crates that have intrinsics paths (ADR 0003).
 runtime-dispatch = ["std", "tpt-simd-blas/runtime-dispatch", "tpt-simd-hash/runtime-dispatch", "tpt-simd-text/runtime-dispatch", "tpt-simd-search/runtime-dispatch"]
 
 [dependencies]
 tpt-simd-core.workspace = true
-tpt-simd-complex = { path = "../tpt-simd-complex", version = "0.1.0" }
-tpt-simd-fixed = { path = "../tpt-simd-fixed", version = "0.1.0" }
-tpt-simd-saturate = { path = "../tpt-simd-saturate", version = "0.1.0" }
-tpt-simd-horizontal = { path = "../tpt-simd-horizontal", version = "0.1.0" }
-tpt-simd-dot = { path = "../tpt-simd-dot", version = "0.1.0" }
-tpt-simd-butterfly = { path = "../tpt-simd-butterfly", version = "0.1.0" }
-tpt-simd-mul = { path = "../tpt-simd-mul", version = "0.1.0" }
-tpt-simd-aligned = { path = "../tpt-simd-aligned", version = "0.1.0" }
-tpt-simd-blend = { path = "../tpt-simd-blend", version = "0.1.0" }
-tpt-simd-compare = { path = "../tpt-simd-compare", version = "0.1.0" }
-tpt-simd-convolve = { path = "../tpt-simd-convolve", version = "0.1.0" }
-tpt-simd-gather = { path = "../tpt-simd-gather", version = "0.1.0" }
-tpt-simd-interpolate = { path = "../tpt-simd-interpolate", version = "0.1.0" }
-tpt-simd-matrix = { path = "../tpt-simd-matrix", version = "0.1.0" }
-tpt-simd-permute = { path = "../tpt-simd-permute", version = "0.1.0" }
-tpt-simd-rounding = { path = "../tpt-simd-rounding", version = "0.1.0" }
-tpt-simd-scatter = { path = "../tpt-simd-scatter", version = "0.1.0" }
-tpt-simd-select = { path = "../tpt-simd-select", version = "0.1.0" }
-tpt-simd-shift = { path = "../tpt-simd-shift", version = "0.1.0" }
-tpt-simd-window = { path = "../tpt-simd-window", version = "0.1.0" }
-tpt-simd-blas = { path = "../tpt-simd-blas", version = "0.1.0" }
-tpt-simd-reduce = { path = "../tpt-simd-reduce", version = "0.1.0" }
-tpt-simd-math = { path = "../tpt-simd-math", version = "0.1.0" }
-tpt-simd-rng = { path = "../tpt-simd-rng", version = "0.1.0" }
-tpt-simd-sparse = { path = "../tpt-simd-sparse", version = "0.1.0" }
-tpt-simd-hash = { path = "../tpt-simd-hash", version = "0.1.0" }
-tpt-simd-text = { path = "../tpt-simd-text", version = "0.1.0" }
-tpt-simd-search = { path = "../tpt-simd-search", version = "0.1.0" }
-tpt-simd-sort = { path = "../tpt-simd-sort", version = "0.1.0" }
+tpt-simd-complex = { path = "../tpt-simd-complex", version = "0.1.1" }
+tpt-simd-fixed = { path = "../tpt-simd-fixed", version = "0.1.1" }
+tpt-simd-saturate = { path = "../tpt-simd-saturate", version = "0.1.1" }
+tpt-simd-horizontal = { path = "../tpt-simd-horizontal", version = "0.1.1" }
+tpt-simd-dot = { path = "../tpt-simd-dot", version = "0.1.1" }
+tpt-simd-butterfly = { path = "../tpt-simd-butterfly", version = "0.1.1" }
+tpt-simd-mul = { path = "../tpt-simd-mul", version = "0.1.1" }
+tpt-simd-aligned = { path = "../tpt-simd-aligned", version = "0.1.1" }
+tpt-simd-blend = { path = "../tpt-simd-blend", version = "0.1.1" }
+tpt-simd-compare = { path = "../tpt-simd-compare", version = "0.1.1" }
+tpt-simd-convolve = { path = "../tpt-simd-convolve", version = "0.1.1" }
+tpt-simd-gather = { path = "../tpt-simd-gather", version = "0.1.1" }
+tpt-simd-interpolate = { path = "../tpt-simd-interpolate", version = "0.1.1" }
+tpt-simd-matrix = { path = "../tpt-simd-matrix", version = "0.1.1" }
+tpt-simd-permute = { path = "../tpt-simd-permute", version = "0.1.1" }
+tpt-simd-rounding = { path = "../tpt-simd-rounding", version = "0.1.1" }
+tpt-simd-scatter = { path = "../tpt-simd-scatter", version = "0.1.1" }
+tpt-simd-select = { path = "../tpt-simd-select", version = "0.1.1" }
+tpt-simd-shift = { path = "../tpt-simd-shift", version = "0.1.1" }
+tpt-simd-window = { path = "../tpt-simd-window", version = "0.1.1" }
+tpt-simd-blas = { path = "../tpt-simd-blas", version = "0.1.1" }
+tpt-simd-reduce = { path = "../tpt-simd-reduce", version = "0.1.1" }
+tpt-simd-math = { path = "../tpt-simd-math", version = "0.1.1" }
+tpt-simd-rng = { path = "../tpt-simd-rng", version = "0.1.1" }
+tpt-simd-sparse = { path = "../tpt-simd-sparse", version = "0.1.1" }
+tpt-simd-hash = { path = "../tpt-simd-hash", version = "0.1.1" }
+tpt-simd-text = { path = "../tpt-simd-text", version = "0.1.1" }
+tpt-simd-search = { path = "../tpt-simd-search", version = "0.1.1" }
+tpt-simd-sort = { path = "../tpt-simd-sort", version = "0.1.1" }
+tpt-simd-audio = { path = "../tpt-simd-audio", version = "0.1.1" }
+tpt-simd-bits = { path = "../tpt-simd-bits", version = "0.1.1" }
+tpt-simd-dct = { path = "../tpt-simd-dct", version = "0.1.1" }
+tpt-simd-distance = { path = "../tpt-simd-distance", version = "0.1.1" }
+tpt-simd-geom = { path = "../tpt-simd-geom", version = "0.1.1" }
+tpt-simd-half = { path = "../tpt-simd-half", version = "0.1.1" }
+tpt-simd-ntt = { path = "../tpt-simd-ntt", version = "0.1.1" }
+tpt-simd-pixel = { path = "../tpt-simd-pixel", version = "0.1.1" }
+tpt-simd-transpose = { path = "../tpt-simd-transpose", version = "0.1.1" }
 
 [lints]
 workspace = true

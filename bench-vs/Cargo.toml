@@ -10,29 +10,29 @@ keywords = ["simd", "benchmark", "criterion", "incumbent", "performance"]
 categories = ["development-tools::profiling"]
 
 [dev-dependencies]
-tpt-simd-matrix = { path = "../tpt-simd-matrix", version = "0.1.0" }
-tpt-simd-blas = { path = "../tpt-simd-blas", version = "0.1.0", features = ["runtime-dispatch"] }
-tpt-simd-hash = { path = "../tpt-simd-hash", version = "0.1.0", features = ["runtime-dispatch"] }
-tpt-simd-text = { path = "../tpt-simd-text", version = "0.1.0", features = ["runtime-dispatch"] }
-tpt-simd-search = { path = "../tpt-simd-search", version = "0.1.0", features = ["runtime-dispatch"] }
-tpt-simd-sort = { path = "../tpt-simd-sort", version = "0.1.0" }
-tpt-simd-distance = { path = "../tpt-simd-distance", version = "0.1.0" }
-tpt-simd-bits = { path = "../tpt-simd-bits", version = "0.1.0" }
-tpt-simd-geom = { path = "../tpt-simd-geom", version = "0.1.0" }
-tpt-simd-dct = { path = "../tpt-simd-dct", version = "0.1.0" }
-tpt-simd-transpose = { path = "../tpt-simd-transpose", version = "0.1.0" }
-tpt-simd-ntt = { path = "../tpt-simd-ntt", version = "0.1.0" }
-tpt-simd-half = { path = "../tpt-simd-half", version = "0.1.0" }
-tpt-simd-pixel = { path = "../tpt-simd-pixel", version = "0.1.0" }
-tpt-simd-audio = { path = "../tpt-simd-audio", version = "0.1.0" }
-tpt-simd-blend = { path = "../tpt-simd-blend", version = "0.1.0" }
-tpt-simd-select = { path = "../tpt-simd-select", version = "0.1.0" }
-tpt-simd-shift = { path = "../tpt-simd-shift", version = "0.1.0" }
-tpt-simd-window = { path = "../tpt-simd-window", version = "0.1.0" }
-tpt-simd-aligned = { path = "../tpt-simd-aligned", version = "0.1.0" }
-tpt-simd-fixed = { path = "../tpt-simd-fixed", version = "0.1.0" }
-tpt-simd-vector = { path = "../tpt-simd-vector", version = "0.1.0" }
-tpt-simd-core = { path = "../tpt-simd-core", version = "0.1.0" }
+tpt-simd-matrix = { path = "../tpt-simd-matrix", version = "0.1.1" }
+tpt-simd-blas = { path = "../tpt-simd-blas", version = "0.1.1", features = ["runtime-dispatch"] }
+tpt-simd-hash = { path = "../tpt-simd-hash", version = "0.1.1", features = ["runtime-dispatch"] }
+tpt-simd-text = { path = "../tpt-simd-text", version = "0.1.1", features = ["runtime-dispatch"] }
+tpt-simd-search = { path = "../tpt-simd-search", version = "0.1.1", features = ["runtime-dispatch"] }
+tpt-simd-sort = { path = "../tpt-simd-sort", version = "0.1.1" }
+tpt-simd-distance = { path = "../tpt-simd-distance", version = "0.1.1" }
+tpt-simd-bits = { path = "../tpt-simd-bits", version = "0.1.1" }
+tpt-simd-geom = { path = "../tpt-simd-geom", version = "0.1.1" }
+tpt-simd-dct = { path = "../tpt-simd-dct", version = "0.1.1" }
+tpt-simd-transpose = { path = "../tpt-simd-transpose", version = "0.1.1" }
+tpt-simd-ntt = { path = "../tpt-simd-ntt", version = "0.1.1" }
+tpt-simd-half = { path = "../tpt-simd-half", version = "0.1.1" }
+tpt-simd-pixel = { path = "../tpt-simd-pixel", version = "0.1.1" }
+tpt-simd-audio = { path = "../tpt-simd-audio", version = "0.1.1" }
+tpt-simd-blend = { path = "../tpt-simd-blend", version = "0.1.1" }
+tpt-simd-select = { path = "../tpt-simd-select", version = "0.1.1" }
+tpt-simd-shift = { path = "../tpt-simd-shift", version = "0.1.1" }
+tpt-simd-window = { path = "../tpt-simd-window", version = "0.1.1" }
+tpt-simd-aligned = { path = "../tpt-simd-aligned", version = "0.1.1" }
+tpt-simd-fixed = { path = "../tpt-simd-fixed", version = "0.1.1" }
+tpt-simd-vector = { path = "../tpt-simd-vector", version = "0.1.1" }
+tpt-simd-core = { path = "../tpt-simd-core", version = "0.1.1" }
 glam = "0.34"
 ultraviolet = "0.10"
 gemm = "0.19"

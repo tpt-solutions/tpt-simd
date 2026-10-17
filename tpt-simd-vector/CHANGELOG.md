@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Changed
+- Float `min`/`max` lanes use plain comparisons instead of per-lane `libm::fmin`/`fmax` calls. Results match the libm functions (NaN loses to a non-NaN operand, signed-zero ties as before); NaN payloads are unspecified.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - `Simd<T, N>`: array-backed vector type (`pub struct Simd<T, const N: usize>(pub [T; N])`) with construction (`splat`, `zero`, `from_array`, `from_fn`, `from_slice`, `from_slice_or`), access (`to_array`, `as_array`, `as_mut_array`, indexing, `copy_to_slice`, `store_partial`), `map`, `zip_with` and `cast`.

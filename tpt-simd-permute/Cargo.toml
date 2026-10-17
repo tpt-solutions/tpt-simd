@@ -19,7 +19,7 @@ scalar-only = ["tpt-simd-core/scalar-only", "tpt-simd-saturate/scalar-only"]
 
 [dependencies]
 tpt-simd-core.workspace = true
-tpt-simd-saturate = { path = "../tpt-simd-saturate", version = "0.1.0" }
+tpt-simd-saturate = { path = "../tpt-simd-saturate", version = "0.1.1" }
 
 [dev-dependencies]
 proptest.workspace = true

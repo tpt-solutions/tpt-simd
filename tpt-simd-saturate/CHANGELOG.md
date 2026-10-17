@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+- No code changes; version bumped with the workspace.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - Saturating add and subtract for `i16x16`, `i8x32`, `u8x32` and `u16x16` (`saturating_add_*`, `saturating_sub_*`).

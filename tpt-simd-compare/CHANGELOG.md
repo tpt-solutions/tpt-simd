@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Added
+- aarch64: NEON comparisons and masks.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - Lane-wise comparisons `cmp_gt_*`, `cmp_lt_*`, `cmp_eq_*`, `cmp_ne_*`, `cmp_ge_*`, `cmp_le_*` for `i32x8`, `f32x8`, `i16x16` and `i8x32` (24 functions, signed integer semantics), returning `SimdMask`.

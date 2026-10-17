@@ -19,7 +19,7 @@ scalar-only = ["tpt-simd-core/scalar-only", "tpt-simd-horizontal/scalar-only"]
 
 [dependencies]
 tpt-simd-core.workspace = true
-tpt-simd-horizontal = { path = "../tpt-simd-horizontal", version = "0.1.0", default-features = false }
+tpt-simd-horizontal = { path = "../tpt-simd-horizontal", version = "0.1.1", default-features = false }
 
 [dev-dependencies]
 proptest.workspace = true

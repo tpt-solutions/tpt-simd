@@ -1,11 +1,46 @@
 # Publishing tpt-simd to crates.io
 
-Release checklist for the 0.1.0 publish. Publishing is manual (see `.github/workflows/release.yml`):
+Release checklist. 0.1.0 is published (41 of 41 live); this file now tracks the 0.1.1 patch release, and the 0.1.0 record is kept below. Publishing is manual (see `.github/workflows/release.yml`):
 the release workflow only verifies and packages; nothing is uploaded automatically.
 
 Written for: the maintainer doing the release.
 
-## Status (as of 2026-10-12)
+## 0.1.1 release (in preparation)
+
+Why: 51 commits since `v0.1.0` (`1369dea`) are unpublished, and one is a correctness fix. **`tpt-simd-text` 0.1.0 has a
+UTF-8 validator that accepts some invalid input** (lead byte `0xFD`/`F5..FF` before a continuation byte, and
+`C0`/`C1`/`F5..FF` at the end of a 32-byte block, on both the AVX2 and NEON paths). The fix is `b60f2a1`. Also in
+0.1.1: aarch64 NEON paths in 14 crates, `rand_core` impls for `Xoshiro256pp`, new `Mat4`/`Mat3`, varint and
+bitpacking codecs, f16/bf16 arithmetic, FFT-based DCT, and a faster `select_nth`. The per-crate list is in each
+CHANGELOG under `[0.1.1]`.
+
+| Check | Result |
+| --- | --- |
+| Semver (`cargo semver-checks check-release --workspace --baseline-version 0.1.0`), re-run 2026-10-18 on the working tree | Pass: 41 of 41 "no semver update required". The tree adds public items (Phase 11 work, see the decision below), which are non-breaking |
+| `cargo test --workspace --features std` | Pass: 1065 passed, 0 failed, 2 ignored (2026-10-18, default build); same count with `-C target-cpu=x86-64-v3 -C target-feature=+pclmulqdq` (AVX2 paths) |
+| `cargo xtask ci`, `cargo xtask no-std`, `cargo xtask msrv` (Rust 1.95), `cargo hack check --workspace --feature-powerset` with `-D warnings` | Pass on 2026-10-18 (exit 0 each; 523 feature combinations) |
+| `cargo publish --workspace --dry-run --allow-dirty` | Pass 2026-10-18: 41 of 41 packaged and verified at 0.1.1, no warnings. Re-run without `--allow-dirty` after committing |
+| CI and bench on GitHub (master) | Green as reported by the maintainer, 2026-10-17; re-check on the release commit |
+| Version bump | Done: `[workspace.package]` and every `version = "0.1.x"` in the dependency tables |
+| CHANGELOGs | Done: `[Unreleased]` split into `[0.1.1] - 2026-10-17` and `[0.1.0] - 2026-10-12` in all 41 crates. On 2026-10-18 the Phase 13 fixes (`tpt-simd`, `tpt-simd-hash`, `tpt-simd-window`) were moved into `[0.1.1]`. The date still says 2026-10-17; set it to the real release date |
+| Working tree | Uncommitted. Commit, wait for green CI, then tag |
+
+Before publishing 0.1.1:
+
+- [ ] Commit the bump and CHANGELOGs; push; confirm CI and bench are green on that commit.
+- [ ] `cargo publish --workspace --dry-run` without `--allow-dirty`.
+- [ ] Publish in the order below (reset to unticked for 0.1.1), then tag `v0.1.1` on the published commit.
+- [ ] After publishing, yank `tpt-simd-text` 0.1.0 (`cargo yank --version 0.1.0 tpt-simd-text`) so new projects do not resolve the
+      validator bug. Existing lockfiles keep working. Decide whether to yank the other 0.1.0 crates (not needed for correctness).
+- [ ] Switch the `tpt-math` `simd` path dependencies (`tpt-simd-blas`, `tpt-simd-sparse`) to `version = "0.1.1"`.
+
+### Commit split (2026-10-18)
+
+The 0.1.1 release is committed separately from the Phase 11 work. The release commit holds the version bump, the `[0.1.1]` CHANGELOG entries, the Phase 13 fixes, and the release-gate fixes (a formatting pass and two blas lint/doc fixes). The Phase 11 work is the next commit. It is not part of 0.1.1, and its CHANGELOG entries sit under `[Unreleased]` for the next release. Publish and tag 0.1.1 from the release commit. Nothing has been pushed, published or tagged.
+
+## 0.1.0 record
+
+### Status (as of 2026-10-12)
 
 | Check | Result |
 | --- | --- |
@@ -20,7 +55,7 @@ Written for: the maintainer doing the release.
 Publishable crates: 41 (the `tpt-simd` umbrella plus 40 focused crates).
 Unpublished (`publish = false`): `tpt-simd-testutil` (dev-dependency only), `xtask`, `tpt-simd-fuzz` (`fuzz/`), and `bench-vs`.
 
-### Fix made while preparing
+#### Fix made while preparing
 
 `tpt-simd-core` and other crates list `tpt-simd-testutil` as a dev-dependency. The workspace entry
 had `version = "0.1.0"`, so `cargo publish` tried to resolve it from crates.io and failed with
@@ -49,49 +84,49 @@ almost everything else.
 Tick a box once the crate is live on crates.io (check with `https://crates.io/api/v1/crates/<name>`, which returns
 HTTP 200 when the crate exists). Update this list as you go.
 
-Progress as of 2026-10-12 (41 of 41 live):
+Progress for 0.1.1 (0 of 41 live). The 0.1.0 run was 41 of 41, every box below ticked:
 
-- [x] 1. tpt-simd-audio
-- [x] 2. tpt-simd-bits
-- [x] 3. tpt-simd-dct
-- [x] 4. tpt-simd-distance
-- [x] 5. tpt-simd-geom
-- [x] 6. tpt-simd-half
-- [x] 7. tpt-simd-hash
-- [x] 8. tpt-simd-ntt
-- [x] 9. tpt-simd-pixel
-- [x] 10. tpt-simd-search
-- [x] 11. tpt-simd-sort
-- [x] 12. tpt-simd-text
-- [x] 13. tpt-simd-transpose
-- [x] 14. tpt-simd-vector
-- [x] 15. tpt-simd-core
-- [x] 16. tpt-simd-aligned
-- [x] 17. tpt-simd-blas
-- [x] 18. tpt-simd-blend
-- [x] 19. tpt-simd-butterfly
-- [x] 20. tpt-simd-compare
-- [x] 21. tpt-simd-convolve
-- [x] 22. tpt-simd-fixed
-- [x] 23. tpt-simd-gather
-- [x] 24. tpt-simd-horizontal
-- [x] 25. tpt-simd-interpolate
-- [x] 26. tpt-simd-math
-- [x] 27. tpt-simd-mul
-- [x] 28. tpt-simd-rng
-- [x] 29. tpt-simd-rounding
-- [x] 30. tpt-simd-saturate
-- [x] 31. tpt-simd-scatter
-- [x] 32. tpt-simd-shift
-- [x] 33. tpt-simd-sparse
-- [x] 34. tpt-simd-window
-- [x] 35. tpt-simd-complex
-- [x] 36. tpt-simd-dot
-- [x] 37. tpt-simd-permute
-- [x] 38. tpt-simd-reduce
-- [x] 39. tpt-simd-select
-- [x] 40. tpt-simd-matrix
-- [x] 41. tpt-simd
+- [ ] 1. tpt-simd-audio
+- [ ] 2. tpt-simd-bits
+- [ ] 3. tpt-simd-dct
+- [ ] 4. tpt-simd-distance
+- [ ] 5. tpt-simd-geom
+- [ ] 6. tpt-simd-half
+- [ ] 7. tpt-simd-hash
+- [ ] 8. tpt-simd-ntt
+- [ ] 9. tpt-simd-pixel
+- [ ] 10. tpt-simd-search
+- [ ] 11. tpt-simd-sort
+- [ ] 12. tpt-simd-text
+- [ ] 13. tpt-simd-transpose
+- [ ] 14. tpt-simd-vector
+- [ ] 15. tpt-simd-core
+- [ ] 16. tpt-simd-aligned
+- [ ] 17. tpt-simd-blas
+- [ ] 18. tpt-simd-blend
+- [ ] 19. tpt-simd-butterfly
+- [ ] 20. tpt-simd-compare
+- [ ] 21. tpt-simd-convolve
+- [ ] 22. tpt-simd-fixed
+- [ ] 23. tpt-simd-gather
+- [ ] 24. tpt-simd-horizontal
+- [ ] 25. tpt-simd-interpolate
+- [ ] 26. tpt-simd-math
+- [ ] 27. tpt-simd-mul
+- [ ] 28. tpt-simd-rng
+- [ ] 29. tpt-simd-rounding
+- [ ] 30. tpt-simd-saturate
+- [ ] 31. tpt-simd-scatter
+- [ ] 32. tpt-simd-shift
+- [ ] 33. tpt-simd-sparse
+- [ ] 34. tpt-simd-window
+- [ ] 35. tpt-simd-complex
+- [ ] 36. tpt-simd-dot
+- [ ] 37. tpt-simd-permute
+- [ ] 38. tpt-simd-reduce
+- [ ] 39. tpt-simd-select
+- [ ] 40. tpt-simd-matrix
+- [ ] 41. tpt-simd
 
 ## Commands
 

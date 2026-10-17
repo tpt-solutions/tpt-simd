@@ -9,7 +9,10 @@
 //!
 //! Everything is implemented here with no runtime dependencies. The `crc32fast`
 //! and `simd-adler32` crates are used only as dev-dependencies, as differential
-//! test oracles. Nothing here uses `unsafe`.
+//! test oracles. The x86_64 (PCLMULQDQ, VPCLMULQDQ, AVX2, SSE2) and aarch64 CRC and
+//! Adler-32 kernels use `unsafe` intrinsics; each is in a module with
+//! `#[allow(unsafe_code)]`, is only entered after a CPU feature check, and is tested
+//! against the portable code. The rest of the crate is safe.
 //!
 //! ## Example
 //!
@@ -724,8 +727,8 @@ mod tests {
 
     #[test]
     fn crc32_dispatch_matches_scalar_kernel() {
-        // Covers the scalar tail, the single-accumulator fold, fold-by-4, the 512-bit kernel
-        // (from 2048 bytes) and the remainders after each.
+        // Covers the scalar tail, the single-accumulator fold, fold-by-4, the 256-bit
+        // VPCLMULQDQ kernel (from 256 bytes) and the remainders after each.
         let data = sample(6000, 7);
         for len in (0..2300).chain([2304, 2560, 3000, 4096, 4352, 5000, 6000]) {
             let want = !crc_update_scalar(!0, &data[..len]);

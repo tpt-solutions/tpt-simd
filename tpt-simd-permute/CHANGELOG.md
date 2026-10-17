@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Changed
+- x86_64 4x4 transpose uses the `shufps` ordering (about 1.5x faster on Raptor Lake); results are identical.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - `transpose_8x8_i16` and `transpose_4x4_f32` in-place block transposes (SSE2 unpack networks on x86_64), with `transpose_8x8_i16_portable` and `transpose_4x4_f32_portable` references.

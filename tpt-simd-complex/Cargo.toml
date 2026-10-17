@@ -19,7 +19,7 @@ scalar-only = ["tpt-simd-core/scalar-only", "tpt-simd-mul/scalar-only"]
 
 [dependencies]
 tpt-simd-core.workspace = true
-tpt-simd-mul = { path = "../tpt-simd-mul", version = "0.1.0" }
+tpt-simd-mul = { path = "../tpt-simd-mul", version = "0.1.1" }
 libm.workspace = true
 
 [dev-dependencies]

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Changed
+- Tests only: pointer provenance fix for Miri. No library change.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - `gather_i32`, `gather_f32`: `unsafe` eight-lane gathers by signed `i32` element index (`vpgatherdd`/`vgatherdps` on AVX2).

@@ -4,7 +4,7 @@ members = ["tpt-simd", "tpt-simd-*", "xtask", "bench-vs"]
 exclude = ["templates"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 authors = ["TPT Solutions"]
@@ -19,8 +19,8 @@ libm = { version = "0.2", default-features = false }
 proptest = { version = "1", default-features = false, features = ["std"] }
 criterion = { version = "0.8", default-features = false }
 
-tpt-simd-vector = { path = "tpt-simd-vector", version = "0.1.0", default-features = false }
-tpt-simd-core = { path = "tpt-simd-core", version = "0.1.0", default-features = false }
+tpt-simd-vector = { path = "tpt-simd-vector", version = "0.1.1", default-features = false }
+tpt-simd-core = { path = "tpt-simd-core", version = "0.1.1", default-features = false }
 tpt-simd-testutil = { path = "tpt-simd-testutil" }  # unpublished (publish = false); path-only so dev-dep is stripped on publish
 
 [workspace.lints.rust]

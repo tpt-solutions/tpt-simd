@@ -23,7 +23,7 @@ tpt-simd-core.workspace = true
 
 [dev-dependencies]
 proptest.workspace = true
-tpt-simd-gather = { path = "../tpt-simd-gather", version = "0.1.0", default-features = false }
+tpt-simd-gather = { path = "../tpt-simd-gather", version = "0.1.1", default-features = false }
 criterion = { workspace = true, features = ["cargo_bench_support"] }
 
 [lints]

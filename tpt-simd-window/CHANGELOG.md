@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Fixed
+
+- `kaiser_window_into_f32` and `kaiser_window_f32` no longer return NaN at the centre for `beta` above about 713. The ratio `I0(x) / I0(beta)` is computed in scaled form (asymptotic expansion above 700), so every finite `beta` gives a finite window.
+
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - Initial release of `tpt-simd-window`.

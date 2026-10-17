@@ -126,6 +126,40 @@ jobs:
         env:
           RUSTFLAGS: -D warnings -C target-cpu=skylake-avx512
 
+  runtime-dispatch:
+    # `runtime-dispatch` is only compiled by feature-powerset; this job runs its tests.
+    # Detection happens at run time, so the kernels are selected from the runner's CPU.
+    # bench-vs is excluded on aarch64 for the same reason as the aarch64 job.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --exclude bench-vs --features std,runtime-dispatch
+
+  vpclmulqdq:
+    # The 256-bit VPCLMULQDQ CRC kernel (tpt-simd-hash, entered from 256 bytes) is only
+    # reached on CPUs with the instruction, and `skylake-avx512` does not have it. Hosted
+    # runners vary, so this checks /proc/cpuinfo first, as the avx512 job does.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Test the VPCLMULQDQ CRC kernel (skipped if the CPU lacks it)
+        run: |
+          if grep -q -w -m1 vpclmulqdq /proc/cpuinfo && grep -q -w -m1 avx2 /proc/cpuinfo; then
+            cargo test -p tpt-simd-hash --features std,runtime-dispatch
+          else
+            echo "::warning::runner CPU lacks VPCLMULQDQ/AVX2; the wide CRC kernel was not tested"
+          fi
+        env:
+          RUSTFLAGS: -D warnings -C target-cpu=icelake-server
+
   msrv:
     # `rust-version` in Cargo.toml. `cargo msrv find` confirmed 1.95.0 as the lowest passing
     # toolchain (docs/verification.md); this job keeps it from regressing.

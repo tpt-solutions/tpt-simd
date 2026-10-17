@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Changed
+- Complex-style multiply uses one `vfmsubadd` instead of a sign flip plus FMA; results are bit-identical.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - Integer multiply variants: `mul_hi_i16`, `mul_lo_i32`, `mul_hi_i32`.

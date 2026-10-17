@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Changed
+- The lane-wise FMA uses a single-rounding `fmadd` when AVX and FMA are enabled at compile time, and `libm::fmaf` per lane otherwise. Results are identical either way.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - Initial release of `tpt-simd-interpolate`.

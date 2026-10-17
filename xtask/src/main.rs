@@ -496,4 +496,68 @@ mod tests {
         xtask_targets.sort_unstable();
         assert_eq!(ci_targets, xtask_targets);
     }
+
+    /// Every dependency of the umbrella crate that defines `std` or `scalar-only` must be forwarded
+    /// by the umbrella's own feature of the same name, so `tpt-simd/scalar-only` reaches all kernels.
+    #[test]
+    fn umbrella_features_forward_to_every_crate() {
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/..");
+        let umbrella = std::fs::read_to_string(format!("{root}/tpt-simd/Cargo.toml"))
+            .expect("read umbrella Cargo.toml");
+        let deps: Vec<&str> = section(&umbrella, "[dependencies]")
+            .lines()
+            .filter_map(|line| line.split([' ', '.', '=']).next())
+            .filter(|name| name.starts_with("tpt-simd-"))
+            .collect();
+        assert!(
+            !deps.is_empty(),
+            "no tpt-simd-* dependencies found in the umbrella"
+        );
+
+        for feature in ["std", "scalar-only"] {
+            let forwarded = feature_members(&umbrella, feature);
+            for dep in &deps {
+                let dep_manifest = std::fs::read_to_string(format!("{root}/{dep}/Cargo.toml"))
+                    .unwrap_or_else(|e| panic!("read {dep}/Cargo.toml: {e}"));
+                let defines = section(&dep_manifest, "[features]").lines().any(|line| {
+                    line.split_once('=')
+                        .is_some_and(|(k, _)| k.trim() == feature)
+                });
+                if defines {
+                    let expected = format!("{dep}/{feature}");
+                    assert!(
+                        forwarded.contains(&expected),
+                        "umbrella feature `{feature}` does not forward to `{expected}`"
+                    );
+                }
+            }
+        }
+    }
+
+    /// The body of a TOML section, from its header to the next header.
+    fn section<'a>(manifest: &'a str, header: &str) -> &'a str {
+        let Some(start) = manifest.find(header) else {
+            return "";
+        };
+        let body = &manifest[start + header.len()..];
+        match body.find("\n[") {
+            Some(end) => &body[..end],
+            None => body,
+        }
+    }
+
+    /// The quoted entries of a feature array in `[features]`, which may span several lines.
+    fn feature_members(manifest: &str, feature: &str) -> Vec<String> {
+        let features = section(manifest, "[features]");
+        let Some(start) = features.find(&format!("\n{feature} = [")) else {
+            return Vec::new();
+        };
+        let body = &features[start..];
+        let body = &body[..body.find(']').unwrap_or(body.len())];
+        body.split('"')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_owned)
+            .collect()
+    }
 }

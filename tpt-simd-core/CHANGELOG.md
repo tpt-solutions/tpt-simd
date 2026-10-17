@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-17
+
+### Changed
+- Under Miri, runtime feature detection reports the compile-time set, because Miri cannot execute `cpuid`.
+
+## [0.1.0] - 2026-10-12
+
 ### Added
 
 - Re-exports of the `tpt-simd-vector` backend: `Simd`, `SimdMask`, `SimdElement`, `SimdInt`, `SimdFloat`, `LaneCast`, `MaskLane`.

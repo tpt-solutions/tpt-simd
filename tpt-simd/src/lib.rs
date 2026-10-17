@@ -61,6 +61,25 @@ pub use tpt_simd_sparse as sparse;
 pub use tpt_simd_window as window;
 
 #[doc(inline)]
+pub use tpt_simd_audio as audio;
+#[doc(inline)]
+pub use tpt_simd_bits as bits;
+#[doc(inline)]
+pub use tpt_simd_dct as dct;
+#[doc(inline)]
+pub use tpt_simd_distance as distance;
+#[doc(inline)]
+pub use tpt_simd_geom as geom;
+#[doc(inline)]
+pub use tpt_simd_half as half;
+#[doc(inline)]
+pub use tpt_simd_ntt as ntt;
+#[doc(inline)]
+pub use tpt_simd_pixel as pixel;
+#[doc(inline)]
+pub use tpt_simd_transpose as transpose;
+
+#[doc(inline)]
 pub use tpt_simd_search as search;
 #[doc(inline)]
 pub use tpt_simd_sort as sort;
