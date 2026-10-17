@@ -14,8 +14,11 @@ jobs:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # Criterion's defaults (3 s warm-up, 5 s measurement per benchmark) across roughly a thousand
+      # benchmarks overrun the 90-minute limit. The shorter budget keeps the full workspace run
+      # inside it; the baseline is saved and compared with the same settings on every run.
       - name: Run criterion benchmarks (AVX2+FMA)
-        run: cargo bench --workspace --benches --features std -- --save-baseline ci
+        run: cargo bench --workspace --benches --features std -- --save-baseline ci --warm-up-time 1 --measurement-time 2
         env:
           RUSTFLAGS: -C target-feature=+avx2,+fma
       - uses: actions/upload-artifact@v7
