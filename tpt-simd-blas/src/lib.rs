@@ -212,6 +212,10 @@ mod check;
 mod complex;
 #[macro_use]
 mod complex_api;
+#[cfg(feature = "alloc")]
+mod complex_lu;
+#[cfg(feature = "alloc")]
+pub use complex_lu::{getrf_c32, getrf_c64, getrs_c32, getrs_c64};
 #[macro_use]
 mod imp;
 #[macro_use]
