@@ -6,8 +6,18 @@ should be confirmed before the 0.1.0 publish. The step-by-step publish commands 
 
 ## Versioning
 
-- All 28 published crates share one version (`[workspace.package] version`). A release bumps every
-  crate, even when only one changed, so the set stays easy to reason about.
+Changed-only releases. From the release after 0.1.1, a release bumps only the crates that changed.
+(0.1.1 was a whole-workspace release, every crate at 0.1.1, and stays that way.)
+
+- Each crate owns its version: `version = "x.y.z"` in its own manifest, not `version.workspace = true`.
+  This needs a manifest change before the first changed-only release, so that unchanged crates keep
+  their version.
+- A crate is **changed** when its code, features, public API or dependency requirements change.
+  CHANGELOG-only, README-only and docs-only edits do not bump a crate; they go under `[Unreleased]`
+  until the crate is next released.
+- Dependents: when a dependency publishes a new version, a dependent needs a bump only if it uses
+  something from that version. Then set its requirement to the minimum version it needs (for example
+  `"0.1.2"`). Otherwise leave the requirement alone: `"0.1.0"` already accepts every later `0.1.x`.
 - Until 1.0.0, a minor bump (`0.x` -> `0.(x+1)`) may contain breaking changes; a patch bump
   (`0.x.y` -> `0.x.(y+1)`) must not.
 - From 1.0.0: semver as written in the [Cargo book](https://doc.rust-lang.org/cargo/reference/semver.html).
@@ -43,7 +53,7 @@ Run from a clean tree at the commit being published:
 2. `cargo xtask no-std` (bare-metal and wasm targets).
 3. `cargo xtask msrv` or `cargo +<rust-version> check --workspace --all-targets`.
 4. `cargo hack check --workspace --feature-powerset` (the `feature-powerset` CI job).
-5. `cargo semver-checks check-release --workspace` against the last published version
+5. `cargo semver-checks check-release -p <crate>` for each changed crate, against its last published version
    (not yet run for 0.1.0, since nothing is published; for 0.1.0 this step is skipped and recorded).
 6. `cargo publish --workspace --dry-run`.
 7. Each crate's CHANGELOG has an entry for the release; `[Unreleased]` is renamed to the version and date.
@@ -51,7 +61,7 @@ Run from a clean tree at the commit being published:
 ## Release steps
 
 1. Confirm the checks above pass on `master`, and that the CI runs on the release commit are green.
-2. Bump `[workspace.package] version` and the path versions in the workspace dependency table.
+2. Bump the version of each changed crate in its own manifest, and set any dependent's requirement on it only where the dependent needs the new version (see Versioning). Unchanged crates are not touched.
 3. Move `[Unreleased]` to `[x.y.z] - YYYY-MM-DD` in every crate's CHANGELOG.
 4. Commit and tag `vX.Y.Z` on `master`.
 5. Publish in the order listed in [PUBLISH.md](../PUBLISH.md), waiting for each crate to reach the index.

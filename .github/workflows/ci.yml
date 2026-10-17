@@ -118,10 +118,12 @@ jobs:
         run: |
           if grep -q -w -m1 avx512f /proc/cpuinfo \
             && grep -q -w -m1 avx512bw /proc/cpuinfo \
-            && grep -q -w -m1 avx512vl /proc/cpuinfo; then
+            && grep -q -w -m1 avx512vl /proc/cpuinfo \
+            && grep -q -w -m1 avx512cd /proc/cpuinfo \
+            && grep -q -w -m1 avx512dq /proc/cpuinfo; then
             cargo test --workspace --features std
           else
-            echo "::warning::runner CPU lacks AVX-512F/BW/VL; AVX-512 tests were not run"
+            echo "::warning::runner CPU lacks AVX-512F/BW/VL/CD/DQ; AVX-512 tests were not run"
           fi
         env:
           RUSTFLAGS: -D warnings -C target-cpu=skylake-avx512
@@ -144,7 +146,10 @@ jobs:
   vpclmulqdq:
     # The 256-bit VPCLMULQDQ CRC kernel (tpt-simd-hash, entered from 256 bytes) is only
     # reached on CPUs with the instruction, and `skylake-avx512` does not have it. Hosted
-    # runners vary, so this checks /proc/cpuinfo first, as the avx512 job does.
+    # runners vary, so this checks /proc/cpuinfo first, as the avx512 job does. Only the
+    # features the kernel uses are enabled: RUSTFLAGS also reach build scripts, and
+    # `target-cpu=icelake-server` turned on AVX-512, which SIGILLs them on AMD runners
+    # that have VPCLMULQDQ but not AVX-512 (Zen 3).
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -152,13 +157,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Test the VPCLMULQDQ CRC kernel (skipped if the CPU lacks it)
         run: |
-          if grep -q -w -m1 vpclmulqdq /proc/cpuinfo && grep -q -w -m1 avx2 /proc/cpuinfo; then
+          if grep -q -w -m1 vpclmulqdq /proc/cpuinfo && grep -q -w -m1 avx2 /proc/cpuinfo \
+            && grep -q -w -m1 pclmulqdq /proc/cpuinfo && grep -q -w -m1 sse4_1 /proc/cpuinfo; then
             cargo test -p tpt-simd-hash --features std,runtime-dispatch
           else
             echo "::warning::runner CPU lacks VPCLMULQDQ/AVX2; the wide CRC kernel was not tested"
           fi
         env:
-          RUSTFLAGS: -D warnings -C target-cpu=icelake-server
+          RUSTFLAGS: -D warnings -C target-feature=+avx2,+pclmulqdq,+vpclmulqdq,+sse4.1,+ssse3
 
   msrv:
     # `rust-version` in Cargo.toml. `cargo msrv find` confirmed 1.95.0 as the lowest passing
