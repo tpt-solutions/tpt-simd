@@ -80,17 +80,17 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 
 ### CI (GitHub Actions)
 - [x] fmt + clippy + doc (`-D warnings`)
-- [x] Test matrix: stable + nightly (`nightly` feature) × Linux/Windows/macOS — workflow written, not yet run on GitHub
+- [x] Test matrix: stable + nightly (`nightly` feature) × Linux/Windows/macOS — green on GitHub Actions (2026-10-17)
 - [x] `no_std` build check (e.g. `thumbv7em`/`wasm32-unknown-unknown`)
-- [x] x86_64 runners with target-feature matrix (SSE2, AVX, AVX2) — written, not yet run
+- [x] x86_64 runners with target-feature matrix (SSE2, AVX, AVX2) — green on GitHub Actions (2026-10-17)
 - [x] AVX-512 testing: run natively on this host (i5-1135G7 has AVX-512 F/BW/DQ/VL), not via SDE. Full suite with `-C target-cpu=native` passes; covers the `vpscatterdd` scatter path and the AVX-512BW dot kernel (docs/benchmarks.md)
-- [x] ARM64 testing (GitHub ARM runners / macOS-14) — runner defined, not yet run
+- [x] ARM64 testing (GitHub ARM runners / macOS-14) — green on GitHub Actions (2026-10-17)
 - [x] ARM SVE testing via QEMU (vector-length matrix) — CI `qemu-sve` job; full aarch64 suite passes under `qemu-aarch64 -cpu max,sve-default-vector-length={16,32,64,256}` (128/256/512/2048 bit) with `-C target-feature=+sve` (121 test binaries each). Covers compiler-vectorised SVE code only; no SVE intrinsics (unstable on stable Rust)
 - [x] RISC-V RVV testing via QEMU (`riscv64gcv`) — CI `qemu-riscv` job; full riscv64 suite passes under `qemu-riscv64 -cpu rv64,v=true,vlen={128,256,512}` with `-C target-feature=+v` (121 test binaries each). Covers compiler-vectorised RVV code only
 - [x] Scalar-fallback job (`scalar-only` feature)
-- [x] Miri job for unsafe code (where supported) — written, not yet run
+- [x] Miri job for unsafe code (where supported) — green on GitHub Actions (2026-10-17)
 - [x] `cargo-deny` license + advisory job
-- [x] Benchmark job with regression tracking (criterion baselines) — `bench.yml` stores master criterion results in an actions cache and a master run fails on a regression of more than 25% (`cargo xtask bench-compare`); PRs report the same comparison without failing (ADR 0006 decision 9); xtask unit tests pass locally, the workflow has not run on GitHub yet
+- [x] Benchmark job with regression tracking (criterion baselines) — `bench.yml` stores master criterion results in an actions cache and a master run fails on a regression of more than 25% (`cargo xtask bench-compare`); PRs report the same comparison without failing (ADR 0006 decision 9); workflow green on GitHub Actions (2026-10-17); the first master run only seeds the baseline cache, so the comparison first runs on the next master push
 - [x] Caching, concurrency limits, release workflow
 
 ### Docs & spec fixes
@@ -322,14 +322,14 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 
 ## Phase 7 — Integration & polish (Weeks 15–16)
 
-### tpt-kinetix (video; separate repo)
+### tpt-kinetix (video; separate repo) — deferred (one of the two deferred items, see Phase 13)
 - [ ] Profile and list manual-SIMD hot loops (baseline numbers)
 - [ ] Replace hot loops with tpt-simd (motion comp, transforms, etc.)
 - [ ] Byte-exact conformance on reference AV1 streams (before/after)
 - [ ] Measure speedup (target 20–30% AV1 decode)
 - [ ] Verify ARM/NEON now works without separate code
 
-### tpt-cadence (audio; separate repo)
+### tpt-cadence (audio; separate repo) — deferred (one of the two deferred items, see Phase 13)
 - [ ] Profile baseline FFT/MDCT
 - [ ] Replace manual complex math/shuffling with tpt-simd-complex/butterfly
 - [ ] Adopt `Fixed` where applicable
@@ -352,7 +352,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 
 ### Release
 - [ ] Full benchmark report vs scalar / manual intrinsics / `wide` / `simba` / `rustfft`
-- [x] Performance-regression guard in CI — `cargo xtask bench-compare <baseline> <new>` (20% default, tested; 221 benchmarks, 0 regressed on the full results). `bench.yml` now stores master results in an actions cache and fails PRs more than 25% slower than the newest master baseline. Not yet run on GitHub Actions
+- [x] Performance-regression guard in CI — `cargo xtask bench-compare <baseline> <new>` (20% default, tested; 221 benchmarks, 0 regressed on the full results). `bench.yml` now stores master results in an actions cache and fails PRs more than 25% slower than the newest master baseline. Workflow green on GitHub Actions (2026-10-17); first master run seeds the baseline
 - [x] Per-crate READMEs, keywords, categories, `rust-version`, license fields — all 41 publishable crates have README, CHANGELOG and an example
 - [x] CHANGELOG, semver policy, release process — per-crate changelogs written; semver policy and release checklist drafted in `docs/release.md` (maintainer review still pending)
 - [ ] `cargo publish --dry-run` for all crates; publish in dependency order
@@ -414,7 +414,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] f32/f64 `axpy`, `scal`, `dot`, `nrm2`, `asum`
 - [x] `gemv` (column-major, matches tpt-math storage)
 - [x] Packed, register-blocked `gemm` microkernel (e.g. 8x4 f32 / 4x4 f64, FMA) with cache blocking
-- [x] Complex variants via split re/im — free functions `_c32`/`_c64` on split planes and interleaved `[[T; 2]]`: axpy, scal, dotu/dotc, nrm2, asum, gemv (N/T/H), gemm (4 real gemm calls; 3M deliberately not used); no `ComplexSimd` type. cgemm 256: 6–20x vs naive (20–42 GFLOP/s); cgemv N 30x, H 1.9x; dotc 1.3x, axpy parity; no complex getrf/potrf/trsm yet
+- [x] Complex variants via split re/im — free functions `_c32`/`_c64` on split planes and interleaved `[[T; 2]]`: axpy, scal, dotu/dotc, nrm2, asum, gemv (N/T/H), gemm (4 real gemm calls; 3M deliberately not used); no `ComplexSimd` type. cgemm 256: 6–20x vs naive (20–42 GFLOP/s); cgemv N 30x, H 1.9x; dotc 1.3x, axpy parity. Complex LU added 2026-10-18: unblocked, axpy-based `getrf_c32`/`getrf_c64` and `getrs_c32`/`getrs_c64` on split planes (pivot rule matches tpt-math-linalg-complex); no complex potrf/trsm yet
 - [x] Portable reference + AVX2/FMA path; NEON gemm microkernels added 2026-10-16 (aarch64, same tiles and per-lane FMA order as AVX2, bit-identical)
 - [x] LAPACK-style `getrf`/`getrs`/`trsm`/`potrf`/`potrs` (f32/f64, blocked on gemm) — LU only 1.2–2x vs naive reference (panel factor/row swaps dominate), Cholesky 2–14.5x; see docs/benchmarks.md
 - [x] Tests vs scalar reference (tails, NaN/inf, non-multiple sizes), proptest, criterion bench, `cargo-show-asm` — tests and criterion benches exist (incl. lapack); `cargo xtask asm` covers the gemm microkernel, the blocked `getrf` and `potrf` panels, and the f32 dot (2026-10-16)
@@ -430,7 +430,7 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] Lane-parallel xoshiro / Philox generators (independent streams per lane, reproducible seeding)
 - [x] Vectorised uniform -> normal (Box-Muller or ziggurat) — Box-Muller, 5-7.5x vs libm scalar
 - [x] Statistical quality checks (e.g. PractRand/TestU01-style smoke tests) — chi-square/moment/bit-balance smoke tests (not PractRand)
-- [ ] Wire into `tpt-math-prob-sampler` and `tpt-math-prob-monte-carlo` — not done: both are generic over an `Rng` trait, so vectorising needs an API change, not just a feature flag (bulk `fill_u64`/`fill_f64` on `Rng`, batch `Distribution::sample_into`, f64 transforms; lane streams not bit-identical to `SplitMix64`; ceiling only a few x at ~1 ns/sample)
+- [ ] DEFERRED 2026-10-18 (decision recorded, not wired, no trait change). Gate was ≥2x end-to-end. Measured: `Xoshiro256ppX8::fill_u64` in 1024-word chunks is 1.56x faster than scalar `SplitMix64::next_u64` (2.95 vs 4.6 ms per 10^7, `target-cpu=native`), but tpt-math `integrate` is ~4.4 ns/sample (440 µs / 10^5, `monte_carlo_bench`), so the RNG is ~10% of it and the best end-to-end gain is ~1.1x. Full-buffer fills are memory-bound (80 MB writes) and slower. Also, the SIMD streams differ from `SplitMix64`, so wiring would change seeded output. Original note: wire into `tpt-math-prob-sampler` and `tpt-math-prob-monte-carlo` — not done: both are generic over an `Rng` trait, so vectorising needs an API change, not just a feature flag (bulk `fill_u64`/`fill_f64` on `Rng`, batch `Distribution::sample_into`, f64 transforms; lane streams not bit-identical to `SplitMix64`; ceiling only a few x at ~1 ns/sample)
 
 ### tpt-simd-sparse
 - [x] CSR/CSC SpMV using `tpt-simd-gather` — implemented with multi-accumulator loads (gather measured, not adopted; ~1.2–2x, memory bound)
@@ -440,17 +440,17 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 ### tpt-simd-reduce
 - [x] Pairwise / compensated sum, mean, variance, covariance over slices — done in tpt-simd-reduce
 - [x] min/max/argmin/argmax over slices — done (plain fold; LLVM parity)
-- [x] Builds on `tpt-simd-horizontal`; wire into `tpt-math-stats` — crate done; `tpt-math-stats` mean/variance wiring (1.2–1.3x, memory-bound) is **not present in the tpt-math repo**; not re-done yet
+- [x] Builds on `tpt-simd-horizontal`; wire into `tpt-math-stats` — crate done. **Cancelled 2026-10-18**: stats mean/variance wiring is not present in tpt-math, the payoff is minimal (1.2–1.3x, memory-bound), and reduce's uncompensated pairwise sum would change stats' compensated numerics. Not going to be wired
 
 ### Existing stubs that map directly to tpt-math
-- [ ] `tpt-simd-convolve` (FIR) and `tpt-simd-window` -> `tpt-math-signal-filter`
-- [ ] `tpt-simd-matrix` (3x3 / 4x4 multiply, transpose, inverse) -> `tpt-math-linalg-fixed`, `tpt-math-geometry`, `tpt-math-spatial`
+- [ ] `tpt-simd-convolve` (FIR) and `tpt-simd-window` -> `tpt-math-signal-filter` — FIR part done 2026-10-18: `tpt-math-signal-filter` `simd` feature routes direct FIR (`filter`, `filter_par`, `filter_in_place`, `filter_causal`) for kernels of 16+ taps to `tpt-simd-blas` `dot_f64` over contiguous windows (reversed taps; in-place gathers the window). Not using `tpt-simd-convolve` itself: it has only f32/i16 kernels, and `dot_f64` covers f64. Benches (criterion, same session): 255 taps × 16k, scalar 2.06 ms → simd 0.46 ms (4.4x); 9 taps unchanged (scalar path, 74 vs 80 µs, noise). Tests pass for default, `simd`, `simd,rayon`. The `tpt-simd-window` half is not started: window functions are computed once per filter, so there's no per-sample kernel to speed up
+- [x] `tpt-simd-matrix` (3x3 / 4x4 multiply, transpose, inverse) -> `tpt-math-linalg-fixed`, `tpt-math-geometry`, `tpt-math-spatial` — **cancelled 2026-10-18**: the tpt-math matrices are f64, but `tpt-simd-matrix` has only f32 and i16 kernels. Measured the f64 4x4 product in `linalg-fixed` at 6.3 ns (`4x4 matrix product x 1k`, 6.26 µs per 1000); 64 unrolled FMAs leave at most a ~2x gain on a single product, so an f64 kernel isn't worth writing
 - [ ] Later: IIR biquad cascades (serial dependency; batch across channels)
 
 ### Phase 10 exit
-- [ ] End-to-end tpt-math benches with and without `simd` show target speedups — dense only (`linalg_dense_bench`, plain build, criterion 1 s warm-up / 3 s measure, noisy): `DMatrix*DMatrix` 64/256/512 5.9x/7.3x/9.9x (549→93 µs, 36.9→5.05 ms, 498→49.6 ms); `DMatrix*DVector` 64 3.7x; `inverse` 32/64/256 2.5x/2.3x/3.2x; `solve` 64/256 3.0x/4.2x. Not yet benched: LU/Cholesky-based paths in sparse, stats, complex (see above). Targets (3–8x) met for gemm and solve; inverse 64 only 2.3x
+- [ ] End-to-end tpt-math benches with and without `simd` show target speedups — dense only (`linalg_dense_bench`, plain build, criterion 1 s warm-up / 3 s measure, noisy): `DMatrix*DMatrix` 64/256/512 5.9x/7.3x/9.9x (549→93 µs, 36.9→5.05 ms, 498→49.6 ms); `DMatrix*DVector` 64 3.7x; `inverse` 32/64/256 2.5x/2.3x/3.2x; `solve` 64/256 3.0x/4.2x. Sparse (this pass, noisy shared machine, 1 s warm-up / 2–3 s measure): CG 40×40 1.3–1.8x with `simd` (ic0-cg is not wired, ~1x; unwired `matvec` swung 118↔230 µs between identical runs, so treat all sparse figures as ±50%). Complex (`linalg_complex_bench`, criterion 3 s, 2026-10-18), scalar → `simd`: LU 64 107 → 68 µs (1.6x), LU 256 5.82 → 3.09 ms (1.9x); solve 64 111 → 52 µs (2.1x), solve 256 5.67 → 3.01 ms (1.9x); inverse 64 308 → 182 µs (1.7x), inverse 256 18.3 → 8.9 ms (2.1x). **Below the 3x target**: the blas kernel is unblocked (rank-1 `axpy` per column), so a `gemm`-blocked complex `getrf` is the next step. Stats: cancelled, see the stats item above. Targets (3–8x) met for gemm and solve; inverse 64 only 2.3x before the 2026-10-18 pass. That pass routes f64 `solve` and `inverse` through `tpt-simd-blas` `getrf`/`getrs` under `simd` (inverse = `getrs` on the identity), with the same 1e-12 pivot rule. Same-session scalar → `simd`: inverse 32 32.5 → 13.7 µs (2.4x), inverse 64 245 → 81.5 µs (3.0x), inverse 256 12.3 → 6.3 ms (1.9x), solve 64 77 → 31 µs (2.5x), solve 256 3.86 → 1.69 ms (2.3x). With `simd-runtime` (AVX2 detected at run time): inverse 32 13.5 µs (2.4x), inverse 64 69 µs (3.5x), inverse 256 2.14 ms (5.7x), solve 64 18.8 µs (4.1x), solve 256 0.50 ms (7.7x). Plain `simd` was slow (inverse 256 at 1.9x) because tpt-simd-blas's `runtime-dispatch` was off. Decision applied 2026-10-18: tpt-math-linalg-dense's `std` feature now enables `tpt-simd-blas?/runtime-dispatch`, so plain `simd` on std targets gets the same numbers as `simd-runtime` (re-measured: inverse 256 2.02 ms, 6.1x; solve 256 0.49 ms). no_std `simd` builds keep compile-time dispatch. `tpt-simd-blas` itself still defaults to no runtime dispatch; not changed
 - [x] tpt-math test suite passes with `simd` on and off — 71 suites, 679 tests off / 684 on, 0 failures (re-run this pass; the earlier "691/692" figure was not reproduced)
-- [ ] `no_std` builds pass in both repos — tpt-simd: `tpt-simd-blas/math/rng/reduce/sparse` pass `--no-default-features` on thumbv7em-none-eabihf; tpt-math: `tpt-math-linalg-dense` (default-off and `simd`) passes on thumbv7em and wasm32. Full tpt-math workspace no_std not run
+- [ ] `no_std` builds pass in both repos — tpt-simd: `tpt-simd-blas/math/rng/reduce/sparse` pass `--no-default-features` on thumbv7em-none-eabihf. tpt-math scope is the 16 crates the README marks `no_std`. All 16 pass on thumbv6m-none-eabi (checked 2026-10-18): the 12 with no alloc requirement with `--no-default-features`, and linalg, linalg-complex, linalg-sparse and interpolate with `--features alloc` as their README entries say. `tpt-math-linalg-dense` needed its dynamic types and LU helpers gated on `alloc` to get there, and it builds on default, `alloc`, `simd`, `simd-runtime` and wasm32 (45/46 unit tests pass). The other 16 crates (optimize, prob-bayes/markov/monte-carlo, signal, stats, units-dyn, autodiff-rev/autodiff, symbolic, etc.) are marked `no` in the README and are out of scope; most still fail no_std. The earlier "dense passes" note was wrong, and the default workspace build is clean
 
 ### Repo housekeeping found while scoping
 - [x] Workspace `Cargo.toml` / `rust-toolchain.toml` were rewritten to an older shape (10 members, no `keywords`/`libm`/lints/path deps) and no longer parse; keep reconciled manifest with all real crates as members
@@ -462,14 +462,13 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 - [x] Generated `build.*` / `test.*` logs were tracked in git — untracked and ignored
 - [x] CI `avx512` job only echoed a note; it now runs the suite (compiled for Skylake-X) on runners whose CPU reports AVX-512F/BW/VL, and warns otherwise
 - [x] `chunks_exact_to_as_chunks` allow warned on clippy 1.97 (unknown lint) in every crate — `unknown_lints` now allowed in the workspace lints
-- [x] CONTRIBUTING linked a missing `CODE_OF_CONDUCT.md` — now links Contributor Covenant 2.1; **maintainers still need to add an enforcement contact**
+- [x] CONTRIBUTING linked a missing `CODE_OF_CONDUCT.md` — the Conduct section has since been removed (no code of conduct for this project)
 - [x] Adoption tooling: `cargo xtask {ci,no-std,msrv,cpu}` (no dependencies), umbrella examples (`quickstart`, `cpu_report`), bug/feature issue templates, Dependabot for cargo and actions
 - [x] `cargo-msrv` run — `cargo msrv verify --rust-version 1.95 -- cargo check --workspace --all-targets` reports Rust 1.95.0 compatible (cargo-msrv 0.19.3); `cargo msrv find` (lowest passing version) not run, as it installs older toolchains
 
 ## Phase 12 — Review follow-ups and adoption
 
 ### Needs a maintainer decision or account action
-- [ ] Add an enforcement contact to the Code of Conduct link in CONTRIBUTING.md (currently Contributor Covenant 2.1 with no contact)
 - [x] Review and commit the pending housekeeping: staged deletions of `build.*` / `test.*`, `.cargo/`, `xtask/`, `tpt-simd/examples/`, issue templates, `dependabot.yml`, and the `ci.yml` / `deny.toml` changes
 - [ ] Confirm the `avx512` CI job actually executes tests on a hosted runner (first run after the change); adjust the CPU-flag check if the runner image lacks AVX-512 BW/VL
 
@@ -502,6 +501,8 @@ Goal: speed up [tpt-math](https://github.com/tpt-solutions/tpt-math) (31 crates,
 
 Decision (recommended, applied 2026-10-15): the Phase 11 crates ship in 0.1 on autovectorised code. Explicit SIMD paths and asm audits move to post-0.1 work. Reference property tests and criterion benches were added for all 13 crates (see Definition-of-done gaps). asm audits remain open. Decision (recommended, applied 2026-10-16): explicit SIMD paths are not planned for the Phase 11 crates. Every one of them sets `#![deny(unsafe_code)]`, and intrinsics need `unsafe`, so they would need a policy change first. The slower rows in `docs/benchmarks.md` stay documented as they are. Revisit if that policy changes. Recorded as ADR 0006 decision 4: explicit SIMD for these crates is post-0.1, so the open explicit-SIMD boxes below are deferred, not pending for 0.1.
 
+**Superseded 2026-10-18 (ADR 0006 item 12):** the Phase 13 policy lifted that deferral. Phase 11 crates now follow the kernel-crate unsafe rule: `unsafe` only in a target-gated intrinsic module, with the portable path as the bit-exact reference. `tpt-simd-distance` is done for AVX2. The remaining explicit-SIMD and asm boxes below are open work, not deferred.
+
 Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and a doctest, and each passes clippy with `-D warnings` and the `thumbv7em-none-eabihf` no_std check. **No crate has an explicit SIMD path yet**; all rely on autovectorisation. Policy is in `docs/adr/0004-no-runtime-wrapping.md`: own implementation by default, no runtime dependencies. Incumbents are dev-dependency oracles only, or sit behind a default-off feature. The one exception is `tpt-simd-half`, which keeps `half` for f16/bf16 interop.
 
 ### Licence check (crates.io API, 2026-10-12, against the `deny.toml` allow-list)
@@ -515,84 +516,88 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 
 #### tpt-simd-distance
 - [x] Inner product, squared L2, cosine (f32), exact i8/u8 variants, Hamming on `u64` bit-vectors; top-k (`top_k_l2_f32`)
-- [ ] Explicit SIMD paths (AVX2, NEON) — deferred to post-0.1 (ADR 0006 item 11)
+- [x] Explicit SIMD paths, AVX2 (2026-10-18, ADR 0006 item 12): `inner_product_f32`, `l2_squared_f32`, `cosine_distance_f32` (so `top_k_l2_f32`). Bit-identical to `portable` in the default and `x86-64-v3` builds (`tests/simd_matches_portable.rs`). One host, criterion, 1024 `f32`: 116 → 44 ns (inner product), 145 → 48 ns (squared L2). NEON still open: needs QEMU or aarch64 hardware, which is not set up here
 - [x] proptest vs scalar reference (tests/proptest_*.rs in each crate)
-- [ ] Criterion bench vs naive loop, and asm audit — deferred to post-0.1 (ADR 0006 item 11)
+- [x] Criterion bench vs naive loop (`benches/kernels.rs`; cosine has no bench yet). asm floor in `cargo xtask asm` (2026-10-18)
 - [ ] Build on `tpt-simd-dot` / `tpt-simd-reduce` (optional)
 
 #### tpt-simd-bits
 - [x] Popcount, bitset and/or/xor/andnot, zigzag, delta encode/decode, prefix sums (u32, u64)
 - [x] `RankSelect`: O(1) `rank1`, `select1` by binary search, checked against a naive scan
-- [ ] Explicit SIMD paths for popcount and prefix sums — deferred to post-0.1 (ADR 0006 item 11)
-- [ ] proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
+- [x] Explicit SIMD path for prefix sums, AVX2 (2026-10-18): `prefix_sum_u32`, `prefix_sum_u64` (and `delta_decode_u32`). Bit-identical to scalar (`tests/prefix_matches_scalar.rs`). Criterion: 1.1–1.2× on `u32` (an in-process A/B had suggested 1.8×; not reproduced). Popcount: no explicit path; AVX2 builds already use hardware `popcnt`, so there's nothing to win against without a measured case
+- [x] proptest and criterion bench exist; asm floor in `cargo xtask asm` (2026-10-18)
 - [x] Bitpacking / varint codecs — `tpt-simd-bits`: LEB128 varints for u32 (`varint_encode_u32`, `varint_decode_u32`) and fixed-width LSB-first bitpacking for 1..=32 bits (`bitpack_u32`, `bitunpack_u32`). Scalar, no_std, no allocation; known-answer and round-trip tests. The `bitpacking` and `roaring` crates were not needed under ADR 0004
 
 #### tpt-simd-geom
 - [x] SoA `distance_sq`, `distance`, `dot`, AABB overlap, ray–AABB slab test
 - [x] SoA quaternion `quat_mul` and `quat_rotate`; `mat4_transform_points` (column-major, homogeneous divide)
-- [ ] Explicit SIMD paths (4-wide SoA lanes) — deferred to post-0.1 (ADR 0006 item 11)
-- [ ] proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
+- [x] Explicit SIMD paths (AVX2, 8 lanes): `ray_aabb` only (2026-10-18). Bit-identical to the scalar loop (`tests/ray_matches_scalar.rs`). Criterion, 16K boxes: 2.0× in the AVX2 build over the committed SoA code (30.7 → 15.2 µs). `distance_sq` was measured and not given a path: LLVM already vectorises it, and a hand AVX2 version ran at 0.83×. `dot` and `aabb_overlap` are straight SoA loops like `distance_sq`, so they were not given paths either (not measured separately)
+- [x] proptest and criterion bench exist; asm floor in `cargo xtask asm` (2026-10-18)
 - [ ] Wire into `tpt-math-geometry` / `tpt-math-spatial` (external repo)
 
 #### tpt-simd-dct
 - [x] Orthonormal DCT-II/III, MDCT/IMDCT with sine window; TDAC reconstruction tested
 - [x] FFT-based path for large sizes — `tpt-simd-dct::FastDct` (power-of-two N, 2N-point FFT, O(N) memory), checked against the table DCT for every size up to 512 in both directions; 5x faster at N = 256 and 75x at N = 4096 (docs/benchmarks.md)
 - [x] Wavelets — orthonormal Haar, multi-level, in place (`haar_forward` / `haar_inverse`); energy preserved and exact reconstruction tested; one-level values checked by hand
-- [ ] Explicit SIMD paths, proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
+- [x] Explicit SIMD paths, AVX2: `Dct::forward` and `Mdct::forward` (2026-10-18). Bit-identical to the scalar sums (`tests/forward_matches_scalar.rs`). Criterion: 3.7× at N = 256 (21.1 → 5.6 µs). `inverse` is an axpy over contiguous rows and was left unchanged (not measured separately). The FFT-based `FastDct` is not changed
+- [x] asm floor in `cargo xtask asm`, criterion bench (2026-10-18). proptest exists
 
 #### tpt-simd-ntt
 - [x] Montgomery and Barrett reduction, in-place forward/inverse NTT, cyclic convolution
-- [ ] Explicit SIMD paths (vectorised butterflies) — deferred to post-0.1 (ADR 0006 item 11)
-- [ ] Bigint multiply built on the NTT
-- [ ] proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
+- [x] Explicit SIMD paths (vectorised butterflies), AVX2: stages with half-width ≥ 8 (2026-10-18). Bit-identical, checked against a direct DFT built on plain `u64` arithmetic (`tests/forward_matches_dft.rs`), in default and `x86-64-v3` builds. Criterion: 40 µs default vs 17 µs AVX2 at n = 4096. The bit-reversal and the three narrow stages are still scalar
+- [x] Bigint multiply built on the NTT (2026-10-18): `bigint_mul`, checked against schoolbook. NTT is faster from 1024 limbs (criterion, default build)
+- [x] proptest and criterion bench exist; asm floor in `cargo xtask asm` (2026-10-18)
 - [x] Optional: a primality check for the modulus — `tpt-simd-ntt::is_prime` (trial division, `u32`); checked against a sieve up to 10 000 and by property test. The contexts still accept any valid modulus and do not call it
 
 #### tpt-simd-transpose
 - [x] Blocked out-of-place transpose, in-place square transpose, strided copy (generic over `Copy`)
-- [ ] Explicit SIMD tiles (the 4×4 and 8×8 register tiles are in `tpt-simd-permute`) — deferred to post-0.1 (ADR 0006 item 11)
-- [ ] proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
+- [x] Explicit SIMD tiles: measured, not added. An AVX2 8×8 `u32` tile gives 1.3× over the blocked code on 512×512 (84 vs 111 µs; memory bound). Reaching it needs a type-specific public function, and the generic `transpose<T: Copy>` cannot dispatch on type without unsafe byte reinterpretation, so the gain is not worth the API. Decision recorded here (2026-10-18)
+- [ ] proptest and criterion bench exist; asm audit open (no SIMD path added, see the explicit-SIMD entry above)
 
 #### tpt-simd-sort
 - [x] Introsort with 3-way partition and heapsort fallback; `select_nth`, `top_k_smallest`, `argsort`, `partition`
 - [x] Sorting networks / bitonic merge for small fixed blocks — decision: not built for 0.1 (`tpt-simd-sort` README says so), so nothing to ship or drop
 - [x] Benchmark result: the first quick run had this roughly 5× slower than `std::sort_unstable` at 1M elements. Tune or drop it based on a validated full run; do not keep it unless it wins — resolved 2026-10-16 (Round 10, docs/incumbent-benchmarks.md): radix `sort_u32` is ahead (0.39–0.50×); generic `sort_unstable` is 1.1–1.7× behind, accepted in ADR 0005 item 2. The 5× figure is from the old quick run.
-- [ ] proptest, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
+- [x] Explicit SIMD sort: closed as a 0.1 gap (2026-10-18, ADR 0006 item 13). The radix `sort_u32` already leads std (ADR 0005), and the generic sort is comparison-based. A sorting-network path is a separate project; revisit after 0.1 if a measured workload needs it
+- [ ] asm audit and criterion bench for the sort kernels — open
 
 #### tpt-simd-audio
 - [x] Mix, interleave/deinterleave, peak/RMS, FIR, RBJ biquad (low-pass, high-pass), windowed-sinc resampler
 - [x] Oracles: add `biquad` and `rubato` as dev-dependencies and compare outputs — `tests/oracle_biquad.rs` (lowpass and highpass match `biquad` 0.5 within 1e-3) and `tests/oracle_resample.rs` (a 1 kHz tone resampled 48k to 24k keeps amplitude within 2% of 1.0 and agrees with `rubato`). Note: `biquad` 0.5.0 maps the cutoff to a quarter of the RBJ frequency, so the oracle is given 4 x f0 (see the test module docs).
 - [x] Channel-batched biquad over interleaved frames — `tpt-simd-audio::process_interleaved` (one filter per channel, no allocation); equals per-channel processing bit for bit, including split calls
-- [ ] Explicit SIMD FIR / biquad batches (uses the `convolve` / `window` / `interpolate` crates where they fit) — deferred to post-0.1 (ADR 0006 item 11)
-- [ ] proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
+- [x] Explicit SIMD FIR (AVX2, outputs in lanes, tap order kept) and `peak` (2026-10-18). Bit-identical to the scalar code (`tests/simd_matches_scalar.rs`). Criterion: FIR (32 taps) about 10× over the naive loop in the AVX2 build, 1.1× in the default build (scalar). `peak` 3.1× in a harness. Not done: `rms` (strict f64 sum, a vector order would change rounding), and biquad, which is a serial recurrence per channel
+- [x] asm floor in `cargo xtask asm`, criterion bench covers the new path (2026-10-18). proptest exists
 
 #### tpt-simd-pixel
 - [x] RGB/RGBA conversion, planar/interleaved layout, u8↔unit f32, premultiply, RGB↔HSV, histogram
 - [ ] Optional oracles: `yuv` and `libblur` for colour/blur cross-checks (resizing and YUV are out of scope for this crate)
-- [ ] Explicit SIMD paths, proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
+- [x] Explicit SIMD path: SSE2 `premultiply_rgba8`, two pixels per vector; bit-identical, checked exhaustively over every (channel, alpha) pair (`tests/simd_matches_scalar.rs`). Criterion, 1 MiB: 1.75× over the scalar loop in the default build, 1.16× in the AVX2 build. An SSE2 `u8_to_unit_f32` was measured at 1.00× (the scalar loop already auto-vectorises), so it was not kept
+- [x] asm floor in `cargo xtask asm`, criterion bench `premultiply_rgba8` (2026-10-18). proptest exists
 
 #### tpt-simd-half
 - [x] Wraps `half` 2.7.1 for f16/bf16; length-checked slice conversions; int8 and ggml-layout Q8_0 / Q4_0 block quantisation
 - [x] f16/bf16 arithmetic kernels — `tpt-simd-half`: `add_f16`, `mul_f16`, `mul_bf16`, `add_bf16`. f16 results are correctly rounded (computed in f64, exact for two f16 values). bf16 mul is correctly rounded; bf16 add is within 1 ulp (the f32 intermediate can double-round). Scalar; no SIMD path
 - [x] Decision (recommended, applied): keep `half` as a required dependency for 0.1. ADR 0004 allows it for f16/bf16 interop, and making it optional would change the API. `half` pulls in `zerocopy` through its dependency tree
-- [ ] Explicit SIMD conversion paths, proptest, criterion bench — deferred to post-0.1 (ADR 0006 item 11)
+- [x] Explicit SIMD conversion paths: F16C for `f32_to_f16_slice` / `f16_to_f32_slice` (compile-time AVX + F16C, or `runtime-dispatch`). Bit-identical to `half`, including NaN bits (`tests/f16c_matches_half.rs`). Criterion: 26× in a default build with `runtime-dispatch` (67 → 2.6 µs, 64K values); a harness on 1M values gave 7.6×. bf16 conversions and the f16 arithmetic stay scalar. asm floor in `cargo xtask asm` (`f32_to_f16_slice`, 2026-10-18); criterion bench covers the conversions; full audit still open
 
 #### tpt-simd-hash
 - [x] Own CRC-32 (slicing-by-8, compile-time tables) and Adler-32 (deferred modulo); FNV-1a 64; rolling hash
 - [x] Differential tests against `crc32fast` and `simd-adler32` (dev-dependencies)
-- [ ] PCLMULQDQ CRC path (x86_64) and ARM CRC path
-- [ ] proptest, criterion bench (see the Phase 11 benchmark status below), asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
+- [x] PCLMULQDQ CRC path (x86_64, with a VPCLMULQDQ variant) and ARM PMULL CRC path, both runtime-detected (`runtime-dispatch`); Adler-32 has AVX2 and SSE2 paths on x86_64. Checked against the portable code (`tests/differential.rs`); tests pass in default and `x86-64-v3` builds (2026-10-18). NEON Adler-32 not written
+- [x] asm floors in `cargo xtask asm` (`crc_update`, `Adler32::update`; 2026-10-18). Full audit still open. proptest and criterion bench exist
 
 #### tpt-simd-text
 - [x] Own hex encode/decode (validate-then-write); UTF-8 validation via `core`, with `simdutf8` behind a default-off feature; UTF-8↔UTF-16 transcoding
 - [x] Differential tests against `faster-hex` and `simdutf8`
-- [ ] Explicit SIMD hex and UTF-8 paths — deferred to post-0.1 (ADR 0006 item 11)
-- [ ] proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
+- [x] Explicit SIMD hex and UTF-8 paths: AVX2 and SSE2 hex, AVX2 UTF-8 validation, NEON on aarch64. Tests pass in default and `x86-64-v3` builds (2026-10-18)
+- [x] asm floors in `cargo xtask asm` (`is_valid_utf8`, `hex_avx2::encode`; 2026-10-18). Criterion bench and full audit still open. proptest exists
 
 #### tpt-simd-search
 - [x] Own byte search (SWAR), substring search, ASCII case-insensitive search, `count_lines`; `memchr` behind a default-off feature
 - [x] Differential tests against `memchr`
 - [x] Substring search: done. `tpt-simd-search::find` is its own Two-Way algorithm, linear in the haystack; `memchr::memmem` is available behind the `memchr` feature
-- [ ] Explicit SIMD paths, proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
+- [x] Explicit SIMD paths: SSE2 and AVX2 byte search and count, NEON on aarch64 (tests pass in default and `x86-64-v3` builds, 2026-10-18)
+- [x] asm floors in `cargo xtask asm` (2026-10-18). Full audit still open. proptest and bench exist
 
 ### Benchmarks (all 13 crates)
 
@@ -627,6 +632,41 @@ Rule: existing tpt-simd crates are complete and stay as-is **unless** a MIT-comp
 ### Keep (no equivalent found; no action beyond optional interop/oracles)
 - [ ] permute, scatter, gather, butterfly, compare (slice kernels), dot, mul, saturate, rounding, convolve, interpolate, math, rng, sparse, reduce, core
 - [x] Use `rand_xoshiro` / `rand_philox` as rng test vectors and implement `rand_core` traits — xoshiro256++ (scalar, jump, and the eight-lane generator) and SplitMix64 match `rand_xoshiro` word for word (`tpt-simd-rng/tests/reference_vectors.rs`); Philox4x32-10 matches the Random123 known-answer vectors (`tpt-simd-rng/tests/philox_kat.rs`); `RngCore` and `SeedableRng` are implemented for `Xoshiro256pp` behind the default-off `rand_core` feature, tested against `rand_xoshiro` (`tests/rand_core_traits.rs`); `libm` / `sleef` as math accuracy oracles; `statrs` as distribution oracle
+
+---
+
+## Phase 13 — Platform review follow-ups (2026-10-17)
+
+Source: full-platform review on 2026-10-17. Results then: clippy `-D warnings`, `cargo test --workspace` and `cargo doc` clean; with `-C target-cpu=native` (AVX-512), 1027 tests passed and 0 failed; hash, text, search and blas pass with `--features runtime-dispatch`. No memory-safety or kernel correctness bugs found.
+
+**Deferral policy (2026-10-17):** only the tpt-kinetix and tpt-cadence integrations (Phase 7) are deferred. Every other item this file marks "deferred to post-0.1" (ADR 0006 decisions 2, 4 and 11, and the Phase 11 crate items) is active again and tracked here. SVE and RVV stay open but blocked on the toolchain; that is a blocker, not a deferral.
+
+### Bugs
+- [x] Umbrella `scalar-only` does not reach the kernel crates. (Fixed 2026-10-18: forwarded to every kernel crate that defines it; `umbrella_features_forward_to_every_crate` in xtask fails if one is missed.) `tpt-simd/Cargo.toml` forwards it only to `tpt-simd-core/scalar-only`, while each kernel crate checks its own `scalar-only` feature (`cargo tree -e features -i tpt-simd-gather` with `tpt-simd/scalar-only` shows only `default`). Forward it to every kernel crate that has `scalar-only`, and add a check so a new crate cannot be missed. The book (`docs/book/src/api.md`) says the flag forces the portable path.
+- [x] Umbrella `std` forwards only to `tpt-simd-core/std`. (Fixed 2026-10-18, same change and guard as `scalar-only`.) Forward it to the kernel crates that have a `std` feature (for example the `std::error::Error` impl in `tpt-simd-sparse`).
+- [x] Umbrella README and CHANGELOG contradict the manifest. (Fixed 2026-10-18: feature table and default-set text now match the manifest; `scalar-only` no longer described as a no-op.) Both say the default features are empty and the crate is `no_std` out of the box, but `default = ["runtime-dispatch"]` (implies `std`; changed on purpose in `57c91fa`). The README also says `runtime-dispatch` only affects blas; it also covers hash, text and search. Fix both and document `default-features = false` for `no_std` users.
+- [x] Umbrella omits 9 published crates (Fixed 2026-10-18: all nine re-exported.) although its description says it re-exports all of them: audio, bits, dct, distance, geom, half, ntt, pixel, transpose. Re-export them (or change the description and README).
+- [x] `tpt-simd-hash` crate docs say "Nothing here uses `unsafe`"; (Fixed 2026-10-18: docs and test comment corrected.) the crate has PCLMULQDQ, VPCLMULQDQ, AVX2 and SSE2 unsafe kernels. Also fix the stale test comment in `crc32_dispatch_matches_scalar_kernel` ("512-bit kernel (from 2048 bytes)"; the kernel is 256-bit from 256 bytes).
+- [x] `kaiser_window_into_f32` / `kaiser_window_f32`: (Fixed 2026-10-18: ratio computed in scaled form above beta 700; tests `kaiser_large_beta_stays_finite` and `i0_ratio_scaled_branch_matches_series`.) for `beta` above about 713, `bessel_i0_f64(beta)` overflows to inf, `norm` becomes 0 and the centre sample is NaN. Reject that range in the `beta` assert or compute the ratio in scaled form; add a test.
+
+### CI coverage
+- [x] Add a test job that runs `cargo test --workspace --features std,runtime-dispatch` (x86_64 and aarch64). Today `runtime-dispatch` is only compiled (`feature-powerset`), never tested.
+- [x] Cover the VPCLMULQDQ CRC kernel (`pclmul::calculate_wide`) in CI. (Added 2026-10-18: gated `vpclmulqdq` job in ci.yml. Neither new job has run on GitHub Actions yet.) No job enables `vpclmulqdq` (`skylake-avx512` lacks it); run the runtime-dispatch job on a runner whose CPU reports it, or add a `-C target-cpu=icelake-server` job gated on `/proc/cpuinfo`, as the `avx512` job is.
+
+### Release 0.1.1
+- [~] Land the bug fixes above before committing the 0.1.1 bump, add them to the affected CHANGELOGs, then follow the `PUBLISH.md` checklist. Done in the tree on 2026-10-18: fixes moved into the `[0.1.1]` sections of `tpt-simd`, `tpt-simd-hash` and `tpt-simd-window`; release gates pass (see `PUBLISH.md`). Split into two commits on 2026-10-18: the release commit first, then Phase 11. Not pushed, published or tagged (see `PUBLISH.md`)
+
+### Lifted deferrals (now active)
+- [ ] Update ADR 0006 (decisions 2, 4 and 11) and the "deferred to post-0.1" notes in this file to match the policy above.
+- [ ] `nightly` `core::simd` backend selection plumbing (Phase 1, tpt-simd-core) and the tests mirroring `core::simd` behaviour (Phase 1, tpt-simd-vector).
+- [ ] AVX-512 specializations for the crates not yet done (Phase 8 list).
+- [ ] Phase 11 crates: decide the `#![deny(unsafe_code)]` policy (ADR 0006 decision 4) so intrinsic modules are allowed, then build the explicit SIMD paths (x86_64 and aarch64) and run the asm audits listed under each crate.
+- [ ] `tpt-simd-distance`: asm audit and NEON path; optionally build on `tpt-simd-dot` / `tpt-simd-reduce`. (AVX2 path and criterion bench are done, see Phase 11.)
+- [x] `tpt-simd-ntt`: bigint multiply built on the NTT. (2026-10-18): `bigint_mul`, checked against schoolbook. NTT is faster from 1024 limbs (criterion, default build)
+- [ ] `tpt-simd-pixel`: optional `yuv` / `libblur` oracles.
+- [ ] `tpt-simd-complex`: `num-complex` conversion layer (Phase 12, previously "deferred past 0.1").
+- [ ] Full benchmark report vs scalar / manual intrinsics / `wide` / `simba` / `rustfft` (Phase 7 Release).
+- [ ] tpt-math wiring (Phase 10): `tpt-simd-math` into stats/prob crates (needs f64), `tpt-simd-rng` into prob-sampler/monte-carlo (needs an `Rng` API change), `tpt-simd-reduce` into `tpt-math-stats`, convolve/window into `tpt-math-signal-filter`, matrix into linalg-fixed/geometry/spatial, `tpt-simd-geom` into geometry/spatial, and the Phase 10 exit benches.
 
 ---
 

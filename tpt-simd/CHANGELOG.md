@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `scalar-only` forwards to `tpt-simd-audio`, `tpt-simd-bits`, `tpt-simd-dct`, `tpt-simd-distance`, `tpt-simd-half`, `tpt-simd-ntt` and `tpt-simd-pixel`, which gained AVX2 or F16C paths. `runtime-dispatch` and `std` forward to `tpt-simd-half` (F16C detection).
+
 ## [0.1.1] - 2026-10-17
 
 ### Fixed

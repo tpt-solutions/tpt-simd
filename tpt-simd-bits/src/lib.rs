@@ -30,12 +30,35 @@
 //! assert_eq!(v, [10, 12, 15, 15, 20]);
 //! ```
 #![no_std]
-#![deny(unsafe_code)]
+#![cfg_attr(
+    not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    )),
+    forbid(unsafe_code)
+)]
+#![cfg_attr(
+    all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ),
+    deny(unsafe_code)
+)]
 #![warn(missing_docs)]
 
 extern crate alloc;
 
 mod codec;
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+mod x86;
 pub use codec::{
     bitpack_u32, bitpacked_len, bitunpack_u32, varint_decode_u32, varint_encode_u32,
     varint_encoded_len_u32, varint_len_u64,
@@ -141,6 +164,23 @@ pub fn delta_decode_u32(values: &mut [u32]) {
 
 /// In-place wrapping inclusive prefix sum.
 pub fn prefix_sum_u32(values: &mut [u32]) {
+    prefix_sum_u32_impl(values);
+}
+
+/// In-place wrapping inclusive prefix sum over `u64`.
+pub fn prefix_sum_u64(values: &mut [u64]) {
+    prefix_sum_u64_impl(values);
+}
+
+// The scalar scan is the reference. On AVX2 builds `x86` computes the same
+// wrapping sums with vector log-steps.
+
+#[cfg(not(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+)))]
+fn prefix_sum_u32_impl(values: &mut [u32]) {
     let mut acc = 0u32;
     for v in values {
         acc = acc.wrapping_add(*v);
@@ -148,13 +188,39 @@ pub fn prefix_sum_u32(values: &mut [u32]) {
     }
 }
 
-/// In-place wrapping inclusive prefix sum over `u64`.
-pub fn prefix_sum_u64(values: &mut [u64]) {
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+fn prefix_sum_u32_impl(values: &mut [u32]) {
+    // SAFETY: this module exists only when AVX2 is enabled at compile time.
+    unsafe { x86::prefix_sum_u32(values) }
+}
+
+#[cfg(not(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+)))]
+fn prefix_sum_u64_impl(values: &mut [u64]) {
     let mut acc = 0u64;
     for v in values {
         acc = acc.wrapping_add(*v);
         *v = acc;
     }
+}
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+fn prefix_sum_u64_impl(values: &mut [u64]) {
+    // SAFETY: as for `prefix_sum_u32_impl`.
+    unsafe { x86::prefix_sum_u64(values) }
 }
 
 /// Zigzag-encodes `src` into `dst`.

@@ -11,6 +11,11 @@ readme = "README.md"
 keywords = ["simd", "bitset", "popcount", "delta", "codec"]
 categories = ["algorithms", "compression", "no-std"]
 
+[features]
+default = []
+# Forces the portable scalar loops even when AVX2 is enabled at compile time.
+scalar-only = []
+
 [dependencies]
 
 [lints]

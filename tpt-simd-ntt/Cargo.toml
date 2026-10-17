@@ -11,6 +11,11 @@ readme = "README.md"
 keywords = ["simd", "ntt", "montgomery", "barrett", "modular"]
 categories = ["algorithms", "mathematics", "no-std"]
 
+[features]
+default = []
+# Forces the scalar butterflies even when AVX2 is enabled at compile time.
+scalar-only = []
+
 [dependencies]
 
 [lints]

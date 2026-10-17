@@ -17,6 +17,7 @@ default = ["runtime-dispatch"]
 # xtask's `umbrella_features_forward_to_every_crate` test fails if one is missed.
 std = [
     "tpt-simd-core/std",
+    "tpt-simd-half/std",
     "tpt-simd-aligned/std",
     "tpt-simd-blas/std",
     "tpt-simd-blend/std",
@@ -55,7 +56,14 @@ scalar-only = [
     "tpt-simd-butterfly/scalar-only",
     "tpt-simd-compare/scalar-only",
     "tpt-simd-complex/scalar-only",
+    "tpt-simd-bits/scalar-only",
     "tpt-simd-convolve/scalar-only",
+    "tpt-simd-half/scalar-only",
+    "tpt-simd-audio/scalar-only",
+    "tpt-simd-dct/scalar-only",
+    "tpt-simd-ntt/scalar-only",
+    "tpt-simd-pixel/scalar-only",
+    "tpt-simd-distance/scalar-only",
     "tpt-simd-dot/scalar-only",
     "tpt-simd-fixed/scalar-only",
     "tpt-simd-gather/scalar-only",
@@ -76,7 +84,7 @@ scalar-only = [
     "tpt-simd-window/scalar-only",
 ]
 # Detect AVX2+FMA at runtime in kernel crates that have intrinsics paths (ADR 0003).
-runtime-dispatch = ["std", "tpt-simd-blas/runtime-dispatch", "tpt-simd-hash/runtime-dispatch", "tpt-simd-text/runtime-dispatch", "tpt-simd-search/runtime-dispatch"]
+runtime-dispatch = ["std", "tpt-simd-blas/runtime-dispatch", "tpt-simd-hash/runtime-dispatch", "tpt-simd-text/runtime-dispatch", "tpt-simd-search/runtime-dispatch", "tpt-simd-half/runtime-dispatch"]
 
 [dependencies]
 tpt-simd-core.workspace = true

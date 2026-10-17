@@ -11,6 +11,11 @@ readme = "README.md"
 keywords = ["simd", "audio", "dsp", "biquad", "resample"]
 categories = ["multimedia::audio", "algorithms", "no-std"]
 
+[features]
+default = []
+# Forces the scalar peak and FIR even when AVX2 is enabled at compile time.
+scalar-only = []
+
 [dependencies]
 libm.workspace = true
 

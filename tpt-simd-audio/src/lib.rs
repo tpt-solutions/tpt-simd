@@ -22,8 +22,17 @@
 //! assert!(peak(&x) > 0.0);
 //! ```
 #![no_std]
+// `deny` rather than `forbid`: the AVX2 module carries `#[allow(unsafe_code)]`.
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+mod x86;
 
 use core::f64::consts::PI;
 
@@ -94,7 +103,28 @@ pub fn deinterleave(input: &[f32], channels: &mut [&mut [f32]]) {
 /// Largest absolute sample value. Zero for an empty buffer.
 #[must_use]
 pub fn peak(x: &[f32]) -> f32 {
-    x.iter().fold(0.0f32, |m, &s| m.max(s.abs()))
+    let (m, done) = peak_body(x);
+    x[done..].iter().fold(m, |m, &s| m.max(s.abs()))
+}
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+fn peak_body(x: &[f32]) -> (f32, usize) {
+    // SAFETY: this build enables AVX2 at compile time.
+    unsafe { x86::peak_body(x) }
+}
+
+#[cfg(not(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+)))]
+fn peak_body(_x: &[f32]) -> (f32, usize) {
+    (0.0, 0)
 }
 
 /// Root mean square of the buffer. Zero for an empty buffer.
@@ -117,13 +147,64 @@ pub fn rms(x: &[f32]) -> f32 {
 /// Panics if `x.len() != y.len()`.
 pub fn fir(taps: &[f32], x: &[f32], y: &mut [f32]) {
     check("fir", x.len(), y.len());
+    // Outputs from `taps.len() - 1` on have every tap in range; the SIMD kernel
+    // covers whole groups of eight there, and the scalar loop does the rest.
+    let (lo, hi) = fir_full(taps, x, y);
     for (n, out) in y.iter_mut().enumerate() {
+        if n >= lo && n < hi {
+            continue;
+        }
         let mut acc = 0.0f32;
         for (k, &t) in taps.iter().enumerate().take(n + 1) {
             acc += t * x[n - k];
         }
         *out = acc;
     }
+}
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+/// Outputs `lo .. hi` that the SIMD FIR kernel computes: all taps in range, in
+/// whole groups of eight. Empty when there are no taps or too few samples.
+fn fir_full_range(taps: usize, len: usize) -> (usize, usize) {
+    if taps == 0 || len < taps {
+        return (0, 0);
+    }
+    let lo = taps - 1;
+    let hi = lo + (len - lo) / 8 * 8;
+    (lo, hi)
+}
+
+/// Runs the SIMD FIR kernel where it is compiled in. Returns the output range it
+/// wrote, which is `(0, 0)` when nothing was computed, so the caller knows what
+/// is left for the scalar loop.
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+fn fir_full(taps: &[f32], x: &[f32], y: &mut [f32]) -> (usize, usize) {
+    let (lo, hi) = fir_full_range(taps.len(), x.len());
+    if hi > lo {
+        // SAFETY: this build enables AVX2 at compile time; `fir_full_range` gives
+        // `lo = taps.len() - 1` and `hi <= x.len()` with `hi - lo` a multiple of eight.
+        unsafe { x86::fir_range(taps, x, y, lo, hi) }
+        return (lo, hi);
+    }
+    (0, 0)
+}
+
+#[cfg(not(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+)))]
+fn fir_full(_taps: &[f32], _x: &[f32], _y: &mut [f32]) -> (usize, usize) {
+    (0, 0)
 }
 
 /// Second-order IIR section (RBJ cookbook), direct form II transposed.

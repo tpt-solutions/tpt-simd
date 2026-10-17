@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- F16C slice conversions for `f32_to_f16_slice` and `f16_to_f32_slice`, eight values per instruction. Used when F16C and AVX are enabled at compile time, or detected at run time with the new `runtime-dispatch` feature (which needs `std`). Results match `half` bit for bit, NaN payloads included, over every f16 pattern and a large f32 sample.
+- Criterion (`f32_to_f16`, 65536 values, one host): 67 µs in the default build, 2.6 µs with `runtime-dispatch` (and in the AVX2 build). A separate harness on 1M values gave 760 → 100 µs (f32→f16) and 691 → 119 µs (f16→f32).
+- `scalar-only` feature forces the software conversions. The umbrella crate forwards `std`, `scalar-only` and `runtime-dispatch`.
+
 ## [0.1.1] - 2026-10-17
 
 ### Added

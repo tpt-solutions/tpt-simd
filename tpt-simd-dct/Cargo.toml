@@ -11,6 +11,11 @@ readme = "README.md"
 keywords = ["simd", "dct", "mdct", "audio", "codec"]
 categories = ["algorithms", "multimedia::audio", "no-std"]
 
+[features]
+default = []
+# Forces the scalar matrix-vector products even when AVX2 is enabled at compile time.
+scalar-only = []
+
 [dependencies]
 libm.workspace = true
 

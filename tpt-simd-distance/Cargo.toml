@@ -11,6 +11,11 @@ readme = "README.md"
 keywords = ["simd", "distance", "similarity", "embedding", "nearest-neighbour"]
 categories = ["algorithms", "mathematics", "no-std"]
 
+[features]
+default = []
+# Forces the portable lane kernels even when AVX2 is enabled at compile time.
+scalar-only = []
+
 [dependencies]
 libm.workspace = true
 

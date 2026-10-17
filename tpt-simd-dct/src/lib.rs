@@ -49,6 +49,85 @@ use core::f64::consts::PI;
 mod fast;
 pub use fast::FastDct;
 
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+mod x86;
+
+/// Transposes a `rows x cols` row-major table into `cols x rows`.
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+fn transpose_table(table: &[f32], rows: usize, cols: usize) -> Vec<f32> {
+    let mut t = vec![0.0f32; rows * cols];
+    for r in 0..rows {
+        for c in 0..cols {
+            t[c * rows + r] = table[r * cols + c];
+        }
+    }
+    t
+}
+
+/// Matrix-vector product `out = table * x` for the table transforms. `table` is
+/// row-major `n_out x m`; `table_t` is its transpose, when the AVX2 path is compiled.
+/// The sums per output run in the same `i` order either way, so the result does not
+/// depend on the path.
+#[inline]
+fn matvec(
+    table: &[f32],
+    table_t: Option<&[f32]>,
+    m: usize,
+    n_out: usize,
+    x: &[f32],
+    out: &mut [f32],
+) {
+    let done = matvec_body(table_t, m, n_out, x, out);
+    for (k, o) in out.iter_mut().enumerate().skip(done) {
+        let row = &table[k * m..(k + 1) * m];
+        *o = row.iter().zip(x).map(|(&c, &v)| c * v).sum();
+    }
+}
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+fn matvec_body(
+    table_t: Option<&[f32]>,
+    m: usize,
+    n_out: usize,
+    x: &[f32],
+    out: &mut [f32],
+) -> usize {
+    match table_t {
+        // SAFETY: this build enables AVX2 at compile time, and the table sizes match.
+        Some(t) => unsafe { x86::matvec_t(t, m, n_out, x, out) },
+        None => 0,
+    }
+}
+
+#[cfg(not(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+)))]
+fn matvec_body(
+    _table_t: Option<&[f32]>,
+    _m: usize,
+    _n_out: usize,
+    _x: &[f32],
+    _out: &mut [f32],
+) -> usize {
+    0
+}
+
 mod wavelet;
 pub use wavelet::{haar_forward, haar_inverse};
 
@@ -76,6 +155,13 @@ pub struct Dct {
     /// `table[k * n + i] = s_k * cos(pi / n * (i + 1/2) * k)`, with
     /// `s_0 = sqrt(1/n)` and `s_k = sqrt(2/n)` for `k > 0`.
     table: Vec<f32>,
+    /// Transpose of `table`, for the AVX2 path.
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ))]
+    table_t: Vec<f32>,
 }
 
 impl Dct {
@@ -95,7 +181,22 @@ impl Dct {
                 table[k * n + i] = (s * libm::cos(angle)) as f32;
             }
         }
-        Self { n, table }
+        #[cfg(all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2"
+        ))]
+        let table_t = transpose_table(&table, n, n);
+        Self {
+            n,
+            table,
+            #[cfg(all(
+                not(feature = "scalar-only"),
+                target_arch = "x86_64",
+                target_feature = "avx2"
+            ))]
+            table_t,
+        }
     }
 
     /// Transform size.
@@ -117,10 +218,7 @@ impl Dct {
     /// Panics if either slice does not have length [`Dct::len`].
     pub fn forward(&self, input: &[f32], out: &mut [f32]) {
         self.check("Dct::forward", input, out);
-        for (k, o) in out.iter_mut().enumerate() {
-            let row = &self.table[k * self.n..(k + 1) * self.n];
-            *o = row.iter().zip(input).map(|(&c, &x)| c * x).sum();
-        }
+        matvec(&self.table, self.table_t(), self.n, self.n, input, out);
     }
 
     /// Inverse of [`Dct::forward`] (DCT-III): `out = C^T * input`.
@@ -139,6 +237,24 @@ impl Dct {
         }
     }
 
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ))]
+    fn table_t(&self) -> Option<&[f32]> {
+        Some(&self.table_t)
+    }
+
+    #[cfg(not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    )))]
+    fn table_t(&self) -> Option<&[f32]> {
+        None
+    }
+
     fn check(&self, func: &str, input: &[f32], out: &[f32]) {
         if input.len() != self.n {
             size_mismatch(func, "input", self.n, input.len());
@@ -155,6 +271,13 @@ pub struct Mdct {
     n: usize,
     /// `table[k * 2n + i] = cos(pi / n * (i + 1/2 + n/2) * (k + 1/2))`.
     table: Vec<f32>,
+    /// Transpose of `table` (`2n x n`), for the AVX2 path.
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ))]
+    table_t: Vec<f32>,
 }
 
 impl Mdct {
@@ -171,7 +294,22 @@ impl Mdct {
                 table[k * len + i] = libm::cos(angle) as f32;
             }
         }
-        Self { n, table }
+        #[cfg(all(
+            not(feature = "scalar-only"),
+            target_arch = "x86_64",
+            target_feature = "avx2"
+        ))]
+        let table_t = transpose_table(&table, n, len);
+        Self {
+            n,
+            table,
+            #[cfg(all(
+                not(feature = "scalar-only"),
+                target_arch = "x86_64",
+                target_feature = "avx2"
+            ))]
+            table_t,
+        }
     }
 
     /// Number of coefficients per frame (N). The frame has 2N samples.
@@ -184,6 +322,24 @@ impl Mdct {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.n == 0
+    }
+
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ))]
+    fn table_t(&self) -> Option<&[f32]> {
+        Some(&self.table_t)
+    }
+
+    #[cfg(not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    )))]
+    fn table_t(&self) -> Option<&[f32]> {
+        None
     }
 
     /// Forward MDCT: `out[k] = sum_i input[i] * cos(...)`, with `input` of length
@@ -200,10 +356,7 @@ impl Mdct {
         if out.len() != self.n {
             size_mismatch("Mdct::forward", "output", self.n, out.len());
         }
-        for (k, o) in out.iter_mut().enumerate() {
-            let row = &self.table[k * len..(k + 1) * len];
-            *o = row.iter().zip(input).map(|(&c, &x)| c * x).sum();
-        }
+        matvec(&self.table, self.table_t(), len, self.n, input, out);
     }
 
     /// Inverse MDCT: `out[i] = (2 / N) * sum_k coeffs[k] * cos(...)`, producing

@@ -27,8 +27,20 @@
 //! assert_eq!(a[..], expect[..]);
 //! ```
 #![no_std]
+// `deny` rather than `forbid`: the AVX2 module carries `#[allow(unsafe_code)]`.
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+mod x86;
+
+mod bigint;
+pub use bigint::bigint_mul;
 
 extern crate alloc;
 
@@ -212,7 +224,9 @@ fn bad_plan(n: usize, q: u32) -> ! {
 pub struct NttPlan {
     n: usize,
     mont: Montgomery,
-    /// `w^j` in Montgomery form, `j < n / 2`, where `w` is a primitive n-th root.
+    /// Per-stage twiddles in Montgomery form. The stage with butterfly half-width
+    /// `h` uses `fwd[h - 1 .. 2h - 1]`, which holds `w_{2h}^k` for `k < h`, so each
+    /// stage reads a contiguous slice. `w` is a primitive n-th root.
     fwd: Vec<u32>,
     /// Same for `w^{-1}`.
     inv: Vec<u32>,
@@ -235,14 +249,27 @@ impl NttPlan {
         let w = mont.pow(g, qm1 / n as u64);
         let w_inv = mont.pow(w, u64::from(q) - 2);
         let half = n / 2;
-        let mut fwd = vec![0u32; half];
-        let mut inv = vec![0u32; half];
+        // Powers of w and w^{-1} in Montgomery form, j < n / 2.
+        let mut pow_f = vec![0u32; half];
+        let mut pow_i = vec![0u32; half];
         let (mut cf, mut ci) = (1u32, 1u32);
         for j in 0..half {
-            fwd[j] = mont.to_mont(cf);
-            inv[j] = mont.to_mont(ci);
+            pow_f[j] = mont.to_mont(cf);
+            pow_i[j] = mont.to_mont(ci);
             cf = mont.mul(cf, w);
             ci = mont.mul(ci, w_inv);
+        }
+        // Stage h (butterfly half-width) uses w^(k * n / (2h)) for k < h.
+        let mut fwd = vec![0u32; n.max(1) - 1];
+        let mut inv = vec![0u32; n.max(1) - 1];
+        let mut h = 1;
+        while h < n {
+            let step = n / (2 * h);
+            for k in 0..h {
+                fwd[h - 1 + k] = pow_f[k * step];
+                inv[h - 1 + k] = pow_i[k * step];
+            }
+            h *= 2;
         }
         let n_inv = mont.to_mont(mont.pow(n as u32, u64::from(q) - 2));
         Self {
@@ -320,9 +347,8 @@ impl NttPlan {
         }
     }
 
-    fn transform(&self, a: &mut [u32], roots: &[u32]) {
+    fn transform(&self, a: &mut [u32], tables: &[u32]) {
         let n = self.n;
-        let mont = &self.mont;
         // Bit-reversal permutation.
         let mut j = 0usize;
         for i in 1..n {
@@ -336,21 +362,40 @@ impl NttPlan {
                 a.swap(i, j);
             }
         }
-        // Iterative Cooley-Tukey butterflies.
+        // Iterative Cooley-Tukey butterflies, one stage at a time.
         let mut half = 1;
         while half < n {
-            let len = 2 * half;
-            let step = n / len;
-            for start in (0..n).step_by(len) {
-                for k in 0..half {
-                    let w = roots[k * step];
-                    let u = a[start + k];
-                    let v = mont.mul_mont(a[start + k + half], w);
-                    a[start + k] = mont.add(u, v);
-                    a[start + k + half] = mont.sub(u, v);
-                }
-            }
-            half = len;
+            let tw = &tables[half - 1..2 * half - 1];
+            stage(a, tw, half, &self.mont);
+            half *= 2;
+        }
+    }
+}
+
+/// One butterfly stage. Uses AVX2 when it is compiled in and the stage is wide
+/// enough for eight lanes; otherwise the scalar loop. Both give the same bits.
+#[allow(unsafe_code)]
+fn stage(a: &mut [u32], tw: &[u32], half: usize, mont: &Montgomery) {
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ))]
+    if half >= 8 {
+        // SAFETY: this build enables AVX2 at compile time. The plan's residues are
+        // reduced (checked on entry), and `half` is a multiple of 8 and divides `a.len()`.
+        unsafe {
+            x86::butterfly_stage(a, tw, half, mont.modulus(), mont.q_neg_inv);
+        }
+        return;
+    }
+    let n = a.len();
+    for start in (0..n).step_by(2 * half) {
+        for k in 0..half {
+            let u = a[start + k];
+            let v = mont.mul_mont(a[start + k + half], tw[k]);
+            a[start + k] = mont.add(u, v);
+            a[start + k + half] = mont.sub(u, v);
         }
     }
 }

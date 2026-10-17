@@ -36,8 +36,33 @@
 //! ```
 #![no_std]
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![deny(unsafe_code)]
+#![cfg_attr(
+    not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    )),
+    forbid(unsafe_code)
+)]
+#![cfg_attr(
+    all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ),
+    deny(unsafe_code)
+)]
 #![warn(missing_docs)]
+
+pub mod portable;
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+mod x86;
 
 const LANES: usize = 8;
 
@@ -53,6 +78,76 @@ fn reduce8(acc: [f32; LANES]) -> f32 {
     let lo = (acc[0] + acc[4]) + (acc[1] + acc[5]);
     let hi = (acc[2] + acc[6]) + (acc[3] + acc[7]);
     lo + hi
+}
+
+// Lane kernels for whole 8-element bodies. The AVX2 and portable versions
+// return the same bits, so only the selection below differs by build.
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+#[inline]
+fn ip_lanes(a: &[f32], b: &[f32]) -> [f32; LANES] {
+    // SAFETY: this module exists only when AVX2 is enabled at compile time,
+    // and the caller passes equal-length slices with a multiple-of-8 length.
+    unsafe { x86::inner_product_lanes(a, b) }
+}
+
+#[cfg(not(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+)))]
+#[inline]
+fn ip_lanes(a: &[f32], b: &[f32]) -> [f32; LANES] {
+    portable::inner_product_lanes(a, b)
+}
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+#[inline]
+fn l2_lanes(a: &[f32], b: &[f32]) -> [f32; LANES] {
+    // SAFETY: as for `ip_lanes`.
+    unsafe { x86::l2_squared_lanes(a, b) }
+}
+
+#[cfg(not(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+)))]
+#[inline]
+fn l2_lanes(a: &[f32], b: &[f32]) -> [f32; LANES] {
+    portable::l2_squared_lanes(a, b)
+}
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[allow(unsafe_code)]
+#[inline]
+fn cosine_lanes(a: &[f32], b: &[f32]) -> ([f32; LANES], [f32; LANES], [f32; LANES]) {
+    // SAFETY: as for `ip_lanes`.
+    unsafe { x86::cosine_lanes(a, b) }
+}
+
+#[cfg(not(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+)))]
+#[inline]
+fn cosine_lanes(a: &[f32], b: &[f32]) -> ([f32; LANES], [f32; LANES], [f32; LANES]) {
+    portable::cosine_lanes(a, b)
 }
 
 /// Inner product of two `f32` slices.
@@ -71,17 +166,9 @@ pub fn inner_product_f32(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
         len_mismatch("inner_product_f32", a.len(), b.len());
     }
-    let mut acc = [0.0f32; LANES];
-    let ca = a.chunks_exact(LANES);
-    let cb = b.chunks_exact(LANES);
-    let (ta, tb) = (ca.remainder(), cb.remainder());
-    for (x, y) in ca.zip(cb) {
-        for i in 0..LANES {
-            acc[i] += x[i] * y[i];
-        }
-    }
-    let mut s = reduce8(acc);
-    for (x, y) in ta.iter().zip(tb) {
+    let body = a.len() - a.len() % LANES;
+    let mut s = reduce8(ip_lanes(&a[..body], &b[..body]));
+    for (x, y) in a[body..].iter().zip(&b[body..]) {
         s += x * y;
     }
     s
@@ -103,18 +190,9 @@ pub fn l2_squared_f32(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
         len_mismatch("l2_squared_f32", a.len(), b.len());
     }
-    let mut acc = [0.0f32; LANES];
-    let ca = a.chunks_exact(LANES);
-    let cb = b.chunks_exact(LANES);
-    let (ta, tb) = (ca.remainder(), cb.remainder());
-    for (x, y) in ca.zip(cb) {
-        for i in 0..LANES {
-            let d = x[i] - y[i];
-            acc[i] += d * d;
-        }
-    }
-    let mut s = reduce8(acc);
-    for (x, y) in ta.iter().zip(tb) {
+    let body = a.len() - a.len() % LANES;
+    let mut s = reduce8(l2_lanes(&a[..body], &b[..body]));
+    for (x, y) in a[body..].iter().zip(&b[body..]) {
         let d = x - y;
         s += d * d;
     }
@@ -142,21 +220,10 @@ pub fn cosine_distance_f32(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() {
         len_mismatch("cosine_distance_f32", a.len(), b.len());
     }
-    let mut dot = [0.0f32; LANES];
-    let mut na = [0.0f32; LANES];
-    let mut nb = [0.0f32; LANES];
-    let ca = a.chunks_exact(LANES);
-    let cb = b.chunks_exact(LANES);
-    let (ta, tb) = (ca.remainder(), cb.remainder());
-    for (x, y) in ca.zip(cb) {
-        for i in 0..LANES {
-            dot[i] += x[i] * y[i];
-            na[i] += x[i] * x[i];
-            nb[i] += y[i] * y[i];
-        }
-    }
+    let body = a.len() - a.len() % LANES;
+    let (dot, na, nb) = cosine_lanes(&a[..body], &b[..body]);
     let (mut d, mut sa, mut sb) = (reduce8(dot), reduce8(na), reduce8(nb));
-    for (x, y) in ta.iter().zip(tb) {
+    for (x, y) in a[body..].iter().zip(&b[body..]) {
         d += x * y;
         sa += x * x;
         sb += y * y;

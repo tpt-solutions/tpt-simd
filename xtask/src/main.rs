@@ -93,6 +93,101 @@ const ASM_KERNELS: &[AsmKernel] = &[
         min_vector: 40,
         min_fma: 0,
     },
+    // Explicit AVX2 paths added in the Phase 11 work (2026-10-18). Each floor is about half
+    // the count measured on the AVX2 build. None of these kernels uses FMA (they keep
+    // separate multiply and add for bit-exact results), hence 0.
+    AsmKernel {
+        krate: "tpt-simd-distance",
+        symbol: "tpt_simd_distance::inner_product_f32",
+        min_vector: 30,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-bits",
+        symbol: "tpt_simd_bits::prefix_sum_u32",
+        min_vector: 8,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-pixel",
+        symbol: "tpt_simd_pixel::premultiply_rgba8",
+        min_vector: 80,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-half",
+        symbol: "tpt_simd_half::f32_to_f16_slice",
+        min_vector: 16,
+        min_fma: 0,
+    },
+    // Hash, text and search (their SIMD paths were already in place; the floors are new,
+    // 2026-10-18). Counts measured on the AVX2 build.
+    AsmKernel {
+        krate: "tpt-simd-hash",
+        symbol: "tpt_simd_hash::crc_update",
+        min_vector: 80,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-hash",
+        symbol: "<tpt_simd_hash::Adler32>::update",
+        min_vector: 60,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-text",
+        symbol: "tpt_simd_text::is_valid_utf8",
+        min_vector: 25,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-text",
+        symbol: "tpt_simd_text::hex_avx2::encode",
+        min_vector: 20,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-search",
+        symbol: "tpt_simd_search::find_byte",
+        min_vector: 20,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-search",
+        symbol: "tpt_simd_search::count_byte",
+        min_vector: 80,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-geom",
+        symbol: "tpt_simd_geom::ray_aabb",
+        min_vector: 170,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-dct",
+        symbol: "tpt_simd_dct::matvec",
+        min_vector: 25,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-ntt",
+        symbol: "<tpt_simd_ntt::NttPlan>::transform",
+        min_vector: 15,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-audio",
+        symbol: "tpt_simd_audio::fir",
+        min_vector: 10,
+        min_fma: 0,
+    },
+    AsmKernel {
+        krate: "tpt-simd-audio",
+        symbol: "tpt_simd_audio::peak",
+        min_vector: 25,
+        min_fma: 0,
+    },
 ];
 
 fn main() -> ExitCode {
@@ -346,9 +441,13 @@ fn count_asm(text: &str) -> AsmCounts {
     counts
 }
 
+/// RUSTFLAGS for the asm check. `x86-64-v3` selects the AVX2+FMA paths. `pclmulqdq` is added
+/// separately because v3 does not include it, and the CRC kernel needs it.
+const ASM_RUSTFLAGS: &str = "-C target-cpu=x86-64-v3 -C target-feature=+pclmulqdq";
+
 /// Check the hot kernels' SIMD instruction counts with `cargo asm` (needs cargo-show-asm).
 ///
-/// Built with `-C target-cpu=x86-64-v3`, so the AVX2+FMA paths are selected. On other hosts the
+/// Built with `ASM_RUSTFLAGS`, so the AVX2+FMA and PCLMULQDQ paths are selected. On other hosts the
 /// check is skipped, because the symbols and the codegen are different.
 fn asm() -> Result<(), String> {
     if !cfg!(target_arch = "x86_64") {
@@ -377,7 +476,7 @@ fn asm() -> Result<(), String> {
                 "--release",
                 kernel.symbol,
             ])
-            .env("RUSTFLAGS", "-C target-cpu=x86-64-v3")
+            .env("RUSTFLAGS", ASM_RUSTFLAGS)
             .output()
             .map_err(|e| format!("could not run cargo asm: {e}"))?;
         let text = String::from_utf8_lossy(&output.stdout);

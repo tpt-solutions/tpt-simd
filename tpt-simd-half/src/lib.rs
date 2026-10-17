@@ -27,10 +27,25 @@
 //! assert_eq!(dst[2].to_f32(), -2.0);
 //! ```
 #![no_std]
+// `deny` rather than `forbid`: the F16C module carries `#[allow(unsafe_code)]`,
+// and that is not allowed under a `forbid`.
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
+#[cfg(feature = "runtime-dispatch")]
+extern crate std;
 
 pub use half::{bf16, f16};
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    any(
+        all(target_feature = "f16c", target_feature = "avx"),
+        feature = "runtime-dispatch"
+    )
+))]
+#[allow(unsafe_code)]
+mod x86;
 
 /// Block size shared by the Q8_0 and Q4_0 layouts.
 pub const BLOCK: usize = 32;
@@ -41,6 +56,90 @@ fn check_len(func: &str, a: usize, b: usize) {
     }
 }
 
+// The F16C kernels handle whole groups of eight and return how many elements
+// they did. Three builds: F16C enabled at compile time; F16C detected at run
+// time (`runtime-dispatch`); otherwise none, and the `half` loop does it all.
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "f16c",
+    target_feature = "avx"
+))]
+#[allow(unsafe_code)]
+fn f32_to_f16_body(src: &[f32], dst: &mut [f16]) -> usize {
+    // SAFETY: this build enables F16C and AVX at compile time; lengths checked by the caller.
+    unsafe { x86::f32_to_f16(src, dst) }
+}
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    not(all(target_feature = "f16c", target_feature = "avx")),
+    feature = "runtime-dispatch"
+))]
+#[allow(unsafe_code)]
+fn f32_to_f16_body(src: &[f32], dst: &mut [f16]) -> usize {
+    if std::is_x86_feature_detected!("f16c") && std::is_x86_feature_detected!("avx") {
+        // SAFETY: the CPU features were just detected; lengths checked by the caller.
+        unsafe { x86::f32_to_f16(src, dst) }
+    } else {
+        0
+    }
+}
+
+#[cfg(not(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    any(
+        all(target_feature = "f16c", target_feature = "avx"),
+        feature = "runtime-dispatch"
+    )
+)))]
+fn f32_to_f16_body(_src: &[f32], _dst: &mut [f16]) -> usize {
+    0
+}
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "f16c",
+    target_feature = "avx"
+))]
+#[allow(unsafe_code)]
+fn f16_to_f32_body(src: &[f16], dst: &mut [f32]) -> usize {
+    // SAFETY: as for `f32_to_f16_body`.
+    unsafe { x86::f16_to_f32(src, dst) }
+}
+
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    not(all(target_feature = "f16c", target_feature = "avx")),
+    feature = "runtime-dispatch"
+))]
+#[allow(unsafe_code)]
+fn f16_to_f32_body(src: &[f16], dst: &mut [f32]) -> usize {
+    if std::is_x86_feature_detected!("f16c") && std::is_x86_feature_detected!("avx") {
+        // SAFETY: the CPU features were just detected; lengths checked by the caller.
+        unsafe { x86::f16_to_f32(src, dst) }
+    } else {
+        0
+    }
+}
+
+#[cfg(not(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    any(
+        all(target_feature = "f16c", target_feature = "avx"),
+        feature = "runtime-dispatch"
+    )
+)))]
+fn f16_to_f32_body(_src: &[f16], _dst: &mut [f32]) -> usize {
+    0
+}
+
 /// Converts `src` to `f16` (round to nearest even) into `dst`.
 ///
 /// # Panics
@@ -48,7 +147,8 @@ fn check_len(func: &str, a: usize, b: usize) {
 /// Panics if the slices have different lengths.
 pub fn f32_to_f16_slice(src: &[f32], dst: &mut [f16]) {
     check_len("f32_to_f16_slice", src.len(), dst.len());
-    for (d, &s) in dst.iter_mut().zip(src) {
+    let done = f32_to_f16_body(src, dst);
+    for (d, &s) in dst[done..].iter_mut().zip(&src[done..]) {
         *d = f16::from_f32(s);
     }
 }
@@ -60,7 +160,8 @@ pub fn f32_to_f16_slice(src: &[f32], dst: &mut [f16]) {
 /// Panics if the slices have different lengths.
 pub fn f16_to_f32_slice(src: &[f16], dst: &mut [f32]) {
     check_len("f16_to_f32_slice", src.len(), dst.len());
-    for (d, s) in dst.iter_mut().zip(src) {
+    let done = f16_to_f32_body(src, dst);
+    for (d, s) in dst[done..].iter_mut().zip(&src[done..]) {
         *d = s.to_f32();
     }
 }

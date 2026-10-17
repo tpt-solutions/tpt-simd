@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- AVX2 forward transforms for `Dct::forward` and `Mdct::forward` on x86_64 builds with `avx2` enabled. Eight outputs per accumulator, summed in the same order as the scalar code, so results are bit-identical (checked against the scalar sums, including the sign of zero). The `Dct` and `Mdct` structs keep a transposed copy of the cosine table for this path, so their memory doubles when AVX2 is compiled in. Criterion (`dct2_forward_256`): 21.1 → 5.6 µs. Harness, forward: DCT 943 → 247 ns at N = 64; MDCT 2.2 → 0.46 µs at N = 64 and 49 → 8.8 µs at N = 256.
+- `scalar-only` feature forces the scalar sums. The umbrella crate forwards it.
+
+### Changed
+
+- The crate root is `deny(unsafe_code)`; `unsafe` is confined to the `x86` module. `inverse` is unchanged.
+
 ## [0.1.1] - 2026-10-17
 
 ### Added

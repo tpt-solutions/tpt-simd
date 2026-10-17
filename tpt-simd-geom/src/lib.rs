@@ -41,6 +41,10 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+#[allow(unsafe_code)]
+mod x86;
+
 #[cold]
 #[inline(never)]
 fn len_mismatch(func: &str, a: usize, b: usize) -> ! {
@@ -203,7 +207,21 @@ pub fn ray_aabb(
     t_max: f32,
     out_t: &mut [f32],
 ) {
-    check_out("ray_aabb", boxes.len(), out_t.len());
+    let n = boxes.len();
+    check_out("ray_aabb", n, out_t.len());
+    // The corner slices are public fields, so check them before the zipped loop
+    // below. Short slices would otherwise be silently truncated.
+    let lens = [
+        boxes.min.x.len(),
+        boxes.min.y.len(),
+        boxes.min.z.len(),
+        boxes.max.x.len(),
+        boxes.max.y.len(),
+        boxes.max.z.len(),
+    ];
+    if lens.iter().any(|&l| l < n) {
+        panic!("ray_aabb: a box coordinate slice is shorter than the box count {n}");
+    }
     let mut inv = [0.0f32; 3];
     let mut parallel = [false; 3];
     for a in 0..3 {
@@ -213,36 +231,89 @@ pub fn ray_aabb(
             inv[a] = 1.0 / dir[a];
         }
     }
+    // Whole groups of eight go to the AVX2 kernel where it is compiled in.
     let b = boxes;
-    for (i, o) in out_t.iter_mut().enumerate() {
-        let mins = [b.min.x[i], b.min.y[i], b.min.z[i]];
-        let maxs = [b.max.x[i], b.max.y[i], b.max.z[i]];
-        let mut tnear = f32::NEG_INFINITY;
-        let mut tfar = f32::INFINITY;
-        let mut hit = true;
-        for a in 0..3 {
-            if parallel[a] {
-                if origin[a] < mins[a] || origin[a] > maxs[a] {
-                    hit = false;
-                    break;
-                }
-            } else {
-                let t1 = (mins[a] - origin[a]) * inv[a];
-                let t2 = (maxs[a] - origin[a]) * inv[a];
-                let (lo, hi) = if t1 < t2 { (t1, t2) } else { (t2, t1) };
-                if lo > tnear {
-                    tnear = lo;
-                }
-                if hi < tfar {
-                    tfar = hi;
-                }
+    let done = ray_aabb_body(&b, origin, inv, parallel, t_max, out_t);
+    // The rest, as zipped slices, so the loop has no per-element bounds checks.
+    for ((((((o, &x0), &y0), &z0), &x1), &y1), &z1) in out_t[done..]
+        .iter_mut()
+        .zip(&b.min.x[done..])
+        .zip(&b.min.y[done..])
+        .zip(&b.min.z[done..])
+        .zip(&b.max.x[done..])
+        .zip(&b.max.y[done..])
+        .zip(&b.max.z[done..])
+    {
+        *o = ray_one([x0, y0, z0], [x1, y1, z1], origin, inv, parallel, t_max);
+    }
+}
+
+/// Runs the AVX2 slab test on whole groups of eight boxes, if AVX2 is compiled in.
+/// Returns how many boxes it handled.
+#[cfg(all(target_arch = "x86_64", target_feature = "avx2"))]
+#[allow(unsafe_code)]
+fn ray_aabb_body(
+    b: &BoxesSoa<'_>,
+    origin: [f32; 3],
+    inv: [f32; 3],
+    parallel: [bool; 3],
+    t_max: f32,
+    out_t: &mut [f32],
+) -> usize {
+    let mins = [b.min.x, b.min.y, b.min.z];
+    let maxs = [b.max.x, b.max.y, b.max.z];
+    // SAFETY: this build enables AVX2 at compile time; `ray_aabb` checked that every
+    // box slice holds at least `out_t.len()` values.
+    unsafe { x86::ray_aabb(mins, maxs, origin, inv, parallel, t_max, out_t) }
+}
+
+#[cfg(not(all(target_arch = "x86_64", target_feature = "avx2")))]
+fn ray_aabb_body(
+    _b: &BoxesSoa<'_>,
+    _origin: [f32; 3],
+    _inv: [f32; 3],
+    _parallel: [bool; 3],
+    _t_max: f32,
+    _out_t: &mut [f32],
+) -> usize {
+    0
+}
+
+/// Slab test of one box. This is the reference the tests check against.
+#[inline]
+fn ray_one(
+    mins: [f32; 3],
+    maxs: [f32; 3],
+    origin: [f32; 3],
+    inv: [f32; 3],
+    parallel: [bool; 3],
+    t_max: f32,
+) -> f32 {
+    let mut tnear = f32::NEG_INFINITY;
+    let mut tfar = f32::INFINITY;
+    let mut hit = true;
+    for a in 0..3 {
+        if parallel[a] {
+            if origin[a] < mins[a] || origin[a] > maxs[a] {
+                hit = false;
+                break;
+            }
+        } else {
+            let t1 = (mins[a] - origin[a]) * inv[a];
+            let t2 = (maxs[a] - origin[a]) * inv[a];
+            let (lo, hi) = if t1 < t2 { (t1, t2) } else { (t2, t1) };
+            if lo > tnear {
+                tnear = lo;
+            }
+            if hi < tfar {
+                tfar = hi;
             }
         }
-        *o = if hit && tnear <= tfar && tfar >= 0.0 && tnear <= t_max {
-            if tnear < 0.0 { 0.0 } else { tnear }
-        } else {
-            f32::INFINITY
-        };
+    }
+    if hit && tnear <= tfar && tfar >= 0.0 && tnear <= t_max {
+        if tnear < 0.0 { 0.0 } else { tnear }
+    } else {
+        f32::INFINITY
     }
 }
 

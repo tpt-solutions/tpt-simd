@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- SSE2 `premultiply_rgba8`: two pixels per vector, bit-identical to the scalar formula (checked exhaustively). Criterion, 1 MiB: 289 → 165 µs in the default build; in the AVX2 build the scalar baseline is autovectorised and the gap is smaller (167 → 144 µs). SSE2 is part of the x86_64 baseline, so it is used on every x86_64 build unless `scalar-only` is set.
+- `scalar-only` feature forces the scalar code. The umbrella crate forwards it.
+
 ## [0.1.1] - 2026-10-17
 
 - No code changes; version bumped with the workspace.

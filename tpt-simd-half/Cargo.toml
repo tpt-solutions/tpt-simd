@@ -11,6 +11,16 @@ readme = "README.md"
 keywords = ["simd", "f16", "bf16", "quantization", "half"]
 categories = ["encoding", "no-std", "mathematics"]
 
+[features]
+default = []
+std = []
+# Detect F16C + AVX at run time (x86_64) and use the hardware conversions for
+# the f16/f32 slice functions. Without it, and without `-C target-cpu` enabling
+# F16C, the `half` software conversions are used.
+runtime-dispatch = ["std"]
+# Forces the software conversions even when F16C is available.
+scalar-only = []
+
 [dependencies]
 half = { version = "2.7.1", default-features = false }
 libm.workspace = true

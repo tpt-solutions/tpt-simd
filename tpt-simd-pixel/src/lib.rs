@@ -22,8 +22,14 @@
 //! assert_eq!(rgba, [10, 20, 30, 255, 40, 50, 60, 255]);
 //! ```
 #![no_std]
+// `deny` rather than `forbid`: the entry points carry `#[allow(unsafe_code)]`
+// for the SSE2 kernels, and builds without them contain no `unsafe` at all.
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
+
+#[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64"))]
+#[allow(unsafe_code)]
+mod x86;
 
 fn check(func: &str, a: usize, b: usize) {
     if a != b {
@@ -142,9 +148,16 @@ pub fn unit_f32_to_u8(src: &[f32], dst: &mut [u8]) {
 /// # Panics
 ///
 /// Panics unless `buf.len()` is a multiple of 4.
+#[allow(unsafe_code)]
 pub fn premultiply_rgba8(buf: &mut [u8]) {
     check("premultiply_rgba8 (multiple of 4)", buf.len() % 4, 0);
-    for px in buf.chunks_exact_mut(4) {
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64"))]
+    // SAFETY: SSE2 is part of the x86_64 baseline; the kernel stays in bounds.
+    let done = unsafe { x86::premultiply_rgba8(buf) };
+    #[cfg(any(feature = "scalar-only", not(target_arch = "x86_64")))]
+    let done = 0;
+    // The SIMD part ends on a pixel boundary, so the tail is whole pixels.
+    for px in buf[done..].chunks_exact_mut(4) {
         let a = u32::from(px[3]);
         for c in &mut px[..3] {
             // Exact integer rounding: t = c*a + 128, then (t + (t >> 8)) >> 8.

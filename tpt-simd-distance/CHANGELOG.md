@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- AVX2 lane kernels for `inner_product_f32`, `l2_squared_f32` and `cosine_distance_f32` (and so `top_k_l2_f32`) on x86_64 builds with `avx2` enabled. Bit-identical to the portable path: same lane mapping, separate multiply and add, no FMA. Measured on one host, 1024 `f32`: inner product 116 ns to 44 ns, squared L2 145 ns to 48 ns.
+- `portable` module with the reference lane kernels.
+- `scalar-only` feature forces the portable path. The umbrella crate forwards it.
+
+### Changed
+
+- The crate root is `forbid(unsafe_code)` unless the AVX2 path is compiled. `unsafe` is confined to the `x86` module, which is the only place that allows it.
+
 ## [0.1.1] - 2026-10-17
 
 - No code changes; version bumped with the workspace.

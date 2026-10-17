@@ -11,6 +11,11 @@ readme = "README.md"
 keywords = ["simd", "pixel", "image", "color", "hsv"]
 categories = ["multimedia::images", "graphics", "no-std"]
 
+[features]
+default = []
+# Forces the scalar code even on x86_64, where the SSE2 kernels are otherwise used.
+scalar-only = []
+
 [dependencies]
 
 [lints]
