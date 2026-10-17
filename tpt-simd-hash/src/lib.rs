@@ -82,7 +82,8 @@ fn crc_update(state: u32, data: &[u8]) -> u32 {
             return !pclmul::update(!state, data);
         }
     }
-    #[cfg(target_arch = "aarch64")]
+    // NEON is absent on softfloat aarch64 targets, where the `aes` feature cannot be enabled.
+    #[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
     {
         if neon::available() {
             return !neon::update(!state, data);
@@ -91,7 +92,7 @@ fn crc_update(state: u32, data: &[u8]) -> u32 {
     crc_update_scalar(state, data)
 }
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", target_feature = "neon"))]
 mod neon;
 
 /// Portable slicing-by-8 update of the raw CRC state over `data`.

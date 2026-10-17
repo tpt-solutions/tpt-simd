@@ -243,13 +243,36 @@ macro_rules! impl_float {
             fn lane_neg(self) -> Self {
                 -self
             }
+            // Same results as `libm::$fmin` / `$fmax`: a NaN operand loses to a
+            // non-NaN one, and on a signed-zero tie min returns its second
+            // operand while max returns its first. Plain comparisons, so the
+            // lane loop needs no per-lane call and no `unsafe`. NaN payloads are
+            // unspecified and are not matched.
             #[inline(always)]
             fn lane_min(self, r: Self) -> Self {
-                libm::$fmin(self, r)
+                if self.is_nan() {
+                    r
+                } else if r.is_nan() {
+                    self
+                } else if self < r {
+                    self
+                } else {
+                    r
+                }
             }
             #[inline(always)]
             fn lane_max(self, r: Self) -> Self {
-                libm::$fmax(self, r)
+                if self.is_nan() {
+                    r
+                } else if r.is_nan() {
+                    self
+                } else if self > r {
+                    self
+                } else if r > self {
+                    r
+                } else {
+                    self
+                }
             }
             #[inline(always)]
             fn lane_abs(self) -> Self {
@@ -366,3 +389,65 @@ macro_rules! cast_all {
     )*};
 }
 cast_all!(i8, i16, i32, i64, u8, u16, u32, u64, f32, f64);
+
+#[cfg(test)]
+mod tests {
+    use super::SimdElement;
+
+    /// Bitwise agreement with the libm functions the comparison-based min/max
+    /// replaced. A NaN result only has to be NaN: payloads are unspecified.
+    #[test]
+    fn float_min_max_match_libm() {
+        let specials32 = [
+            0.0f32,
+            -0.0,
+            1.0,
+            -1.0,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::NAN,
+            -f32::NAN,
+            f32::MIN_POSITIVE / 2.0,
+            -f32::MIN_POSITIVE / 2.0,
+            f32::MAX,
+            f32::MIN,
+        ];
+        for &x in &specials32 {
+            for &y in &specials32 {
+                let (mn, mx) = (SimdElement::lane_min(x, y), SimdElement::lane_max(x, y));
+                let (wmn, wmx) = (libm::fminf(x, y), libm::fmaxf(x, y));
+                assert!(
+                    same_f32(mn, wmn),
+                    "min({x:?}, {y:?}) = {mn:?}, libm {wmn:?}"
+                );
+                assert!(
+                    same_f32(mx, wmx),
+                    "max({x:?}, {y:?}) = {mx:?}, libm {wmx:?}"
+                );
+            }
+        }
+        let specials64 = [0.0f64, -0.0, 2.5, -2.5, f64::INFINITY, f64::NAN, f64::MIN];
+        for &x in &specials64 {
+            for &y in &specials64 {
+                let (mn, mx) = (SimdElement::lane_min(x, y), SimdElement::lane_max(x, y));
+                let (wmn, wmx) = (libm::fmin(x, y), libm::fmax(x, y));
+                assert!(
+                    same_f64(mn, wmn),
+                    "min({x:?}, {y:?}) = {mn:?}, libm {wmn:?}"
+                );
+                assert!(
+                    same_f64(mx, wmx),
+                    "max({x:?}, {y:?}) = {mx:?}, libm {wmx:?}"
+                );
+            }
+        }
+    }
+
+    fn same_f32(a: f32, b: f32) -> bool {
+        (a.is_nan() && b.is_nan()) || a.to_bits() == b.to_bits()
+    }
+
+    fn same_f64(a: f64, b: f64) -> bool {
+        (a.is_nan() && b.is_nan()) || a.to_bits() == b.to_bits()
+    }
+}

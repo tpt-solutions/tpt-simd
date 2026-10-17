@@ -81,11 +81,7 @@ pub fn select_i32(v: Simd<i32, 8>, indices: Simd<i32, 8>) -> Simd<i32, 8> {
             target_feature = "avx2",
             not(test)
         ),
-        all(
-            not(feature = "scalar-only"),
-            target_arch = "aarch64",
-            not(test)
-        )
+        all(not(feature = "scalar-only"), target_arch = "aarch64", not(test))
     ),
     allow(dead_code)
 )]
@@ -155,11 +151,7 @@ pub fn select_lanes_f32(v: Simd<f32, 8>, indices: Simd<i32, 8>) -> Simd<f32, 8> 
             target_feature = "avx2",
             not(test)
         ),
-        all(
-            not(feature = "scalar-only"),
-            target_arch = "aarch64",
-            not(test)
-        )
+        all(not(feature = "scalar-only"), target_arch = "aarch64", not(test))
     ),
     allow(dead_code)
 )]

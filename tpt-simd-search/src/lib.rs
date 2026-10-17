@@ -292,11 +292,7 @@ mod avx2 {
 /// `(x - LO) & !x & HI` is non-zero, where `x` is the word XOR the needle
 /// broadcast. The byte position is then found with a short scan.
 #[cfg_attr(
-    any(
-        feature = "memchr",
-        target_arch = "x86_64",
-        target_arch = "aarch64"
-    ),
+    any(feature = "memchr", target_arch = "x86_64", target_arch = "aarch64"),
     allow(dead_code)
 )]
 fn find_byte_swar(haystack: &[u8], needle: u8) -> Option<usize> {

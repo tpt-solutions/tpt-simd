@@ -189,7 +189,11 @@ mod lane {
 }
 
 #[cfg(not(any(
-    all(not(feature = "scalar-only"), target_arch = "x86_64", target_feature = "sse2"),
+    all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "sse2"
+    ),
     all(not(feature = "scalar-only"), target_arch = "aarch64")
 )))]
 mod lane {

@@ -20,11 +20,10 @@ result per crate. `cargo-show-asm` is not a gate here; it is tracked in
 Gate 1 was spot-checked only for the smallest crates (see "Not verified" below), so a crate marked
 done here has passed the sweep, not a full edge-case review.
 
-Result against the definition: 22 crates have both a proptest and a bench (gates 2 and 3):
-complex, fixed, horizontal, dot, butterfly, saturate, permute, gather, scatter, rounding, shift,
-compare, blend, convolve, interpolate, window, blas, math, rng, sparse, reduce. Those are done
-for the gates the table records. Not done: aligned, mul, select and matrix (no bench), vector
-(no bench) and core (no proptest).
+Result against the definition (refreshed 2026-10-16): every kernel crate has both a proptest and
+a bench (gates 2 and 3). The earlier "no bench" and "no proptest" rows were stale: aligned, mul,
+select, matrix and vector have benches under `benches/`, and core has a proptest integration test.
+Core has no kernels, so its bench gate does not apply.
 
 ## Commands run (all passed)
 
@@ -47,8 +46,8 @@ Legend: y = present / passing, n = missing, n/a = not applicable. Columns for sc
 
 | crate | scalar ref | SIMD impl | unit tests | proptest | docs (missing_docs, # Safety) | bench | no_std | clippy/fmt | doc | license | show-asm |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| core | y | y (arch + portable) | y (4) | n (none) | y | n (none) | y | y | y | y | not done |
-| vector | y | y | y (12) | y | y | n (none) | y | y | y | y | not done |
+| core | y | y (arch + portable) | y (4) | y (tests/proptest_core.rs) | y | n/a (no kernels) | y | y | y | y | not done |
+| vector | y | y | y (12) | y | y | y (vector.rs) | y | y | y | y | not done |
 | complex | y | y | y | y | y | y | y | y | y | y | not done |
 | fixed | y | y | y | y | y | y | y | y | y | y | not done |
 | horizontal | y | y | y | y | y | y | y | y | y | y | not done |
@@ -58,16 +57,16 @@ Legend: y = present / passing, n = missing, n/a = not applicable. Columns for sc
 | permute | y | y | y | y | y | y | y | y | y | y | not done |
 | gather | y | y | y | y | y | y | y | y | y | y | not done |
 | scatter | y | y | y | y | y | y | y | y | y | y | not done |
-| aligned | n/a (container) | n/a | y (12) | y | y | n (none) | y | y | y | y | not done |
-| mul | y | y | y (4, incl. specials) | y | y | n (none) | y | y | y | y | not done |
+| aligned | n/a (container) | n/a | y (12) | y | y | y (aligned.rs) | y | y | y | y | not done |
+| mul | y | y | y (4, incl. specials) | y | y | y (mul.rs) | y | y | y | y | not done |
 | rounding | y | y | y | y | y | y | y | y | y | y | not done |
 | shift | y | y | y (4) | y | y | y | y | y | y | y | not done |
 | compare | y | y | y | y | y | y | y | y | y | y | not done |
 | blend | y | y | y | y | y | y | y | y | y | y | not done |
-| select | y | y | y (4) | y | y | n (none) | y | y | y | y | not done |
+| select | y | y | y (4) | y | y | y (select.rs) | y | y | y | y | not done |
 | convolve | y | y | y | y | y | y | y | y | y | y | not done |
 | interpolate | y | y | y | y | y | y | y | y | y | y | not done |
-| matrix | y | y | y (6) | y | y | n (none) | y | y | y | y | not done |
+| matrix | y | y | y (6) | y | y | y (matrix.rs) | y | y | y | y | not done |
 | window | y | y | y | y | y | y | y | y | y | y | not done |
 | blas | y | y (x86 backend) | y | y | y | y | y | y | y | y | not done |
 | math | y | y | y | y | y | y | y | y | y | y | not done |

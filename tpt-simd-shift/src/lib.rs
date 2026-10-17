@@ -293,7 +293,10 @@ pub fn shift_right_arithmetic_var_i32(a: Simd<i32, 8>, amounts: Simd<u32, 8>) ->
     }
     #[cfg(all(not(feature = "scalar-only"), target_arch = "aarch64"))]
     {
-        Simd::from_array(neon::shift_right_arithmetic(a.to_array(), amounts.to_array()))
+        Simd::from_array(neon::shift_right_arithmetic(
+            a.to_array(),
+            amounts.to_array(),
+        ))
     }
     #[cfg(not(any(
         all(
@@ -347,13 +350,143 @@ pub fn rotate_left_var_i32(a: Simd<i32, 8>, amounts: Simd<u32, 8>) -> Simd<i32, 
 /// ```
 #[inline]
 pub fn shift_with_rounding_var_i32(a: Simd<i32, 8>, amounts: Simd<u32, 8>) -> Simd<i32, 8> {
+    #[cfg(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ))]
+    {
+        shift_with_rounding_var_avx2(a, amounts)
+    }
+    #[cfg(not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    )))]
+    {
+        shift_with_rounding_var_i32_portable(a, amounts)
+    }
+}
+
+/// Portable reference for [`shift_with_rounding_var_i32`]. Compiled out when
+/// the AVX2 path is used, except for the equivalence test.
+#[cfg(any(
+    test,
+    not(all(
+        not(feature = "scalar-only"),
+        target_arch = "x86_64",
+        target_feature = "avx2"
+    ))
+))]
+#[inline]
+fn shift_with_rounding_var_i32_portable(a: Simd<i32, 8>, amounts: Simd<u32, 8>) -> Simd<i32, 8> {
     Simd::from_fn(|i| shr_round(a[i], amounts[i]))
+}
+
+/// AVX2 form of `shr_round`. For `n` in `1..=31`, `(x + 2^(n-1)) >> n` equals
+/// `(x >> n) + bit(n-1 of x)`: the low `n` bits of `x` are at least `2^(n-1)`
+/// exactly when bit `n-1` is set. Both shifts are arithmetic, so the sum
+/// cannot overflow. Lanes with `n == 0` keep `x` (no rounding bit); lanes with
+/// `n >= 32` give 0.
+#[cfg(all(
+    not(feature = "scalar-only"),
+    target_arch = "x86_64",
+    target_feature = "avx2"
+))]
+#[inline]
+fn shift_with_rounding_var_avx2(a: Simd<i32, 8>, amounts: Simd<u32, 8>) -> Simd<i32, 8> {
+    use core::arch::x86_64::*;
+    let (av, nv) = (a.to_array(), amounts.to_array());
+    let mut out = [0i32; 8];
+    // SAFETY: only compiled when `avx2` is enabled at compile time. Pointers
+    // come from 32-byte arrays and are accessed unaligned.
+    unsafe {
+        let x = _mm256_loadu_si256(av.as_ptr().cast());
+        let n = _mm256_loadu_si256(nv.as_ptr().cast());
+        let one = _mm256_set1_epi32(1);
+        let sign = _mm256_set1_epi32(i32::MIN);
+        // Unsigned comparisons via the sign-flip trick.
+        // valid_n: n < 32 (includes n == 0, where the result is x).
+        let valid_n =
+            _mm256_cmpgt_epi32(_mm256_set1_epi32(32 ^ i32::MIN), _mm256_xor_si256(n, sign));
+        // valid_b: 1 <= n <= 31, i.e. n - 1 < 31 (wrapping) for the rounding bit.
+        let nm1 = _mm256_sub_epi32(n, one);
+        let valid_b = _mm256_cmpgt_epi32(
+            _mm256_set1_epi32(31 ^ i32::MIN),
+            _mm256_xor_si256(nm1, sign),
+        );
+        let bit = _mm256_and_si256(_mm256_srav_epi32(x, nm1), one);
+        let bit = _mm256_and_si256(bit, valid_b);
+        let shifted = _mm256_and_si256(_mm256_srav_epi32(x, n), valid_n);
+        _mm256_storeu_si256(out.as_mut_ptr().cast(), _mm256_add_epi32(shifted, bit));
+    }
+    Simd::from_array(out)
 }
 
 #[cfg(test)]
 mod tests {
     extern crate std;
     use super::*;
+
+    #[test]
+    fn shift_with_rounding_var_matches_portable() {
+        let values = [
+            0,
+            1,
+            -1,
+            2,
+            -2,
+            3,
+            -3,
+            7,
+            -7,
+            i32::MAX,
+            i32::MIN,
+            i32::MIN + 1,
+            0x4000_0000,
+            -0x4000_0001,
+        ];
+        let amounts = [
+            0u32,
+            1,
+            2,
+            3,
+            15,
+            16,
+            30,
+            31,
+            32,
+            33,
+            63,
+            64,
+            1000,
+            u32::MAX,
+            u32::MAX - 1,
+            0x8000_0000,
+            0x8000_001F,
+        ];
+        for &x in &values {
+            for &n in &amounts {
+                let a = Simd::<i32, 8>::splat(x);
+                let mut lanes = [0u32; 8];
+                for (k, l) in lanes.iter_mut().enumerate() {
+                    *l = amounts[(k + n as usize) % amounts.len()];
+                }
+                let v = Simd::<u32, 8>::from_array(lanes);
+                assert_eq!(
+                    shift_with_rounding_var_i32(a, v),
+                    shift_with_rounding_var_i32_portable(a, v),
+                    "x = {x}, amounts = {lanes:?}"
+                );
+                let s = Simd::<u32, 8>::splat(n);
+                assert_eq!(
+                    shift_with_rounding_var_i32(a, s),
+                    shift_with_rounding_var_i32_portable(a, s),
+                    "x = {x}, n = {n}"
+                );
+            }
+        }
+    }
     use proptest::prelude::*;
     use tpt_simd_testutil::i32_edgy;
 

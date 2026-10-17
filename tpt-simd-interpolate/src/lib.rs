@@ -255,6 +255,10 @@ pub fn interpolate_lanczos_scalar_f32(samples: &[f32], t: f32, a: usize) -> f32 
 /// results agree with [`interpolate_lanczos_scalar_f32`] to about `1e-5`
 /// relative to the sample magnitude.
 ///
+/// Non-finite samples or `t` give a non-finite result on both paths. NaN and
+/// infinity may be swapped between the two, which the crate treats as
+/// unspecified (ADR 0006).
+///
 /// # Panics
 /// If `a == 0` or `samples.len() != 2 * a`.
 ///

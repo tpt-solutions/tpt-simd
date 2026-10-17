@@ -85,9 +85,9 @@
 
 pub mod math;
 mod philox;
-mod xoshiro;
 #[cfg(feature = "rand_core")]
 mod rand_core_impl;
+mod xoshiro;
 
 pub use philox::{Philox4x32X8, philox4x32_10};
 pub use xoshiro::{SplitMix64, Xoshiro256pp, Xoshiro256ppX8};

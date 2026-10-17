@@ -562,13 +562,23 @@ cmp_family!(
 /// ```
 #[inline]
 pub fn cmp_unord_f32(a: Simd<f32, 8>, b: Simd<f32, 8>) -> SimdMask<f32, 8> {
-    #[cfg(any(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "avx2"), target_arch = "aarch64"))]
+    #[cfg(any(
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "avx2"
+        ),
+        target_arch = "aarch64"
+    ))]
     {
         x86::cmp_unord_f32(a, b)
     }
-    #[cfg(not(all(
-        any(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "avx2"), target_arch = "aarch64")
-    )))]
+    #[cfg(not(all(any(
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "avx2"
+        ),
+        target_arch = "aarch64"
+    ))))]
     {
         a.is_nan() | b.is_nan()
     }
@@ -582,7 +592,13 @@ pub fn cmp_unord_f32(a: Simd<f32, 8>, b: Simd<f32, 8>) -> SimdMask<f32, 8> {
 /// ```
 #[inline]
 pub fn mask_any<T: SimdElement, const N: usize>(m: SimdMask<T, N>) -> bool {
-    #[cfg(any(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "avx2"), target_arch = "aarch64"))]
+    #[cfg(any(
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "avx2"
+        ),
+        target_arch = "aarch64"
+    ))]
     if N <= 64 {
         return x86::bitmask(&m.to_raw()) != 0;
     }
@@ -597,7 +613,13 @@ pub fn mask_any<T: SimdElement, const N: usize>(m: SimdMask<T, N>) -> bool {
 /// ```
 #[inline]
 pub fn mask_all<T: SimdElement, const N: usize>(m: SimdMask<T, N>) -> bool {
-    #[cfg(any(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "avx2"), target_arch = "aarch64"))]
+    #[cfg(any(
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "avx2"
+        ),
+        target_arch = "aarch64"
+    ))]
     if N <= 64 {
         return x86::bitmask(&m.to_raw()).count_ones() as usize == N;
     }
@@ -612,7 +634,13 @@ pub fn mask_all<T: SimdElement, const N: usize>(m: SimdMask<T, N>) -> bool {
 /// ```
 #[inline]
 pub fn mask_count<T: SimdElement, const N: usize>(m: SimdMask<T, N>) -> usize {
-    #[cfg(any(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "avx2"), target_arch = "aarch64"))]
+    #[cfg(any(
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "avx2"
+        ),
+        target_arch = "aarch64"
+    ))]
     if N <= 64 {
         return x86::bitmask(&m.to_raw()).count_ones() as usize;
     }
@@ -632,13 +660,23 @@ pub fn mask_count<T: SimdElement, const N: usize>(m: SimdMask<T, N>) -> usize {
 /// ```
 #[inline]
 pub fn mask_to_bitmask<T: SimdElement, const N: usize>(m: SimdMask<T, N>) -> u64 {
-    #[cfg(any(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "avx2"), target_arch = "aarch64"))]
+    #[cfg(any(
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "avx2"
+        ),
+        target_arch = "aarch64"
+    ))]
     {
         x86::bitmask(&m.to_raw())
     }
-    #[cfg(not(all(
-        any(all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "avx2"), target_arch = "aarch64")
-    )))]
+    #[cfg(not(all(any(
+        all(
+            any(target_arch = "x86", target_arch = "x86_64"),
+            target_feature = "avx2"
+        ),
+        target_arch = "aarch64"
+    ))))]
     {
         m.to_bitmask()
     }

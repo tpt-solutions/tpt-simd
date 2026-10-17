@@ -5,6 +5,10 @@
 //! slicing-by-8 code runs.
 
 #![allow(unsafe_code)]
+// The `aes` target feature is enabled per function on top of the `neon` feature. This module is
+// compiled only when `neon` is enabled (see `mod neon` in lib.rs), so the softfloat-ABI case the
+// lint guards against (rust-lang/rust#134375) cannot occur here.
+#![allow(aarch64_softfloat_neon)]
 
 use super::crc_update_scalar;
 use core::arch::aarch64::vmull_p64;

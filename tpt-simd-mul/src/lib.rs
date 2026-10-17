@@ -188,21 +188,14 @@ fn mul_add_sub_f32_avx2(a: Simd<f32, 8>, b: Simd<f32, 8>, c: Simd<f32, 8>) -> Si
     // at compile time, so the intrinsics are available. All pointers come
     // from `[f32; 8]` arrays (32 bytes) and the loads/stores are unaligned.
     unsafe {
-        // Negating `c` on odd lanes (xor of the sign bit) is exact, and
-        // `fma(a, b, -c)` equals `a*b - c` with a single rounding, matching
-        // the portable `mul_add(a, b, c * -1.0)`.
-        let flip = _mm256_castsi256_ps(_mm256_setr_epi32(
-            0,
-            i32::MIN,
-            0,
-            i32::MIN,
-            0,
-            i32::MIN,
-            0,
-            i32::MIN,
-        ));
-        let cv = _mm256_xor_ps(_mm256_loadu_ps(c.as_ptr()), flip);
-        let r = _mm256_fmadd_ps(_mm256_loadu_ps(a.as_ptr()), _mm256_loadu_ps(b.as_ptr()), cv);
+        // `vfmsubadd` computes `a*b + c` on even lanes and `a*b - c` on odd
+        // lanes, each with a single rounding: one instruction, and the same
+        // bits as the portable `mul_add(a, b, c * sign)`.
+        let r = _mm256_fmsubadd_ps(
+            _mm256_loadu_ps(a.as_ptr()),
+            _mm256_loadu_ps(b.as_ptr()),
+            _mm256_loadu_ps(c.as_ptr()),
+        );
         _mm256_storeu_ps(out.as_mut_ptr(), r);
     }
     Simd::from_array(out)

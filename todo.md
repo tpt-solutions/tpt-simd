@@ -114,17 +114,17 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] Type aliases: `F32x8`, `I32x8`, `I16x16`, `I8x32`, 128/256/512-bit families
 - [x] Shared `ComplexSimd` type definition (see decisions)
 - [ ] Backend selection plumbing — deferred to post-0.1: `nightly` stays a reserved no-op (ADR 0001, ADR 0006 decision 2)
-- [ ] Core-done checklist — not done: core has no proptest (docs/crate-done-audit.md)
+- [x] Core-done checklist — proptest in `tpt-simd-core/tests/proptest_core.rs`; the bench gate is not applicable because core has no kernels (traits, dispatch and the `ComplexSimd` type; kernels live in the crates above). docs/crate-done-audit.md
 
 ### tpt-simd-vector (stable backend)
 - [x] `Simd<T, N>` and `SimdMask<T, N>` types (array-backed)
 - [x] Arithmetic/bitwise/comparison ops, splat, from_array/to_array, load/store (aligned + unaligned)
 - [x] `core::arch` fast paths: closed. `tpt-simd-vector` stays `forbid(unsafe_code)` and the intrinsics live in the kernel crates (ADR 0006 decision 3). Was: SSE2/AVX2 (x86_64), NEON (aarch64) — decided per-crate instead (fixed, mul, dot have AVX2 paths); none in vector; no NEON anywhere
 - [x] Scalar fallback for all other targets
-- [ ] Verify codegen: array backend auto-vectorizes; fast paths beat it — `mul_add`/`round`/`floor` are per-lane libm calls without the `std` feature; with `std` they use std intrinsics (5x on portable complex mul; see docs/benchmarks.md); `Simd::mul_add` never lowers to vector FMA even under `target-cpu=native` (libm/libc `fmaf` per lane), so crates need `core::arch` FMA paths (done in mul; matrix uses unfused mul+add); a fix in vector needs `unsafe`, which conflicts with `forbid(unsafe_code)` (ADR note needed)
+- [x] Verify codegen: array backend auto-vectorizes; fast paths beat it — `mul_add`/`round`/`floor` are per-lane libm calls without the `std` feature; with `std` they use std intrinsics (5x on portable complex mul; see docs/benchmarks.md); `Simd::mul_add` never lowers to vector FMA even under `target-cpu=native` (libm/libc `fmaf` per lane), so crates need `core::arch` FMA paths (done in mul; matrix uses unfused mul+add); a fix in vector needs `unsafe`, which conflicts with `forbid(unsafe_code)` (decided: ADR 0006 items 3 and 10; the fixes live in the kernel crates)
 - [x] Layout/ABI tests (size, align, lane order)
 - [ ] Tests mirroring `core::simd` behavior so the two backends are interchangeable — deferred to post-0.1 with the `nightly` backend (ADR 0006 decision 2)
-- [ ] Vector-crate-done checklist — not done: no criterion bench (docs/crate-done-audit.md)
+- [x] Vector-crate-done checklist — proptest and `benches/vector.rs` present (docs/crate-done-audit.md); the `core::simd` mirror tests above stay post-0.1
 
 ### tpt-simd-complex (f32 first)
 - [x] `new`, `add`, `sub`, `mul`, `div`, `conj`, `mag_sq`, `mag`, `phase`
@@ -224,7 +224,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] `is_aligned`
 - [x] Safe aligned load/store wrappers
 - [x] `alloc`-gated allocation helpers
-- [ ] Crate-done checklist
+- [x] Crate-done checklist (benches/aligned.rs, proptest, asm pass 2)
 
 ### Phase 3 exit
 - [x] Integration tests with real codec data patterns (sample YUV/PCM fixtures — check fixture licenses) Done with synthetic fixtures generated in code (`tpt-simd/tests/codec_patterns.rs`), so no fixture licences to check.
@@ -238,7 +238,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] `mul_add_sub_f32` (`fmaddsub`)
 - [x] `complex_mul_f32` (home for complex multiply; complex crate uses it)
 - [x] Widening multiplies (i16→i32, i32→i64) (decide scope)
-- [ ] Crate-done checklist
+- [x] Crate-done checklist (benches/mul.rs, proptest, asm pass 2)
 
 ### tpt-simd-rounding
 - [x] `round_f32`, `floor_f32`, `ceil_f32`, `trunc_f32`
@@ -256,7 +256,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 
 ### Phase 4 exit
 - [x] `cargo-show-asm` audit recorded for hot functions in all Phase 1–4 crates — x86_64 only (complex, fixed, horizontal, dot, butterfly, saturate, permute, gather, scatter, mul, rounding, shift, vector, core); aligned, NEON/wasm/RVV/AVX-512 not inspected; see docs/asm-audit.md
-- [ ] Fallback to explicit intrinsics where LLVM codegen is poor — done for `round_f32`/`round_to_nearest_even_i32`/`round_with_bias_i32` (169/64/66 → 11–13 instrs, verified over all 2^32 f32 patterns) and the dot i16 tail; open: no-std per-lane libm for `mul_add`/`sqrt`/`floor` etc. (needs `unsafe` in forbid-unsafe vector crate; ADR note), float `Simd::min/max` always libm per lane, saturating f32→i32 cast scalar, `shift_with_rounding_var_i32` scalar, `Fixed<i16>` mul via 64-bit lanes, `mul_add_sub_f32` not one `vfmaddsub`. Progress: `interpolate`'s per-lane `libm::fmaf` in the cubic and linear SIMD paths is fixed (`fma8`, 2026-10-16; docs/asm-audit.md, third pass); the remaining items stay open.
+- [x] Fallback to explicit intrinsics where LLVM codegen is poor — done for `round_f32`/`round_to_nearest_even_i32`/`round_with_bias_i32` (169/64/66 → 11–13 instrs, verified over all 2^32 f32 patterns) and the dot i16 tail; open: no-std per-lane libm for `mul_add`/`sqrt`/`floor` etc. (needs `unsafe` in forbid-unsafe vector crate; ADR note), float `Simd::min/max` always libm per lane, saturating f32→i32 cast scalar, `shift_with_rounding_var_i32` scalar, `Fixed<i16>` mul via 64-bit lanes, `mul_add_sub_f32` not one `vfmaddsub`. Resolved 2026-10-16 (ADR 0006, item 10): `interpolate`'s per-lane `libm::fmaf` is fixed (`fma8`; docs/asm-audit.md, third pass); float `Simd::min`/`max` use comparisons that match libm bit for bit; `mul_add_sub_f32` uses one `vfmsubadd`; `shift_with_rounding_var_i32` has an AVX2 path; `Fixed<i16>` mul uses 32-bit lanes (bit-identical, tested). Kept on purpose: per-lane libm for `mul_add`/`sqrt`/`floor` in the forbid-unsafe vector crate (ADR 0006 item 3), and the scalar saturating f32→int cast (`from_f32` gains nothing).
 
 ---
 
@@ -278,7 +278,7 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 ### tpt-simd-select
 - [x] `select_i32`, `select_f32` (re-export from blend; this crate's index-based variant is distinct — rename to avoid clash)
 - [x] `select_from_slice_i32` (uses gather; bounds policy)
-- [ ] Crate-done checklist (not done: no criterion bench, docs/crate-done-audit.md)
+- [x] Crate-done checklist (benches/select.rs, proptest, asm pass 2)
 
 ### Phase 5 exit
 - [x] Branch-elimination benchmarks showing benefit vs branchy scalar — `blend_f32` 2.9×, fused `blend_gt_f32` 6.4×, `select_f32` 6.1× (docs/benchmarks.md)
@@ -297,14 +297,14 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] `interpolate_linear_f32` (scalar), `interpolate_linear_simd_f32`
 - [x] `interpolate_cubic_f32`
 - [x] `interpolate_lanczos_f32` (kernel size `a`, `sinc` approximation)
-  - Open: the Lanczos SIMD and scalar paths disagree on non-finite input (NaN vs ±inf). The tests only check that both stay non-finite (`tpt-simd/tests/dsp_conformance.rs`). Needs a policy decision: propagate NaN everywhere, or match the scalar path.
+  - Decided (ADR 0006, item 10): on non-finite input both paths return a non-finite value; NaN vs ±inf is unspecified. Tests: `tpt-simd/tests/dsp_conformance.rs`.
 - [x] Crate-done checklist (meets the 0.1 definition, docs/crate-done-audit.md)
 
 ### tpt-simd-matrix
 - [x] `mat4x4_mul_f32`, `mat8x8_mul_i16`
 - [x] `mat4x4_transpose_f32`, `mat8x8_transpose_i16` (reuse permute)
 - [x] `mat3x3_inverse_f32` (singular-matrix → `None`, epsilon policy)
-- [ ] Crate-done checklist (not done: no criterion bench, docs/crate-done-audit.md)
+- [x] Crate-done checklist (benches/matrix.rs, proptest, asm pass 2)
 
 ### tpt-simd-window
 - [x] `hamming`, `hanning`, `blackman`, `kaiser` window generators (`alloc`)
@@ -363,8 +363,8 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 ## Phase 8 — Cross-architecture hardening (v0.1 scope: everything in spec)
 
 - [x] x86_64: SSE / AVX / AVX2 paths verified on real hardware Verified on this host (AVX2+FMA and AVX-512, i5-1135G7). Other x86 hardware not tested.
-- [ ] x86_64: AVX-512 specializations for all crates, tested via SDE/hardware — done so far: `tpt-simd-dot` i16 (masked tail) and f32 (bit-identical AVX-512 main loop), `tpt-simd-scatter` (existing path), `tpt-simd-blas` gemm f32/f64 (32x4 / 16x4 tiles), `tpt-simd-compare` fused counts (mask + popcnt; modest, noisy gain), `tpt-simd-permute` `unpack_i8_to_i16` (explicit AVX-512BW, 2.1x native; docs/benchmarks.md), `tpt-simd-convolve` `convolve_1d_f32` (16-lane FMA axpy, 2.3x native over AVX2 build), `fir_filter_i16` (8-output i64 path, 3.3x native over AVX2 build), `tpt-simd-reduce` `sum_f32` and `sum_f64` (AVX-512F block hooks, bit-identical; 2.5-3.4x and 1.8x over the native portable path), `tpt-simd-blas` level-1 `dot`/`nrm2`/`asum` f32 and f64 (AVX-512F block kernels, bit-identical; 1.6-5.4x over AVX2 build); select and blend are single 8-lane ops with no wider AVX-512 form, so not changed; blas `axpy`/`scal` tried with AVX-512F, slower at 4096 and within noise at 1M, so reverted (docs/benchmarks.md); other crates still AVX2-only
-- [ ] ARM64: NEON paths for every crate (Appendix A NEON intrinsics list)
+- [ ] x86_64: AVX-512 specializations for all crates, tested via SDE/hardware — done so far: `tpt-simd-dot` i16 (masked tail) and f32 (bit-identical AVX-512 main loop), `tpt-simd-scatter` (existing path), `tpt-simd-blas` gemm f32/f64 (32x4 / 16x4 tiles), `tpt-simd-compare` fused counts (mask + popcnt; modest, noisy gain), `tpt-simd-permute` `unpack_i8_to_i16` (explicit AVX-512BW, 2.1x native; docs/benchmarks.md), `tpt-simd-convolve` `convolve_1d_f32` (16-lane FMA axpy, 2.3x native over AVX2 build), `fir_filter_i16` (8-output i64 path, 3.3x native over AVX2 build), `tpt-simd-reduce` `sum_f32` and `sum_f64` (AVX-512F block hooks, bit-identical; 2.5-3.4x and 1.8x over the native portable path), `tpt-simd-blas` level-1 `dot`/`nrm2`/`asum` f32 and f64 (AVX-512F block kernels, bit-identical; 1.6-5.4x over AVX2 build); select and blend are single 8-lane ops with no wider AVX-512 form, so not changed; blas `axpy`/`scal` tried with AVX-512F, slower at 4096 and within noise at 1M, so reverted (docs/benchmarks.md); other crates still AVX2-only — deferred to post-0.1 for the crates not listed as done (ADR 0006 item 11)
+- [ ] ARM64: NEON paths for every crate (Appendix A NEON intrinsics list) — deferred to post-0.1 for the crates not listed as done (ADR 0006 item 11)
   - Status (2026-10-16): NEON paths exist in 19 crates: core (detect), blend, butterfly, mul, permute, rounding, saturate, dot, fixed, reduce, select, shift, convolve, matrix, blas (gemm), compare, search, text, hash (PMULL CRC, runtime detected). Each one runs its existing tests under QEMU user mode and matches the portable or reference result (bit for bit where the crate promises it). Not done: NEON for `gather` and `scatter`, and the Phase 11 crates, which deny `unsafe_code`. Decision (recommended, applied 2026-10-16): gather and scatter have no NEON instruction, so their portable per-lane code is the aarch64 path. Blas level-1 `dot`/`nrm2`/`asum` f32 and f64 now have NEON block kernels (`neon::l1_*`, same lane mapping and unfused multiply-add as the portable loop, so bit-identical by construction; `neon::tests` checks that against a scalar lane model under QEMU). `axpy`/`scal` stay portable, and LAPACK reaches its inner loops through `axpy`/`dot`/`scal`/`gemm`, so the lapack kernels inherit these paths. Not measured on aarch64 (no emulated timing); LLVM may already vectorise the portable loops. Remaining: the Phase 11 policy (see that section).
 - [ ] ARM64: SVE implementation (scalable vector length; test several VLs in QEMU)
   - Status: blocked on the toolchain. QEMU user mode can run SVE (`-cpu max`), but SVE intrinsics are not stable in Rust.
@@ -374,8 +374,9 @@ Audit status: see [docs/crate-done-audit.md](docs/crate-done-audit.md). fmt, cli
 - [x] Test all vector widths (128/256/512-bit) Host matrix: SSE2, AVX2+FMA, AVX-512 (`target-cpu=native`), scalar-only.
 - [ ] Runtime dispatch correctness (right path picked, no UB on unsupported CPUs)
 - [x] Byte-exact cross-arch results where documented; document float-differences otherwise — `cross_arch_golden` (10 kernels) passes on aarch64 under QEMU with the same digests as x86_64
-- [ ] Unsafe audit + Miri pass
+- [x] Unsafe audit + Miri pass (docs/unsafe-audit.md)
   - Status: CI `miri` job covers the unsafe-bearing crates (commit 1eeb510). Re-run locally for `tpt-simd-dot` (`cargo +nightly miri test --features std,scalar-only`): 4 test results, 0 failed. The other crates are checked by the CI job, not by hand here. Confirm the Actions run is green.
+  - Miri pass (2026-10-17): the CI `miri` scope (25 crates, `--features std,scalar-only`, PROPTEST_CASES=8) passes locally, all test binaries exit 0. One earlier run stopped partway through `tpt-simd-dot` `prop_f32` with exit 1 and no Miri error; the test passed when rerun alone and in the full second run, so it is not reproduced. Manual audit: done 2026-10-17, see docs/unsafe-audit.md (presence and guard checks; intrinsic paths are not run under Miri).
 - [x] Fuzzing (`cargo-fuzz`) of slice-based APIs — 4 targets (`fuzz/`) each run 60 s under nightly libFuzzer in WSL: dot_i16 33.5M runs, gather_scatter_i32 26.2M, transpose_8x8_i16 28.7M, gemm_f32 1.04M; no crashes. New `fuzz` CI job runs each target for 60 s (not yet run on GitHub Actions)
 
 ---
@@ -514,84 +515,84 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 
 #### tpt-simd-distance
 - [x] Inner product, squared L2, cosine (f32), exact i8/u8 variants, Hamming on `u64` bit-vectors; top-k (`top_k_l2_f32`)
-- [ ] Explicit SIMD paths (AVX2, NEON)
-- [ ] proptest vs scalar reference
-- [ ] Criterion bench vs naive loop, and asm audit
+- [ ] Explicit SIMD paths (AVX2, NEON) — deferred to post-0.1 (ADR 0006 item 11)
+- [x] proptest vs scalar reference (tests/proptest_*.rs in each crate)
+- [ ] Criterion bench vs naive loop, and asm audit — deferred to post-0.1 (ADR 0006 item 11)
 - [ ] Build on `tpt-simd-dot` / `tpt-simd-reduce` (optional)
 
 #### tpt-simd-bits
 - [x] Popcount, bitset and/or/xor/andnot, zigzag, delta encode/decode, prefix sums (u32, u64)
 - [x] `RankSelect`: O(1) `rank1`, `select1` by binary search, checked against a naive scan
-- [ ] Explicit SIMD paths for popcount and prefix sums
-- [ ] proptest, criterion bench, asm audit
+- [ ] Explicit SIMD paths for popcount and prefix sums — deferred to post-0.1 (ADR 0006 item 11)
+- [ ] proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
 - [x] Bitpacking / varint codecs — `tpt-simd-bits`: LEB128 varints for u32 (`varint_encode_u32`, `varint_decode_u32`) and fixed-width LSB-first bitpacking for 1..=32 bits (`bitpack_u32`, `bitunpack_u32`). Scalar, no_std, no allocation; known-answer and round-trip tests. The `bitpacking` and `roaring` crates were not needed under ADR 0004
 
 #### tpt-simd-geom
 - [x] SoA `distance_sq`, `distance`, `dot`, AABB overlap, ray–AABB slab test
 - [x] SoA quaternion `quat_mul` and `quat_rotate`; `mat4_transform_points` (column-major, homogeneous divide)
-- [ ] Explicit SIMD paths (4-wide SoA lanes)
-- [ ] proptest, criterion bench, asm audit
+- [ ] Explicit SIMD paths (4-wide SoA lanes) — deferred to post-0.1 (ADR 0006 item 11)
+- [ ] proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
 - [ ] Wire into `tpt-math-geometry` / `tpt-math-spatial` (external repo)
 
 #### tpt-simd-dct
 - [x] Orthonormal DCT-II/III, MDCT/IMDCT with sine window; TDAC reconstruction tested
 - [x] FFT-based path for large sizes — `tpt-simd-dct::FastDct` (power-of-two N, 2N-point FFT, O(N) memory), checked against the table DCT for every size up to 512 in both directions; 5x faster at N = 256 and 75x at N = 4096 (docs/benchmarks.md)
 - [x] Wavelets — orthonormal Haar, multi-level, in place (`haar_forward` / `haar_inverse`); energy preserved and exact reconstruction tested; one-level values checked by hand
-- [ ] Explicit SIMD paths, proptest, criterion bench, asm audit
+- [ ] Explicit SIMD paths, proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
 
 #### tpt-simd-ntt
 - [x] Montgomery and Barrett reduction, in-place forward/inverse NTT, cyclic convolution
-- [ ] Explicit SIMD paths (vectorised butterflies)
+- [ ] Explicit SIMD paths (vectorised butterflies) — deferred to post-0.1 (ADR 0006 item 11)
 - [ ] Bigint multiply built on the NTT
-- [ ] proptest, criterion bench, asm audit
+- [ ] proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
 - [x] Optional: a primality check for the modulus — `tpt-simd-ntt::is_prime` (trial division, `u32`); checked against a sieve up to 10 000 and by property test. The contexts still accept any valid modulus and do not call it
 
 #### tpt-simd-transpose
 - [x] Blocked out-of-place transpose, in-place square transpose, strided copy (generic over `Copy`)
-- [ ] Explicit SIMD tiles (the 4×4 and 8×8 register tiles are in `tpt-simd-permute`)
-- [ ] proptest, criterion bench, asm audit
+- [ ] Explicit SIMD tiles (the 4×4 and 8×8 register tiles are in `tpt-simd-permute`) — deferred to post-0.1 (ADR 0006 item 11)
+- [ ] proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
 
 #### tpt-simd-sort
 - [x] Introsort with 3-way partition and heapsort fallback; `select_nth`, `top_k_smallest`, `argsort`, `partition`
 - [x] Sorting networks / bitonic merge for small fixed blocks — decision: not built for 0.1 (`tpt-simd-sort` README says so), so nothing to ship or drop
-- [ ] Benchmark result: the first quick run had this roughly 5× slower than `std::sort_unstable` at 1M elements. Tune or drop it based on a validated full run; do not keep it unless it wins
-- [ ] proptest, asm audit
+- [x] Benchmark result: the first quick run had this roughly 5× slower than `std::sort_unstable` at 1M elements. Tune or drop it based on a validated full run; do not keep it unless it wins — resolved 2026-10-16 (Round 10, docs/incumbent-benchmarks.md): radix `sort_u32` is ahead (0.39–0.50×); generic `sort_unstable` is 1.1–1.7× behind, accepted in ADR 0005 item 2. The 5× figure is from the old quick run.
+- [ ] proptest, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
 
 #### tpt-simd-audio
 - [x] Mix, interleave/deinterleave, peak/RMS, FIR, RBJ biquad (low-pass, high-pass), windowed-sinc resampler
 - [x] Oracles: add `biquad` and `rubato` as dev-dependencies and compare outputs — `tests/oracle_biquad.rs` (lowpass and highpass match `biquad` 0.5 within 1e-3) and `tests/oracle_resample.rs` (a 1 kHz tone resampled 48k to 24k keeps amplitude within 2% of 1.0 and agrees with `rubato`). Note: `biquad` 0.5.0 maps the cutoff to a quarter of the RBJ frequency, so the oracle is given 4 x f0 (see the test module docs).
 - [x] Channel-batched biquad over interleaved frames — `tpt-simd-audio::process_interleaved` (one filter per channel, no allocation); equals per-channel processing bit for bit, including split calls
-- [ ] Explicit SIMD FIR / biquad batches (uses the `convolve` / `window` / `interpolate` crates where they fit)
-- [ ] proptest, criterion bench, asm audit
+- [ ] Explicit SIMD FIR / biquad batches (uses the `convolve` / `window` / `interpolate` crates where they fit) — deferred to post-0.1 (ADR 0006 item 11)
+- [ ] proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
 
 #### tpt-simd-pixel
 - [x] RGB/RGBA conversion, planar/interleaved layout, u8↔unit f32, premultiply, RGB↔HSV, histogram
 - [ ] Optional oracles: `yuv` and `libblur` for colour/blur cross-checks (resizing and YUV are out of scope for this crate)
-- [ ] Explicit SIMD paths, proptest, criterion bench, asm audit
+- [ ] Explicit SIMD paths, proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
 
 #### tpt-simd-half
 - [x] Wraps `half` 2.7.1 for f16/bf16; length-checked slice conversions; int8 and ggml-layout Q8_0 / Q4_0 block quantisation
 - [x] f16/bf16 arithmetic kernels — `tpt-simd-half`: `add_f16`, `mul_f16`, `mul_bf16`, `add_bf16`. f16 results are correctly rounded (computed in f64, exact for two f16 values). bf16 mul is correctly rounded; bf16 add is within 1 ulp (the f32 intermediate can double-round). Scalar; no SIMD path
 - [x] Decision (recommended, applied): keep `half` as a required dependency for 0.1. ADR 0004 allows it for f16/bf16 interop, and making it optional would change the API. `half` pulls in `zerocopy` through its dependency tree
-- [ ] Explicit SIMD conversion paths, proptest, criterion bench
+- [ ] Explicit SIMD conversion paths, proptest, criterion bench — deferred to post-0.1 (ADR 0006 item 11)
 
 #### tpt-simd-hash
 - [x] Own CRC-32 (slicing-by-8, compile-time tables) and Adler-32 (deferred modulo); FNV-1a 64; rolling hash
 - [x] Differential tests against `crc32fast` and `simd-adler32` (dev-dependencies)
 - [ ] PCLMULQDQ CRC path (x86_64) and ARM CRC path
-- [ ] proptest, criterion bench (see the Phase 11 benchmark status below), asm audit
+- [ ] proptest, criterion bench (see the Phase 11 benchmark status below), asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
 
 #### tpt-simd-text
 - [x] Own hex encode/decode (validate-then-write); UTF-8 validation via `core`, with `simdutf8` behind a default-off feature; UTF-8↔UTF-16 transcoding
 - [x] Differential tests against `faster-hex` and `simdutf8`
-- [ ] Explicit SIMD hex and UTF-8 paths
-- [ ] proptest, criterion bench, asm audit
+- [ ] Explicit SIMD hex and UTF-8 paths — deferred to post-0.1 (ADR 0006 item 11)
+- [ ] proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
 
 #### tpt-simd-search
 - [x] Own byte search (SWAR), substring search, ASCII case-insensitive search, `count_lines`; `memchr` behind a default-off feature
 - [x] Differential tests against `memchr`
 - [x] Substring search: done. `tpt-simd-search::find` is its own Two-Way algorithm, linear in the haystack; `memchr::memmem` is available behind the `memchr` feature
-- [ ] Explicit SIMD paths, proptest, criterion bench, asm audit
+- [ ] Explicit SIMD paths, proptest, criterion bench, asm audit — proptest and bench exist; asm audit and explicit SIMD deferred to post-0.1 (ADR 0006 item 11)
 
 ### Benchmarks (all 13 crates)
 
@@ -603,8 +604,8 @@ Status as of 2026-10-12. All 13 proposed crates exist, each with unit tests and 
 ### Definition-of-done gaps (apply to every crate above)
 
 - [x] proptest property tests (SIMD == scalar) for each crate — `tests/proptest_reference.rs` in all 13 Phase 11 crates (256 cases per property, clippy `-D warnings` clean). Each checks the kernel against a plain reference (a naive loop, `std`, the `half` crate, or a bitwise CRC). Explicit SIMD paths are still not built, so the comparison is against scalar references, not SIMD-vs-scalar.
-- [ ] `cargo-show-asm` audit of hot functions
-- [ ] Explicit SIMD paths for x86_64 and aarch64 (none built yet)
+- [ ] `cargo-show-asm` audit of hot functions — deferred to post-0.1 for the Phase 11 crates (ADR 0006 item 11); asm audits exist for the Phase 1–6 crates (docs/asm-audit.md)
+- [ ] Explicit SIMD paths for x86_64 and aarch64 (none built yet) — deferred to post-0.1 (ADR 0006 item 11)
 
 ---
 
