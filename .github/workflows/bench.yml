@@ -12,8 +12,16 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      # Pinned: a floating `stable` changes codegen for the whole workspace between runs, which
+      # shows up as regressions in code that did not change. Bump deliberately, and refresh the
+      # master baseline in the same change.
+      - uses: dtolnay/rust-toolchain@1.98.0
       - uses: Swatinem/rust-cache@v2
+      # Logged so a regression can be checked against the runner and compiler that produced it.
+      - name: Record runner and compiler
+        run: |
+          rustc -V
+          grep -m1 "model name" /proc/cpuinfo || true
       # Criterion's defaults (3 s warm-up, 5 s measurement per benchmark) across roughly a thousand
       # benchmarks overrun the 90-minute limit. The shorter budget keeps the full workspace run
       # inside it; the baseline is saved and compared with the same settings on every run.
