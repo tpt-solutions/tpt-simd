@@ -8,6 +8,7 @@ Pixel kernels: channel layout changes, colour conversion, premultiplied alpha, u
 |---|---|
 | `rgb8_to_rgba8` / `rgba8_to_rgb8` | add an alpha channel with a fixed value, or drop it |
 | `planar_to_interleaved_rgb8` / `interleaved_to_planar_rgb8` | three 8-bit planes and packed RGB |
+| `planar_to_interleaved_rgba8` / `interleaved_to_planar_rgba8` | four 8-bit planes and packed RGBA |
 | `u8_to_unit_f32` / `unit_f32_to_u8` | `[0, 255]` to `[0, 1]` and back, with rounding |
 | `premultiply_rgba8` | colour times alpha, in place, rounded |
 | `rgb_to_hsv` / `hsv_to_rgb` | `f32`; hue in degrees `[0, 360)` |

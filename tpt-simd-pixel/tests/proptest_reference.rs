@@ -2,11 +2,28 @@
 
 use proptest::prelude::*;
 use tpt_simd_pixel::{
-    histogram_u8, hsv_to_rgb, interleaved_to_planar_rgb8, planar_to_interleaved_rgb8,
-    premultiply_rgba8, rgb_to_hsv, rgb8_to_rgba8, rgba8_to_rgb8, u8_to_unit_f32, unit_f32_to_u8,
+    histogram_u8, hsv_to_rgb, interleaved_to_planar_rgb8, interleaved_to_planar_rgba8,
+    planar_to_interleaved_rgb8, planar_to_interleaved_rgba8, premultiply_rgba8, rgb_to_hsv,
+    rgb8_to_rgba8, rgba8_to_rgb8, u8_to_unit_f32, unit_f32_to_u8,
 };
 
 proptest! {
+    #[test]
+    fn planar_and_interleaved_rgba_round_trip(n in 0usize..200, seed in any::<u8>()) {
+        let r: Vec<u8> = (0..n).map(|i| (i as u8).wrapping_mul(3) ^ seed).collect();
+        let g: Vec<u8> = (0..n).map(|i| (i as u8).wrapping_mul(5).wrapping_add(seed)).collect();
+        let b: Vec<u8> = (0..n).map(|i| (i as u8).wrapping_mul(7)).collect();
+        let a: Vec<u8> = (0..n).map(|i| (i as u8).wrapping_mul(11) ^ !seed).collect();
+        let mut inter = vec![0u8; n * 4];
+        planar_to_interleaved_rgba8(&r, &g, &b, &a, &mut inter);
+        for i in 0..n {
+            prop_assert_eq!(&inter[i * 4..i * 4 + 4], &[r[i], g[i], b[i], a[i]][..]);
+        }
+        let (mut r2, mut g2, mut b2, mut a2) = (vec![0u8; n], vec![0u8; n], vec![0u8; n], vec![0u8; n]);
+        interleaved_to_planar_rgba8(&inter, &mut r2, &mut g2, &mut b2, &mut a2);
+        prop_assert_eq!((r2, g2, b2, a2), (r, g, b, a));
+    }
+
     #[test]
     fn rgb_to_rgba_and_back(px in prop::collection::vec(any::<[u8; 3]>(), 0..200), alpha in any::<u8>()) {
         let src: Vec<u8> = px.iter().flatten().copied().collect();
