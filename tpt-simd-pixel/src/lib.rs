@@ -107,6 +107,55 @@ pub fn interleaved_to_planar_rgb8(input: &[u8], r: &mut [u8], g: &mut [u8], b: &
     }
 }
 
+/// Interleaves four planes of equal length into RGBA8.
+///
+/// # Panics
+///
+/// Panics if the planes differ in length, or `out.len() != 4 * plane length`.
+pub fn planar_to_interleaved_rgba8(r: &[u8], g: &[u8], b: &[u8], a: &[u8], out: &mut [u8]) {
+    check("planar_to_interleaved_rgba8 (g)", g.len(), r.len());
+    check("planar_to_interleaved_rgba8 (b)", b.len(), r.len());
+    check("planar_to_interleaved_rgba8 (a)", a.len(), r.len());
+    check("planar_to_interleaved_rgba8", out.len(), 4 * r.len());
+    for (i, px) in out.chunks_exact_mut(4).enumerate() {
+        px[0] = r[i];
+        px[1] = g[i];
+        px[2] = b[i];
+        px[3] = a[i];
+    }
+}
+
+/// Splits RGBA8 pixels into four planes of equal length.
+///
+/// # Panics
+///
+/// Panics unless `input.len()` is a multiple of 4 and each plane has length
+/// `input.len() / 4`.
+pub fn interleaved_to_planar_rgba8(
+    input: &[u8],
+    r: &mut [u8],
+    g: &mut [u8],
+    b: &mut [u8],
+    a: &mut [u8],
+) {
+    check(
+        "interleaved_to_planar_rgba8 (multiple of 4)",
+        input.len() % 4,
+        0,
+    );
+    let n = input.len() / 4;
+    check("interleaved_to_planar_rgba8 (r)", r.len(), n);
+    check("interleaved_to_planar_rgba8 (g)", g.len(), n);
+    check("interleaved_to_planar_rgba8 (b)", b.len(), n);
+    check("interleaved_to_planar_rgba8 (a)", a.len(), n);
+    for (i, px) in input.chunks_exact(4).enumerate() {
+        r[i] = px[0];
+        g[i] = px[1];
+        b[i] = px[2];
+        a[i] = px[3];
+    }
+}
+
 /// Converts `u8` samples to `f32` in `[0, 1]` (divides by 255).
 ///
 /// # Panics

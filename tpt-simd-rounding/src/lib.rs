@@ -513,6 +513,30 @@ pub fn round_with_bias_i32(a: Simd<f32, 8>, bias: f32) -> Simd<i32, 8> {
     to_i32_sat(floor_f32(a + Simd::splat(bias)))
 }
 
+/// Round each lane to the nearest integer with **ties to even**, clamp to
+/// `0..=255` and return the `u8` values. Values below 0 and NaN become 0;
+/// values above 255 become 255.
+///
+/// This is the `f32 → u8` step for final pixel rounding. It matches
+/// [`round_to_nearest_even_i32`] followed by a clamp, so the two agree on
+/// every input.
+///
+/// # Panics
+/// Never.
+///
+/// ```
+/// use tpt_simd_core::F32x8;
+/// use tpt_simd_rounding::round_to_u8;
+/// let r = round_to_u8(F32x8::from_array([0.5, 1.5, 2.5, 254.5, 255.4, 300.0, -3.0, f32::NAN]));
+/// assert_eq!(r, [0, 2, 2, 254, 255, 255, 0, 0]);
+/// ```
+#[inline]
+pub fn round_to_u8(a: Simd<f32, 8>) -> [u8; 8] {
+    round_to_nearest_even_i32(a)
+        .to_array()
+        .map(|v| v.clamp(0, 255) as u8)
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -609,6 +633,32 @@ mod tests {
             round_to_nearest_even_i32(v).to_array(),
             [i32::MAX, i32::MIN, i32::MAX, i32::MIN, 0, 0, 1, -1]
         );
+    }
+
+    #[test]
+    fn round_to_u8_ties_and_clamp() {
+        let v = Simd::from_array([0.5, 1.5, 2.5, 254.5, 255.4, 300.0, -3.0, f32::NAN]);
+        assert_eq!(round_to_u8(v), [0, 2, 2, 254, 255, 255, 0, 0]);
+        let inf = Simd::from_array([
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            3e9,
+            -3e9,
+            0.0,
+            1.0,
+            128.5,
+            127.5,
+        ]);
+        assert_eq!(round_to_u8(inf), [255, 0, 255, 0, 0, 1, 128, 128]);
+    }
+
+    proptest! {
+        #[test]
+        fn round_to_u8_matches_i32_clamp(v in prop::collection::vec(f32_with_specials(), 8)) {
+            let a = Simd::from_array(core::array::from_fn(|i| v[i]));
+            let expect = round_to_nearest_even_i32(a).to_array().map(|x| x.clamp(0, 255) as u8);
+            prop_assert_eq!(round_to_u8(a), expect);
+        }
     }
 
     proptest! {

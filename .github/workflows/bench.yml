@@ -34,7 +34,7 @@ jobs:
       # The comparison runs before the store step, which overwrites base-criterion.
       - name: Restore latest master baseline
         id: restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: base-criterion
           key: criterion-master-none
@@ -55,7 +55,7 @@ jobs:
           cp -r target/criterion base-criterion
       - name: Save master baseline cache
         if: github.event_name == 'push'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: base-criterion
           key: criterion-master-${{ github.sha }}
