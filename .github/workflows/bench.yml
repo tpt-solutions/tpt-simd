@@ -15,7 +15,7 @@ jobs:
       # Pinned: a floating `stable` changes codegen for the whole workspace between runs, which
       # shows up as regressions in code that did not change. Bump deliberately, and refresh the
       # master baseline in the same change.
-      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: dtolnay/rust-toolchain@1.120.0
       - uses: Swatinem/rust-cache@v2
       # Logged so a regression can be checked against the runner and compiler that produced it.
       - name: Record runner and compiler
