@@ -81,7 +81,7 @@ pub fn is_valid_utf8(bytes: &[u8]) -> bool {
     }
     #[cfg(not(feature = "simdutf8"))]
     {
-        #[cfg(target_arch = "x86_64")]
+        #[cfg(all(target_arch = "x86_64", not(target_os = "none")))]
         {
             if bytes.len() >= 64 && utf8_avx2::available() {
                 return utf8_avx2::is_valid(bytes);
@@ -102,7 +102,7 @@ mod neon;
 
 /// Lookup tables, error flags and the scalar tail check of the UTF-8 validator. Shared by the
 /// AVX2 and NEON block checks, so both validate exactly the same bytes.
-#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+#[cfg(any(all(target_arch = "x86_64", not(target_os = "none")), target_arch = "aarch64"))]
 #[allow(dead_code)]
 pub(crate) mod utf8_tables {
     // Error bits for the lookup validator. A lane's bits are the set of errors that
@@ -233,7 +233,7 @@ pub(crate) mod utf8_tables {
 ///
 /// Whole 32-byte blocks go through the vector check. The tail starts at a character
 /// boundary, so `core::str::from_utf8` can validate it on its own.
-#[cfg(all(target_arch = "x86_64", not(feature = "simdutf8")))]
+#[cfg(all(all(target_arch = "x86_64", not(target_os = "none")), not(feature = "simdutf8")))]
 #[allow(unsafe_code)]
 mod utf8_avx2 {
     use super::utf8_tables::*;
@@ -433,7 +433,7 @@ pub fn hex_encode_lower(src: &[u8], dst: &mut [u8]) -> Result<usize, TextError> 
 /// Encodes the SIMD prefix of `src` into `dst` and returns the number of output bytes
 /// written. AVX2 takes the 32-byte blocks when available; SSE2 takes the remaining 16-byte
 /// blocks.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(target_os = "none")))]
 #[inline]
 fn hex_encode_blocks(src: &[u8], dst: &mut [u8]) -> usize {
     let wide = src.len() / 32 * 32;
@@ -446,7 +446,7 @@ fn hex_encode_blocks(src: &[u8], dst: &mut [u8]) -> usize {
 
 /// Encodes whole 16-byte blocks of `src` into `dst` and returns the number of output
 /// bytes written. SSE2 is part of the x86_64 baseline, so no detection is needed.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(target_os = "none")))]
 #[allow(unsafe_code)]
 #[inline]
 fn hex_encode_sse2(src: &[u8], dst: &mut [u8]) -> usize {
@@ -490,7 +490,7 @@ fn hex_encode_blocks(src: &[u8], dst: &mut [u8]) -> usize {
 }
 
 /// Portable encoder: nothing is written here, so the caller encodes every byte.
-#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(not(any(all(target_arch = "x86_64", not(target_os = "none")), target_arch = "aarch64")))]
 fn hex_encode_blocks(_src: &[u8], _dst: &mut [u8]) -> usize {
     0
 }
@@ -551,19 +551,19 @@ pub fn hex_decode(src: &[u8], dst: &mut [u8]) -> Result<usize, TextError> {
 }
 
 /// Length of the prefix of `len` input bytes that the SIMD decoder handles (whole 16-byte blocks).
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(target_os = "none")))]
 fn simd_head_len(len: usize) -> usize {
     len / 16 * 16
 }
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(all(target_arch = "x86_64", not(target_os = "none"))))]
 fn simd_head_len(_len: usize) -> usize {
     0
 }
 
 /// Validates and decodes `head` (a whole number of 16-byte blocks) into `dst`
 /// (`head.len() / 2` bytes). Returns `false`, and writes nothing, if a byte is not a hex digit.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(target_os = "none")))]
 fn simd_head_decode(head: &[u8], dst: &mut [u8]) -> bool {
     if head.len() >= 32 && hex_avx2::available() {
         return hex_avx2::validate_and_decode(head, dst);
@@ -575,7 +575,7 @@ fn simd_head_decode(head: &[u8], dst: &mut [u8]) -> bool {
     true
 }
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(all(target_arch = "x86_64", not(target_os = "none"))))]
 fn simd_head_decode(head: &[u8], _dst: &mut [u8]) -> bool {
     // No SIMD on this target, so the head is always empty and nothing is decoded here.
     head.is_empty()
@@ -585,7 +585,7 @@ fn simd_head_decode(head: &[u8], _dst: &mut [u8]) -> bool {
 ///
 /// A byte is a digit when it lies in `0x30..=0x39`. A letter is a byte whose lowercase form
 /// lies in `a..=f`. The value of a digit is `c & 0x0F`, and of a letter `(c & 0x0F) + 9`.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(target_os = "none")))]
 #[allow(unsafe_code)]
 mod hex_sse2 {
     use core::arch::x86_64::{
@@ -648,7 +648,7 @@ mod hex_sse2 {
 
 /// AVX2 hex kernels over 32-byte blocks, selected at runtime under `runtime-dispatch` (or at
 /// compile time when the build enables AVX2). The callers pass whole 32-byte blocks.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(target_os = "none")))]
 #[allow(unsafe_code)]
 mod hex_avx2 {
     use core::arch::x86_64::{

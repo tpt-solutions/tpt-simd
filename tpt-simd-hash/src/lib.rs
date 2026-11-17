@@ -462,7 +462,7 @@ impl Adler32 {
 
 /// Adler-32 update of `(a, b)` over one block of at most [`ADLER_NMAX`] bytes.
 /// Returns the reduced values.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(target_os = "none")))]
 fn adler_block(a: u32, b: u32, block: &[u8]) -> (u32, u32) {
     let whole = block.len() / 32 * 32;
     if whole > 0 && adler_avx2::available() {
@@ -473,7 +473,7 @@ fn adler_block(a: u32, b: u32, block: &[u8]) -> (u32, u32) {
 }
 
 /// AVX2 Adler-32 kernel over 32-byte blocks, with the same bookkeeping as [`adler_sse2`].
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(target_os = "none")))]
 #[allow(unsafe_code)]
 mod adler_avx2 {
     use super::ADLER_MOD;
@@ -551,7 +551,7 @@ mod adler_avx2 {
 }
 
 /// Portable Adler-32 update of `(a, b)` over one block of at most [`ADLER_NMAX`] bytes.
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(not(all(target_arch = "x86_64", not(target_os = "none"))))]
 fn adler_block(a: u32, b: u32, block: &[u8]) -> (u32, u32) {
     let (mut a, mut b) = (a, b);
     // Accumulators stay below 2^32 for a whole NMAX block.
@@ -567,7 +567,7 @@ fn adler_block(a: u32, b: u32, block: &[u8]) -> (u32, u32) {
 /// For a run of 16-byte blocks with running sum `a` and weighted sum `b`, each block adds
 /// `16 * a_before + sum_i (16 - i) * byte_i` to `b`. The running sums are kept in vector
 /// registers, so only one horizontal reduction is needed per call.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", not(target_os = "none")))]
 #[allow(unsafe_code)]
 mod adler_sse2 {
     use super::ADLER_MOD;
