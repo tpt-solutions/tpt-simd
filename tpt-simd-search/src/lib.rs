@@ -38,7 +38,7 @@ pub fn find_byte(haystack: &[u8], needle: u8) -> Option<usize> {
     {
         memchr::memchr(needle, haystack)
     }
-    #[cfg(all(not(feature = "memchr"), target_arch = "x86_64"))]
+    #[cfg(all(not(feature = "memchr"), all(target_arch = "x86_64", not(target_os = "none"))))]
     {
         if haystack.len() >= 64 && avx2::available() {
             avx2::find_byte(haystack, needle)
@@ -52,7 +52,7 @@ pub fn find_byte(haystack: &[u8], needle: u8) -> Option<usize> {
     }
     #[cfg(all(
         not(feature = "memchr"),
-        not(any(target_arch = "x86_64", target_arch = "aarch64"))
+        not(any(all(target_arch = "x86_64", not(target_os = "none")), target_arch = "aarch64"))
     ))]
     {
         find_byte_swar(haystack, needle)
@@ -66,7 +66,7 @@ mod neon;
 
 /// SSE2 kernels. SSE2 is part of the x86_64 baseline, so no runtime detection
 /// is needed. Each loop reads 16-byte unaligned vectors that lie inside the slice.
-#[cfg(all(not(feature = "memchr"), target_arch = "x86_64"))]
+#[cfg(all(not(feature = "memchr"), all(target_arch = "x86_64", not(target_os = "none"))))]
 #[allow(unsafe_code)]
 mod sse2 {
     use core::arch::x86_64::{
@@ -158,7 +158,7 @@ mod sse2 {
 
 /// AVX2 kernels, selected at runtime under `runtime-dispatch` (or at compile time when
 /// the build enables AVX2). Each loop reads 32-byte unaligned vectors inside the slice.
-#[cfg(all(not(feature = "memchr"), target_arch = "x86_64"))]
+#[cfg(all(not(feature = "memchr"), all(target_arch = "x86_64", not(target_os = "none"))))]
 #[allow(unsafe_code)]
 mod avx2 {
     use core::arch::x86_64::{
@@ -292,7 +292,7 @@ mod avx2 {
 /// `(x - LO) & !x & HI` is non-zero, where `x` is the word XOR the needle
 /// broadcast. The byte position is then found with a short scan.
 #[cfg_attr(
-    any(feature = "memchr", target_arch = "x86_64", target_arch = "aarch64"),
+    any(feature = "memchr", all(target_arch = "x86_64", not(target_os = "none")), target_arch = "aarch64"),
     allow(dead_code)
 )]
 fn find_byte_swar(haystack: &[u8], needle: u8) -> Option<usize> {
@@ -335,7 +335,7 @@ pub fn count_byte(haystack: &[u8], needle: u8) -> usize {
     {
         memchr::memchr_iter(needle, haystack).count()
     }
-    #[cfg(all(not(feature = "memchr"), target_arch = "x86_64"))]
+    #[cfg(all(not(feature = "memchr"), all(target_arch = "x86_64", not(target_os = "none"))))]
     {
         if haystack.len() >= 64 && avx2::available() {
             avx2::count_byte(haystack, needle)
@@ -349,7 +349,7 @@ pub fn count_byte(haystack: &[u8], needle: u8) -> usize {
     }
     #[cfg(all(
         not(feature = "memchr"),
-        not(any(target_arch = "x86_64", target_arch = "aarch64"))
+        not(any(all(target_arch = "x86_64", not(target_os = "none")), target_arch = "aarch64"))
     ))]
     {
         haystack.iter().filter(|&&b| b == needle).count()

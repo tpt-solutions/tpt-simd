@@ -27,7 +27,7 @@
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
 
-#[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64"))]
+#[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64", not(target_os = "none")))]
 #[allow(unsafe_code)]
 mod x86;
 
@@ -200,10 +200,10 @@ pub fn unit_f32_to_u8(src: &[f32], dst: &mut [u8]) {
 #[allow(unsafe_code)]
 pub fn premultiply_rgba8(buf: &mut [u8]) {
     check("premultiply_rgba8 (multiple of 4)", buf.len() % 4, 0);
-    #[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64"))]
+    #[cfg(all(not(feature = "scalar-only"), target_arch = "x86_64", not(target_os = "none")))]
     // SAFETY: SSE2 is part of the x86_64 baseline; the kernel stays in bounds.
     let done = unsafe { x86::premultiply_rgba8(buf) };
-    #[cfg(any(feature = "scalar-only", not(target_arch = "x86_64")))]
+    #[cfg(not(all(not(feature = "scalar-only"), target_arch = "x86_64", not(target_os = "none"))))]
     let done = 0;
     // The SIMD part ends on a pixel boundary, so the tail is whole pixels.
     for px in buf[done..].chunks_exact_mut(4) {
