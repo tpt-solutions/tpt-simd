@@ -40,7 +40,7 @@ matrixmultiply = "0.3"
 faer = "0.24"
 crc32fast = "1.5.2"
 simd-adler32 = "0.3.10"
-faster-hex = "1.0.0"
+faster-hex = "2.0.0"
 simdutf8 = "0.1.5"
 memchr = "2.8.3"
 criterion = { workspace = true, features = ["cargo_bench_support"] }
